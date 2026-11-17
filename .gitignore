@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Environment Variables & Secrets
+.env
+*.pem
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Outputs & Local Storage
+outputs/
+.draftboard/

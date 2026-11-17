@@ -1,0 +1,430 @@
+"""
+Agent tools for the Draftboard workbench.
+Each function is decorated with @function_tool so the OpenAI Agents SDK
+can expose it to the model as a callable tool.
+
+Dependency injection for storage root is provided via _storage_root module
+variable (set in tests to redirect writes to a tmp directory).
+"""
+
+import pathlib
+import uuid
+from typing import Optional
+
+from agents import function_tool
+
+from draftboard.models import (
+    Artifact,
+    AssetType,
+    EvidenceStatus,
+    MaterialContent,
+    OutlineItem,
+    Outline,
+    ReadMaterialsOutput,
+    Slide,
+    SlideElement,
+    SourceFragment,
+    ValidationIssue,
+    ValidationLevel,
+    ValidationReport,
+)
+from draftboard.storage import ProjectStorage
+
+# Set to a pathlib.Path in tests to redirect storage to a temporary directory.
+_storage_root: Optional[pathlib.Path] = None
+
+
+def _get_storage(project_id: str) -> ProjectStorage:
+    return ProjectStorage(project_id, storage_root=_storage_root)
+
+
+# ── Tool 1: read_materials ────────────────────────────────────────────────────
+
+
+@function_tool
+def read_materials(
+    project_id: str,
+    asset_ids: Optional[list[str]] = None,
+) -> ReadMaterialsOutput:
+    """Read project materials (Markdown files and images) from disk.
+
+    Scans ~/.draftboard/projects/{project_id}/assets/ for .md, .png, and .jpg
+    files.  Markdown content is returned verbatim and split into 50-line
+    source fragments.  Images are represented as a stub string of the form
+    '[image: {filename}]' – the agent must NOT fabricate any image analysis.
+
+    Args:
+        project_id: Identifier of the project whose assets to read.
+        asset_ids: Optional list of asset filenames (without extension) to
+            restrict which assets are loaded.  None means load all assets.
+
+    Returns:
+        ReadMaterialsOutput containing materials and source fragments.
+    """
+    storage = _get_storage(project_id)
+    assets_dir = storage.root / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    materials: list[MaterialContent] = []
+    fragments: list[SourceFragment] = []
+
+    # Collect candidate files
+    candidate_files: list[pathlib.Path] = []
+    for ext in ("*.md", "*.png", "*.jpg", "*.jpeg"):
+        candidate_files.extend(assets_dir.glob(ext))
+
+    for filepath in sorted(candidate_files):
+        stem = filepath.stem
+        if asset_ids is not None and stem not in asset_ids:
+            continue
+
+        if filepath.suffix.lower() == ".md":
+            text = filepath.read_text(encoding="utf-8", errors="replace")
+            materials.append(
+                MaterialContent(
+                    asset_id=stem,
+                    asset_type=AssetType.MARKDOWN,
+                    content=text,
+                )
+            )
+            # Split into 50-line fragments
+            lines = text.splitlines()
+            chunk_size = 50
+            for chunk_start in range(0, max(len(lines), 1), chunk_size):
+                chunk_end = min(chunk_start + chunk_size, len(lines))
+                chunk_lines = lines[chunk_start:chunk_end]
+                frag_id = f"{stem}-L{chunk_start + 1}"
+                fragments.append(
+                    SourceFragment(
+                        source_id=frag_id,
+                        asset_id=stem,
+                        location=f"L{chunk_start + 1}-L{chunk_end}",
+                        content_preview=" ".join(chunk_lines[:3])[:200] or None,
+                    )
+                )
+        else:
+            # Image file
+            stub = f"[image: {filepath.name}]"
+            materials.append(
+                MaterialContent(
+                    asset_id=stem,
+                    asset_type=AssetType.IMAGE,
+                    content=stub,
+                )
+            )
+            fragments.append(
+                SourceFragment(
+                    source_id=f"{stem}-img",
+                    asset_id=stem,
+                    location=stem,
+                    content_preview=None,
+                )
+            )
+
+    return ReadMaterialsOutput(
+        project_id=project_id,
+        materials=materials,
+        source_fragments=fragments,
+    )
+
+
+# ── Tool 2: propose_outline ───────────────────────────────────────────────────
+
+
+@function_tool
+def propose_outline(
+    project_id: str,
+    material_snapshot_id: str,
+    items: list[OutlineItem],
+) -> Outline:
+    """Persist a draft outline proposed by the agent.
+
+    The agent should populate *items* based on its analysis of the materials.
+    This tool saves the outline with is_confirmed=False and returns it so the
+    user can review and approve.
+
+    Args:
+        project_id: Target project identifier.
+        material_snapshot_id: Identifier of the material snapshot used to
+            build this outline (for traceability).
+        items: List of OutlineItem objects the agent has prepared.
+
+    Returns:
+        The saved Outline with a generated outline_version.
+    """
+    storage = _get_storage(project_id)
+    outline_version = f"v-{uuid.uuid4().hex[:8]}"
+    outline = Outline(
+        outline_version=outline_version,
+        project_id=project_id,
+        items=items,
+        is_confirmed=False,
+    )
+    storage.save_outline(outline)
+    return outline
+
+
+# ── Tool 3: generate_slides ───────────────────────────────────────────────────
+
+
+@function_tool
+def generate_slides(
+    project_id: str,
+    approved_outline_version: str,
+    template_id: str = "default",
+    idempotency_key: str = "",
+) -> Artifact:
+    """Generate a slide artifact from an approved outline.
+
+    Requires the outline to be confirmed (is_confirmed=True). Checks the
+    idempotency cache first; if a previous call with the same key exists its
+    result is returned unchanged.
+
+    Args:
+        project_id: Target project identifier.
+        approved_outline_version: Outline version that has been confirmed by
+            the user.
+        template_id: Slide template to apply (default: "default").
+        idempotency_key: Unique string; identical keys return the cached
+            artifact without re-generating slides.
+
+    Returns:
+        The generated (or cached) Artifact.
+
+    Raises:
+        ValueError: If the outline has not been confirmed.
+    """
+    storage = _get_storage(project_id)
+
+    # Idempotency check
+    if idempotency_key:
+        cached = storage.load_idempotent_result(idempotency_key)
+        if cached is not None:
+            return Artifact.model_validate(cached)
+
+    # Load and validate outline
+    outline = storage.load_outline(approved_outline_version)
+    if not outline.is_confirmed:
+        raise ValueError(
+            f"Outline '{approved_outline_version}' has not been confirmed. "
+            "Ask the user to confirm the outline before generating slides."
+        )
+
+    # Build slides
+    slides: list[Slide] = []
+    for idx, item in enumerate(outline.items):
+        slide_id = f"slide-{idx + 1:03d}"
+        source_id = item.source_ids[0] if item.source_ids else None
+        slides.append(
+            Slide(
+                slide_id=slide_id,
+                elements=[
+                    SlideElement(
+                        element_id=f"{slide_id}-title",
+                        type="title",
+                        content=item.title,
+                        source_id=source_id,
+                    ),
+                    SlideElement(
+                        element_id=f"{slide_id}-text",
+                        type="text",
+                        content=item.summary,
+                        source_id=source_id,
+                    ),
+                ],
+            )
+        )
+
+    artifact_id = f"art-{uuid.uuid4().hex[:8]}"
+    artifact = Artifact(
+        artifact_id=artifact_id,
+        project_id=project_id,
+        artifact_revision=1,
+        slides=slides,
+        outline_version=approved_outline_version,
+        template_id=template_id,
+    )
+    storage.save_artifact(artifact)
+
+    if idempotency_key:
+        storage.save_idempotent_result(idempotency_key, artifact.model_dump())
+
+    return artifact
+
+
+# ── Tool 4: patch_slide ───────────────────────────────────────────────────────
+
+
+@function_tool
+def patch_slide(
+    artifact_id: str,
+    slide_id: str,
+    expected_revision: int,
+    operation_type: str,
+    element_id: str,
+    new_content: str,
+    idempotency_key: str = "",
+) -> Artifact:
+    """Apply a targeted edit to a single slide element.
+
+    Checks the idempotency cache; if a matching cached result exists it is
+    returned unchanged.  Otherwise, the artifact is loaded at
+    *expected_revision*, the element is patched, and the new revision is saved.
+
+    Supported operation_type values:
+      - replace_text           – replace the text content of a text or title element
+      - replace_existing_image – replace the reference of an existing image element
+
+    Args:
+        artifact_id: Artifact to patch.
+        slide_id: ID of the slide containing the element.
+        expected_revision: Revision the caller believes is current; rejected
+            if it does not match the latest revision on disk.
+        operation_type: One of replace_text or replace_existing_image.
+        element_id: ID of the element to modify.
+        new_content: Replacement content string.
+        idempotency_key: Unique string; identical keys return the cached result.
+
+    Returns:
+        The new Artifact at the incremented revision.
+
+    Raises:
+        ValueError: On invalid operation_type or revision mismatch.
+    """
+    # Determine project_id from artifact storage by locating the artifact directory.
+    # We need to search across all projects – but patch_slide requires knowing the
+    # project_id.  To keep the tool simple, we embed project lookup via storage root.
+    # In practice the agent should track project_id; we derive it here by scanning.
+    storage_root = _storage_root or (pathlib.Path.home() / ".draftboard" / "projects")
+
+    # Find project that owns this artifact
+    project_id: Optional[str] = None
+    if storage_root.exists():
+        for proj_dir in storage_root.iterdir():
+            art_dir = proj_dir / "artifacts" / artifact_id
+            if art_dir.exists():
+                project_id = proj_dir.name
+                break
+
+    if project_id is None:
+        raise KeyError(f"Artifact '{artifact_id}' not found in any project.")
+
+    storage = _get_storage(project_id)
+
+    # Idempotency check
+    if idempotency_key:
+        cached = storage.load_idempotent_result(idempotency_key)
+        if cached is not None:
+            return Artifact.model_validate(cached)
+
+    # Validate operation type
+    allowed_ops = {"replace_text", "replace_existing_image"}
+    if operation_type not in allowed_ops:
+        raise ValueError(
+            f"Invalid operation_type '{operation_type}'. "
+            f"Must be one of: {', '.join(sorted(allowed_ops))}"
+        )
+
+    # Load artifact at expected revision
+    artifact = storage.load_artifact(artifact_id, expected_revision)
+    if artifact.artifact_revision != expected_revision:
+        raise ValueError(
+            f"Revision mismatch: expected {expected_revision}, "
+            f"found {artifact.artifact_revision}."
+        )
+
+    # Locate and patch element
+    patched = False
+    for slide in artifact.slides:
+        if slide.slide_id == slide_id:
+            for element in slide.elements:
+                if element.element_id == element_id:
+                    element.content = new_content
+                    patched = True
+                    break
+            break
+
+    if not patched:
+        raise KeyError(
+            f"Element '{element_id}' not found in slide '{slide_id}' "
+            f"of artifact '{artifact_id}'."
+        )
+
+    # Increment revision and persist
+    new_revision = storage.next_revision(artifact_id)
+    artifact.artifact_revision = new_revision
+    storage.save_artifact(artifact)
+
+    if idempotency_key:
+        storage.save_idempotent_result(idempotency_key, artifact.model_dump())
+
+    return artifact
+
+
+# ── Tool 5: validate_artifact ─────────────────────────────────────────────────
+
+
+@function_tool
+def validate_artifact(artifact_id: str, revision: int) -> ValidationReport:
+    """Validate a slide artifact and return a structured report.
+
+    Checks applied:
+      - Each slide must contain at least one element with type 'title' (ERROR
+        if missing).
+      - Any element whose content is an empty string is flagged as WARNING.
+
+    Args:
+        artifact_id: Artifact to validate.
+        revision: Specific revision to validate.
+
+    Returns:
+        ValidationReport listing all issues found.
+    """
+    storage_root = _storage_root or (pathlib.Path.home() / ".draftboard" / "projects")
+
+    project_id: Optional[str] = None
+    if storage_root.exists():
+        for proj_dir in storage_root.iterdir():
+            art_dir = proj_dir / "artifacts" / artifact_id
+            if art_dir.exists():
+                project_id = proj_dir.name
+                break
+
+    if project_id is None:
+        raise KeyError(f"Artifact '{artifact_id}' not found.")
+
+    storage = _get_storage(project_id)
+    artifact = storage.load_artifact(artifact_id, revision)
+
+    issues: list[ValidationIssue] = []
+
+    for slide in artifact.slides:
+        has_title = any(el.type == "title" for el in slide.elements)
+        if not has_title:
+            issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    code="MISSING_TITLE",
+                    message=f"Slide '{slide.slide_id}' has no title element.",
+                    slide_id=slide.slide_id,
+                )
+            )
+        for element in slide.elements:
+            if element.content == "":
+                issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.WARNING,
+                        code="EMPTY_CONTENT",
+                        message=(
+                            f"Element '{element.element_id}' in slide "
+                            f"'{slide.slide_id}' has empty content."
+                        ),
+                        slide_id=slide.slide_id,
+                    )
+                )
+
+    return ValidationReport(
+        artifact_id=artifact_id,
+        artifact_revision=revision,
+        issues=issues,
+    )

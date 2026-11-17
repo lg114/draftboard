@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "draftboard"
+version = "0.0.1"
+description = "AI material creation workbench - PPT generation module"
+requires-python = ">=3.11"
+dependencies = [
+    "openai-agents>=0.0.19",
+    "pydantic>=2.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+draftboard = "draftboard.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/draftboard"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "anyio[trio]>=4.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning:langsmith.*",
+]
+markers = [
+    "integration: requires API key (deselect with '-m not integration')",
+]
