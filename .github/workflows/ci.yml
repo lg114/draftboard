@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # .python-version pins 3.12 (PRD 9.2: CI target Python 3.12, code compatible with 3.11+)
+      - name: Sync environment
+        run: uv sync --frozen
+
+      - name: Unit tests (no API key required)
+        run: uv run pytest tests/ -m "not integration" -v
+
+  # PRD 12 / 12.1: zero-AGPL red line, blocks AGPL / GPL / LGPL / non-commercial.
+  # Default-deny is intentionally NOT used; extend --fail-on instead of removing terms.
+  license-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync environment
+        run: uv sync --frozen
+
+      - name: Report dependency licenses
+        run: uv run python -m piplicenses --format=markdown --output-file=THIRD_PARTY_LICENSES.md
+
+      - name: Upload dependency license report (SBOM seed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: third-party-licenses
+          path: backend/THIRD_PARTY_LICENSES.md
+
+      - name: Block copyleft / non-commercial licenses
+        run: |
+          uv run python -m piplicenses \
+            --fail-on "(AGPL|Affero|GNU General Public|GPLv[23]|GNU GPL|Lesser GPL|LGPL|non-commercial|NonCommercial|CC-BY-NC)"
+
+      - name: Upload report on gate failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-gate-violation
+          path: backend/THIRD_PARTY_LICENSES.md
