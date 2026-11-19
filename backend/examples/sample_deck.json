@@ -1,0 +1,105 @@
+{
+  "artifact_id": "art-sample01",
+  "project_id": "sample",
+  "artifact_revision": 1,
+  "outline_version": "v-sample01",
+  "template_id": "default",
+  "schema_version": "1.0",
+  "slides": [
+    {
+      "slide_id": "slide-001",
+      "layout": "cover",
+      "elements": [
+        {
+          "element_id": "s1-title",
+          "type": "title",
+          "content": "Draftboard 材料创作工作台"
+        },
+        {
+          "element_id": "s1-subtitle",
+          "type": "subtitle",
+          "content": "从 Markdown 材料到可编辑 PPT 初稿\nFrom materials to editable slides"
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-002",
+      "layout": "content",
+      "elements": [
+        {
+          "element_id": "s2-title",
+          "type": "title",
+          "content": "项目解决什么问题"
+        },
+        {
+          "element_id": "s2-text",
+          "type": "text",
+          "content": "把零散的 Markdown 笔记整理成演示文稿，目前需要手工复制、排版和反复调整，耗时且容易丢失内容。\nDraftboard 让程序负责排版与校验，让用户专注内容本身：确认大纲后，一键生成结构完整、文字可编辑的 PPTX 工作初稿。"
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-003",
+      "layout": "bullets",
+      "elements": [
+        {
+          "element_id": "s3-title",
+          "type": "title",
+          "content": "三个核心功能"
+        },
+        {
+          "element_id": "s3-bullet-1",
+          "type": "bullet",
+          "content": "材料读取与来源引用：每条内容都能追溯到原始材料"
+        },
+        {
+          "element_id": "s3-bullet-2",
+          "type": "bullet",
+          "content": "大纲确认：用户明确批准后才进入排版，模型不再偷偷改写"
+        },
+        {
+          "element_id": "s3-bullet-3",
+          "type": "bullet",
+          "content": "可编辑导出：文字与形状是独立对象，可在 PowerPoint 中直接修改"
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-004",
+      "layout": "two_column",
+      "elements": [
+        {
+          "element_id": "s4-title",
+          "type": "title",
+          "content": "现有方案与我们的方案"
+        },
+        {
+          "element_id": "s4-left",
+          "type": "column_left",
+          "content": "现有方案：整页渲染成图片，或生成后难以修改的模板堆砌。\n内容一旦溢出就被截断，用户无从发现。"
+        },
+        {
+          "element_id": "s4-right",
+          "type": "column_right",
+          "content": "我们的方案：程序按固定版式排版，逐块测量与校验。\n放不下就明确报出问题，绝不交出缺字的文件。"
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-005",
+      "layout": "closing",
+      "elements": [
+        {
+          "element_id": "s5-title",
+          "type": "title",
+          "content": "结论与下一步"
+        },
+        {
+          "element_id": "s5-conclusion",
+          "type": "conclusion",
+          "content": "先让程序在没有 AI 的情况下排出正确的 PPT，再接上模型。\n下一步：换行测量、布局引擎与固定样稿回归。"
+        }
+      ]
+    }
+  ]
+}

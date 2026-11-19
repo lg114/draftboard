@@ -30,6 +30,13 @@ def main() -> None:
     init_p = sub.add_parser("init", help="Init a new project")
     init_p.add_argument("project_id", help="Project ID")
 
+    # export: write an IR JSON file to an editable PPTX
+    export_p = sub.add_parser("export", help="Export an IR JSON file to PPTX")
+    export_p.add_argument("ir_json", help="Path to the artifact IR JSON file")
+    export_p.add_argument(
+        "--output", "-o", help="Output .pptx path (default: alongside the IR file)"
+    )
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -64,6 +71,29 @@ def main() -> None:
             encoding="utf-8",
         )
         print(f"Project '{args.project_id}' initialized at {project_root.parent}")
+        sys.exit(0)
+
+    elif args.command == "export":
+        from draftboard.models import Artifact
+        from draftboard.pptx_export import export_pptx
+
+        ir_path = pathlib.Path(args.ir_json)
+        output = (
+            pathlib.Path(args.output)
+            if args.output
+            else ir_path.with_suffix(".pptx")
+        )
+        try:
+            artifact = Artifact.model_validate_json(
+                ir_path.read_text(encoding="utf-8")
+            )
+            export_pptx(artifact, output)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(
+            f"Exported {len(artifact.slides)} slides to {output}"
+        )
         sys.exit(0)
 
 

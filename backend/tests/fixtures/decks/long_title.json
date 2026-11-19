@@ -1,0 +1,26 @@
+{
+  "artifact_id": "art-longtitle",
+  "project_id": "regression",
+  "artifact_revision": 1,
+  "outline_version": "v-regress1",
+  "template_id": "default",
+  "schema_version": "1.0",
+  "slides": [
+    {
+      "slide_id": "slide-001",
+      "layout": "content",
+      "elements": [
+        {
+          "element_id": "lt-title",
+          "type": "title",
+          "content": "标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标"
+        },
+        {
+          "element_id": "lt-text",
+          "type": "text",
+          "content": "两行长标题应当完整排下，不被裁切。"
+        }
+      ]
+    }
+  ]
+}

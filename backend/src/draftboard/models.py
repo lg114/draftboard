@@ -51,9 +51,46 @@ class Outline(BaseModel):
     )
 
 
+class SlideLayout(str, Enum):
+    COVER = "cover"
+    CONTENT = "content"
+    BULLETS = "bullets"
+    TWO_COLUMN = "two_column"
+    CLOSING = "closing"
+
+
+# Element roles allowed in the IR.  image/shape are reserved from M0 and
+# not yet renderable by the exporter.
+ELEMENT_TYPES = {
+    "title",
+    "subtitle",
+    "text",
+    "bullet",
+    "column_left",
+    "column_right",
+    "conclusion",
+    "image",
+    "shape",
+}
+
+# Roles each layout accepts besides the mandatory title.
+LAYOUT_ROLES: dict[SlideLayout, set[str]] = {
+    SlideLayout.COVER: {"subtitle"},
+    SlideLayout.CONTENT: {"text", "image", "shape"},
+    SlideLayout.BULLETS: {"bullet"},
+    SlideLayout.TWO_COLUMN: {"column_left", "column_right"},
+    SlideLayout.CLOSING: {"conclusion"},
+}
+
+
 class SlideElement(BaseModel):
     element_id: str = Field(description="Unique element ID within the slide")
-    type: str = Field(description="One of: title, text, image, shape")
+    type: str = Field(
+        description=(
+            "Content role: title, subtitle, text, bullet, column_left, "
+            "column_right, conclusion, image, shape"
+        )
+    )
     content: str = Field(description="Element content (text or image reference)")
     source_id: Optional[str] = Field(
         None, description="Source fragment ID this element was drawn from"
@@ -62,6 +99,9 @@ class SlideElement(BaseModel):
 
 class Slide(BaseModel):
     slide_id: str = Field(description="Unique slide ID within the artifact")
+    layout: SlideLayout = Field(
+        SlideLayout.CONTENT, description="Fixed layout template for this slide"
+    )
     elements: list[SlideElement] = Field(description="Elements composing this slide")
 
 
@@ -75,6 +115,69 @@ class Artifact(BaseModel):
     )
     template_id: str = Field("default", description="Slide template identifier")
     schema_version: str = Field("1.0", description="Artifact schema version")
+
+
+def validate_ir(artifact: Artifact) -> list[str]:
+    """Check IR integrity; return a list of error messages (empty = valid).
+
+    Rejects empty titles, duplicate slide/element IDs, unknown element
+    types, and elements whose role does not belong to the slide's layout.
+    """
+    errors: list[str] = []
+    seen_slides: set[str] = set()
+    for slide in artifact.slides:
+        sid = slide.slide_id
+        if sid in seen_slides:
+            errors.append(f"Duplicate slide_id '{sid}'.")
+        seen_slides.add(sid)
+
+        titles = [el for el in slide.elements if el.type == "title"]
+        if len(titles) != 1:
+            errors.append(
+                f"Slide '{sid}' must have exactly one title element, "
+                f"found {len(titles)}."
+            )
+        elif not titles[0].content.strip():
+            errors.append(f"Slide '{sid}' has an empty title.")
+
+        allowed = LAYOUT_ROLES[slide.layout] | {"title"}
+        seen_elements: set[str] = set()
+        for el in slide.elements:
+            if el.element_id in seen_elements:
+                errors.append(
+                    f"Duplicate element_id '{el.element_id}' in slide '{sid}'."
+                )
+            seen_elements.add(el.element_id)
+            if el.type not in ELEMENT_TYPES:
+                errors.append(
+                    f"Unknown element type '{el.type}' "
+                    f"(element '{el.element_id}', slide '{sid}')."
+                )
+            elif el.type not in allowed:
+                errors.append(
+                    f"Role '{el.type}' is not allowed in layout "
+                    f"'{slide.layout.value}' (element '{el.element_id}', "
+                    f"slide '{sid}')."
+                )
+
+        present = {el.type for el in slide.elements}
+        if slide.layout == SlideLayout.TWO_COLUMN:
+            for role in ("column_left", "column_right"):
+                if role not in present:
+                    errors.append(f"Slide '{sid}' (two_column) is missing {role}.")
+        else:
+            required = {
+                SlideLayout.COVER: set(),
+                SlideLayout.CONTENT: {"text"},
+                SlideLayout.BULLETS: {"bullet"},
+                SlideLayout.CLOSING: {"conclusion"},
+            }[slide.layout]
+            for role in sorted(required):
+                if role not in present:
+                    errors.append(
+                        f"Slide '{sid}' ({slide.layout.value}) is missing {role}."
+                    )
+    return errors
 
 
 class ValidationLevel(str, Enum):

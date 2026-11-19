@@ -1,0 +1,26 @@
+{
+  "artifact_id": "art-overftitle",
+  "project_id": "regression",
+  "artifact_revision": 1,
+  "outline_version": "v-regress1",
+  "template_id": "default",
+  "schema_version": "1.0",
+  "slides": [
+    {
+      "slide_id": "slide-001",
+      "layout": "content",
+      "elements": [
+        {
+          "element_id": "ot-title",
+          "type": "title",
+          "content": "题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题"
+        },
+        {
+          "element_id": "ot-text",
+          "type": "text",
+          "content": "正文正常。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "artifact_id": "art-manybullets",
+  "project_id": "regression",
+  "artifact_revision": 1,
+  "outline_version": "v-regress1",
+  "template_id": "default",
+  "schema_version": "1.0",
+  "slides": [
+    {
+      "slide_id": "slide-001",
+      "layout": "bullets",
+      "elements": [
+        {
+          "element_id": "mb-title",
+          "type": "title",
+          "content": "八项要点"
+        },
+        {
+          "element_id": "mb-b1",
+          "type": "bullet",
+          "content": "第1项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b2",
+          "type": "bullet",
+          "content": "第2项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b3",
+          "type": "bullet",
+          "content": "第3项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b4",
+          "type": "bullet",
+          "content": "第4项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b5",
+          "type": "bullet",
+          "content": "第5项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b6",
+          "type": "bullet",
+          "content": "第6项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b7",
+          "type": "bullet",
+          "content": "第7项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        },
+        {
+          "element_id": "mb-b8",
+          "type": "bullet",
+          "content": "第8项要点：点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点点"
+        }
+      ]
+    }
+  ]
+}

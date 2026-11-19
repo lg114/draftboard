@@ -1,0 +1,47 @@
+{
+  "artifact_id": "art-mixed",
+  "project_id": "regression",
+  "artifact_revision": 1,
+  "outline_version": "v-regress1",
+  "template_id": "default",
+  "schema_version": "1.0",
+  "slides": [
+    {
+      "slide_id": "slide-001",
+      "layout": "content",
+      "elements": [
+        {
+          "element_id": "mp-title",
+          "type": "title",
+          "content": "混排与标点（测试）"
+        },
+        {
+          "element_id": "mp-text",
+          "type": "text",
+          "content": "第一段：中文与 English 混排，含标点（括号）、顿号、破折号——以及省略号……\n\n第二段：空段落之上应保留一个空行。See https://example.com for details."
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-002",
+      "layout": "bullets",
+      "elements": [
+        {
+          "element_id": "mp2-title",
+          "type": "title",
+          "content": "缩进续行"
+        },
+        {
+          "element_id": "mp2-b1",
+          "type": "bullet",
+          "content": "长要点续行测试：续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续续"
+        },
+        {
+          "element_id": "mp2-b2",
+          "type": "bullet",
+          "content": "Mixed 要点 with English words（含标点）。"
+        }
+      ]
+    }
+  ]
+}

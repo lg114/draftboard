@@ -1,0 +1,31 @@
+{
+  "artifact_id": "art-overlong",
+  "project_id": "regression",
+  "artifact_revision": 1,
+  "outline_version": "v-regress1",
+  "template_id": "default",
+  "schema_version": "1.0",
+  "slides": [
+    {
+      "slide_id": "slide-001",
+      "layout": "two_column",
+      "elements": [
+        {
+          "element_id": "ou-title",
+          "type": "title",
+          "content": "超长网址"
+        },
+        {
+          "element_id": "ou-left",
+          "type": "column_left",
+          "content": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "element_id": "ou-right",
+          "type": "column_right",
+          "content": "正常右栏内容。"
+        }
+      ]
+    }
+  ]
+}
