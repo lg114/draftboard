@@ -221,7 +221,7 @@ export default function ProjectsPage() {
       {/* Hero Section */}
       <div className="flex items-start justify-between gap-4 border-b border-stone-200 pb-6">
         <div className="space-y-1">
-          <h1 className="text-3xl font-bold font-serif text-stone-900 tracking-tight">
+          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
             项目
           </h1>
           <p className="text-sm text-stone-600 font-sans">
@@ -492,7 +492,7 @@ export default function ProjectsPage() {
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-xl font-bold font-serif text-stone-900">
+            <h2 className="text-lg font-bold text-stone-900">
               创建你的第一个演示文稿项目
             </h2>
             <p className="text-sm text-stone-500 leading-relaxed max-w-md mx-auto">

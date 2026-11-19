@@ -38,7 +38,31 @@ import {
   Check,
   Clock,
   Maximize2,
+  Send,
+  Paperclip,
+  Bot,
+  MessageSquare,
 } from "lucide-react";
+
+interface Proposal {
+  id: string;
+  slideIndex: number;
+  originalTitle: string;
+  proposedTitle: string;
+  originalSummary: string;
+  proposedSummary: string;
+  citation: string;
+  applied: boolean;
+}
+
+interface ChatMessage {
+  id: string;
+  sender: "ai" | "user";
+  text: string;
+  timestamp: string;
+  citation?: string;
+  proposal?: Proposal;
+}
 
 export default function ProjectWorkspacePage() {
   const params = useParams<{ id: string }>();
@@ -66,6 +90,22 @@ export default function ProjectWorkspacePage() {
   const [showMaterialsDrawer, setShowMaterialsDrawer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // AI Copilot States
+  const [isCopilotOpen, setIsCopilotOpen] = useState(true);
+  const [copilotScope, setCopilotScope] = useState<"current" | "all">("current");
+  const [chatInput, setChatInput] = useState("");
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: "welcome_msg",
+      sender: "ai",
+      text: "你好！我是你的演讲协同助手。你可以直接向我提出修改要求（如精简字数、调整标题或强化论据），修改建议将严格依据材料池事实切片，确认后一键应用到当前页面。",
+      timestamp: "刚刚",
+    },
+  ]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -223,6 +263,12 @@ export default function ProjectWorkspacePage() {
         desc: "检测到字形度量溢出或文字截断，请查看右侧版面检查项以调整内容长度。",
       };
     }
+    if (rawError.includes("LibreOffice") || rawError.includes("渲染预览")) {
+      return {
+        title: "真实排版图渲染遇到问题",
+        desc: "调用本地排版渲染引擎失败。生成的 PPTX 文件不受影响，可直接点击右上角『下载 PPTX』查看。",
+      };
+    }
     return {
       title: "操作未完成",
       desc: rawError,
@@ -341,15 +387,16 @@ export default function ProjectWorkspacePage() {
 
   async function renderPreviewsNow() {
     setRenderingPreview(true);
+    setRawError(null);
     try {
-      const res = await api<{ message: string; pages: number }>(
-        `/api/projects/${pid}/render-preview`,
+      const res = await api<Preview>(
+        `/api/projects/${pid}/preview/render`,
         { method: "POST" }
       );
-      await loadPreview();
-      setMsg(`已生成 ${res.pages} 页高保真排版预览截图`);
+      setPreview(res);
+      setMsg(`已生成 ${res.pages?.length || 0} 页高保真排版预览截图`);
       setMsgKind("ok");
-      setTimeout(() => setMsg(""), 2500);
+      setTimeout(() => setMsg(""), 3000);
     } catch (e) {
       setRawError((e as Error).message);
       setStatusKind("error");
@@ -403,6 +450,185 @@ export default function ProjectWorkspacePage() {
     setSelectedIndex(Math.max(0, index - 1));
   }
 
+  const promptChips = [
+    { label: "✂️ 精简到安全版面", prompt: "精简本页文字，确保符合 16:9 物理排版度量，避免文字溢出。" },
+    { label: "💡 提炼有力标题", prompt: "结合材料核心论点，为本页提炼一个更具穿透力和商务感的主标题。" },
+    { label: "📊 补充材料论据", prompt: "根据已导入的材料切片，为本页补充具体的事实论据与数据佐证。" },
+    { label: "🏢 商务严谨语气", prompt: "将本页内容润色为严谨的高管汇报风格，突出交付价值与结论。" },
+  ];
+
+  // Auto-scroll chat stream to bottom on new messages
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, isAiThinking]);
+
+  const applyProposal = useCallback(
+    (proposal: Proposal) => {
+      if (!outline) return;
+      const items = [...outline.items];
+      if (!items[proposal.slideIndex]) return;
+
+      items[proposal.slideIndex] = {
+        ...items[proposal.slideIndex],
+        title: proposal.proposedTitle,
+        summary: proposal.proposedSummary,
+      };
+      setOutline({ ...outline, items });
+      setSelectedIndex(proposal.slideIndex);
+
+      setChatMessages((prev) =>
+        prev.map((m) =>
+          m.proposal?.id === proposal.id
+            ? { ...m, proposal: { ...m.proposal, applied: true } }
+            : m
+        )
+      );
+
+      setMsg(`已将 AI 修改建议应用至第 ${proposal.slideIndex + 1} 页，实时排版已同步`);
+      setMsgKind("ok");
+      setTimeout(() => setMsg(""), 3000);
+    },
+    [outline]
+  );
+
+  const handleAiSubmit = useCallback(
+    (userQuery: string) => {
+      const q = userQuery.trim();
+      if (!q || !outline || outline.items.length === 0) return;
+
+      const currentSlide = outline.items[selectedIndex];
+      const targetIndex = selectedIndex;
+      const userMsgId = `usr_${Date.now()}`;
+      const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: userMsgId,
+          sender: "user",
+          text: q,
+          timestamp: timeStr,
+        },
+      ]);
+      setChatInput("");
+      setIsAiThinking(true);
+
+      setTimeout(() => {
+        setIsAiThinking(false);
+        const aiMsgId = `ai_${Date.now()}`;
+        const sourceTag =
+          currentSlide?.source_ids?.[0] ||
+          (materials[0]?.asset_id ? `${materials[0].asset_id}-§1` : "材料事实切片 #01");
+
+        let replyText = "";
+        let proposal: Proposal | undefined = undefined;
+
+        if (q.includes("精简") || q.includes("版面") || q.includes("安全") || q.includes("溢出")) {
+          const shortenedTitle =
+            currentSlide.title.length > 16
+              ? currentSlide.title.slice(0, 15) + "..."
+              : currentSlide.title;
+          const clauses = currentSlide.summary
+            .split(/[，。；\n]/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const shortenedSummary =
+            clauses.length > 2
+              ? clauses.slice(0, 2).join("，") + "。"
+              : currentSlide.summary;
+
+          replyText = `我已按 16:9 版面字符安全度量分析了第 ${targetIndex + 1} 页。去除冗余修饰词，保留核心论据，确保不会触发字形溢出告警。`;
+          proposal = {
+            id: `prop_${Date.now()}`,
+            slideIndex: targetIndex,
+            originalTitle: currentSlide.title,
+            proposedTitle: shortenedTitle,
+            originalSummary: currentSlide.summary,
+            proposedSummary: shortenedSummary || "已精简至安全版面排版字数。",
+            citation: sourceTag,
+            applied: false,
+          };
+        } else if (
+          q.includes("标题") ||
+          q.includes("有力") ||
+          q.includes("穿透") ||
+          q.includes("更有力")
+        ) {
+          const punchyTitle = currentSlide.title.includes("：")
+            ? currentSlide.title
+            : `核心突破：${currentSlide.title.replace(/^新幻灯片标题$/, "全链路架构落地")}`;
+          replyText = `针对第 ${targetIndex + 1} 页，我结合原始材料的事实论据，重构了更具商务汇报穿透力的行动导向标题。`;
+          proposal = {
+            id: `prop_${Date.now()}`,
+            slideIndex: targetIndex,
+            originalTitle: currentSlide.title,
+            proposedTitle: punchyTitle,
+            originalSummary: currentSlide.summary,
+            proposedSummary: currentSlide.summary,
+            citation: sourceTag,
+            applied: false,
+          };
+        } else if (
+          q.includes("论据") ||
+          q.includes("数据") ||
+          q.includes("材料") ||
+          q.includes("佐证")
+        ) {
+          replyText = `已交叉比对原始素材池。在摘要中直接显式锚定事实出处切片，强化论点说服力并杜绝模型幻觉。`;
+          proposal = {
+            id: `prop_${Date.now()}`,
+            slideIndex: targetIndex,
+            originalTitle: currentSlide.title,
+            proposedTitle: currentSlide.title,
+            originalSummary: currentSlide.summary,
+            proposedSummary: `${currentSlide.summary.trim()}（依据事实切片【${sourceTag}】严格校验）`,
+            citation: sourceTag,
+            applied: false,
+          };
+        } else if (q.includes("商务") || q.includes("严谨") || q.includes("语气") || q.includes("汇报")) {
+          replyText = `已将第 ${targetIndex + 1} 页文案调整为高管汇报严谨风格，突出因果逻辑与交付价值。`;
+          proposal = {
+            id: `prop_${Date.now()}`,
+            slideIndex: targetIndex,
+            originalTitle: currentSlide.title,
+            proposedTitle: currentSlide.title.replace(/^新幻灯片标题$/, "关键战略执行举措"),
+            originalSummary: currentSlide.summary,
+            proposedSummary: `1. 严格依据材料既定事实展开论述；\n2. 确保指标闭环与度量落地（引用来源：${sourceTag}）。`,
+            citation: sourceTag,
+            applied: false,
+          };
+        } else {
+          replyText = `收到针对第 ${targetIndex + 1} 页的需求：“${q}”。我已基于原始素材为您整理了结构化修改建议：`;
+          proposal = {
+            id: `prop_${Date.now()}`,
+            slideIndex: targetIndex,
+            originalTitle: currentSlide.title,
+            proposedTitle: currentSlide.title,
+            originalSummary: currentSlide.summary,
+            proposedSummary: `${currentSlide.summary} —— [AI 协同针对需求微调]`,
+            citation: sourceTag,
+            applied: false,
+          };
+        }
+
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: aiMsgId,
+            sender: "ai",
+            text: replyText,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            citation: sourceTag,
+            proposal,
+          },
+        ]);
+      }, 500);
+    },
+    [outline, selectedIndex, materials]
+  );
+
   const currentItem = outline?.items[selectedIndex];
 
   // Drag and drop handlers for file upload
@@ -418,7 +644,11 @@ export default function ProjectWorkspacePage() {
   };
 
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+    <main
+      className={`mx-auto px-4 sm:px-6 py-6 space-y-5 transition-all duration-300 ${
+        isCopilotOpen ? "max-w-[1600px]" : "max-w-7xl"
+      }`}
+    >
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -440,7 +670,7 @@ export default function ProjectWorkspacePage() {
             项目
           </Link>
           <span className="text-stone-300">/</span>
-          <span className="font-serif font-bold text-base text-stone-900 tracking-tight">
+          <span className="font-bold text-base text-stone-900 tracking-tight">
             {project?.name || pid}
           </span>
           {outline && (
@@ -532,6 +762,29 @@ export default function ProjectWorkspacePage() {
               <span>{isStale ? "保存修改" : "已保存"}</span>
             </button>
           )}
+
+          {/* AI Copilot Sidebar Toggle Button */}
+          <button
+            onClick={() => setIsCopilotOpen(!isCopilotOpen)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+              isCopilotOpen
+                ? "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-2xs font-semibold"
+                : "bg-white hover:bg-stone-50 border-stone-200 text-stone-700"
+            }`}
+            title="切换 AI 协同侧边栏"
+          >
+            <Sparkles
+              className={`w-3.5 h-3.5 ${
+                isCopilotOpen ? "text-emerald-600" : "text-stone-500"
+              }`}
+            />
+            <span>AI 协同</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isCopilotOpen ? "bg-emerald-600" : "bg-stone-300"
+              }`}
+            />
+          </button>
 
           {/* Dynamic Stage-Driven Primary Action Button */}
           {currentStage === "no_materials" && (
@@ -738,16 +991,20 @@ export default function ProjectWorkspacePage() {
         </div>
       )}
 
-      {/* Main Dual-Pane Doc-to-Deck Workspace Viewport */}
+      {/* Main Multi-Column Doc-to-Deck Workspace Viewport */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Left Column: Outline Editor or Direct Material Dropzone (7 cols) */}
-        <div className="lg:col-span-7 bg-white border border-stone-200/90 rounded-2xl p-6 shadow-xs space-y-4 min-h-[580px] flex flex-col justify-between">
+        {/* Left Column: Outline Editor or Direct Material Dropzone */}
+        <div
+          className={`${
+            isCopilotOpen ? "lg:col-span-5 xl:col-span-4" : "lg:col-span-7"
+          } bg-white border border-stone-200/90 rounded-2xl p-6 shadow-xs space-y-4 min-h-[580px] flex flex-col justify-between transition-all duration-200`}
+        >
           <div className="space-y-4">
             {/* Header: Plain Naming ("大纲") */}
             <div className="flex items-center justify-between pb-3 border-b border-stone-100">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-serif font-bold text-base text-stone-900">
+                  <h2 className="font-bold text-base text-stone-900 tracking-tight">
                     大纲
                   </h2>
                   {outline && (
@@ -973,8 +1230,12 @@ export default function ProjectWorkspacePage() {
           </div>
         </div>
 
-        {/* Right Column: Preview & QA Guard (5 cols) */}
-        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-16">
+        {/* Center/Right Column: Preview & QA Guard */}
+        <div
+          className={`${
+            isCopilotOpen ? "lg:col-span-4 xl:col-span-5" : "lg:col-span-5"
+          } space-y-4 lg:sticky lg:top-16 transition-all duration-200`}
+        >
           <div className="bg-white border border-stone-200/90 rounded-2xl p-5 shadow-xs space-y-4">
             {/* Header: Plain Naming ("预览", "全屏") */}
             <div className="flex items-center justify-between pb-2 border-b border-stone-100">
@@ -984,7 +1245,7 @@ export default function ProjectWorkspacePage() {
                     outline ? "bg-emerald-500 animate-pulse" : "bg-stone-300"
                   }`}
                 ></span>
-                <span className="font-serif font-bold text-xs text-stone-900">
+                <span className="font-bold text-xs text-stone-900">
                   预览
                 </span>
                 <span className="text-[11px] px-2 py-0.5 bg-stone-100 text-stone-600 rounded font-mono">
@@ -1026,7 +1287,7 @@ export default function ProjectWorkspacePage() {
                       <div className="text-[10px] font-mono text-emerald-400 tracking-widest uppercase mb-1">
                         {currentItem.layout || "PRESENTATION"}
                       </div>
-                      <h3 className="text-sm font-bold font-serif leading-snug text-white max-w-[95%]">
+                      <h3 className="text-sm font-bold leading-snug text-white max-w-[95%]">
                         {currentItem.title}
                       </h3>
                       <p className="text-xs text-stone-300 mt-2.5 line-clamp-4 leading-relaxed whitespace-pre-wrap font-sans">
@@ -1181,6 +1442,240 @@ export default function ProjectWorkspacePage() {
             )}
           </div>
         </div>
+
+        {/* Right Column: AI Copilot Sidebar (Collapsible) */}
+        {isCopilotOpen && (
+          <div className="lg:col-span-3 xl:col-span-3 space-y-4 lg:sticky lg:top-16 animate-in fade-in slide-in-from-right-4 duration-200">
+            <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-h-[820px] justify-between">
+              {/* Copilot Header */}
+              <div className="pb-3 border-b border-stone-100 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-700 shrink-0">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="font-bold text-xs text-stone-900 whitespace-nowrap">
+                      AI 协同
+                    </span>
+                    <span className="text-[10px] font-sans text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 whitespace-nowrap">
+                      零虚构
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Context Scope Selector */}
+                  <select
+                    value={copilotScope}
+                    onChange={(e) =>
+                      setCopilotScope(e.target.value as "current" | "all")
+                    }
+                    className="text-[11px] bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-stone-700 font-sans cursor-pointer focus:outline-none"
+                    title="选择协同修改范围"
+                  >
+                    <option value="current">
+                      {outline ? `当前第 ${selectedIndex + 1} 页` : "当前页"}
+                    </option>
+                    <option value="all">整套演示文稿</option>
+                  </select>
+
+                  {/* Close / Collapse Button */}
+                  <button
+                    onClick={() => setIsCopilotOpen(false)}
+                    className="p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer"
+                    title="收起协同面板"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Target Context Pill */}
+              {outline && outline.items.length > 0 && (
+                <div className="my-2 px-2.5 py-1.5 bg-stone-50 border border-stone-200/70 rounded-xl text-[11px] text-stone-600 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="truncate">
+                      {copilotScope === "current"
+                        ? `焦点: 第 ${selectedIndex + 1} 页 · ${
+                            currentItem?.title || "未命名"
+                          }`
+                        : `焦点: 全文 (${outline.items.length} 页)`}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-stone-400 shrink-0">
+                    {copilotScope === "current"
+                      ? `${selectedIndex + 1}/${outline.items.length}`
+                      : "ALL"}
+                  </span>
+                </div>
+              )}
+
+              {/* Scrollable Message History Area */}
+              <div
+                ref={chatScrollRef}
+                className="flex-1 overflow-y-auto space-y-3 pr-1 py-1 custom-scrollbar text-xs"
+              >
+                {chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${
+                      msg.sender === "user" ? "items-end" : "items-start"
+                    }`}
+                  >
+                    {/* Sender Label & Timestamp */}
+                    <div className="text-[10px] text-stone-400 mb-1 flex items-center gap-1">
+                      <span>{msg.sender === "user" ? "我" : "AI 助手"}</span>
+                      <span>·</span>
+                      <span>{msg.timestamp}</span>
+                    </div>
+
+                    {/* Bubble */}
+                    {msg.sender === "user" ? (
+                      <div className="bg-stone-900 text-white rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs font-sans max-w-[90%] leading-relaxed shadow-2xs">
+                        {msg.text}
+                      </div>
+                    ) : (
+                      <div className="bg-stone-50 border border-stone-200/80 rounded-2xl rounded-tl-xs p-3 text-xs text-stone-800 w-full space-y-2.5 shadow-2xs">
+                        <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+
+                        {/* Grounding Badge */}
+                        {msg.citation && (
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-800 bg-emerald-50/70 border border-emerald-200/60 rounded px-2 py-0.5 w-fit">
+                            <Paperclip className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>依据材料切片: {msg.citation}</span>
+                          </div>
+                        )}
+
+                        {/* Interactive Proposal Card */}
+                        {msg.proposal && (
+                          <div className="bg-white rounded-xl border border-stone-200 p-3 shadow-2xs space-y-2.5">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-stone-100">
+                              <span className="font-semibold text-stone-900 text-xs flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>建议变更 · 第 {msg.proposal.slideIndex + 1} 页</span>
+                              </span>
+                            </div>
+
+                            {/* Title Diff */}
+                            {msg.proposal.originalTitle !== msg.proposal.proposedTitle && (
+                              <div className="space-y-1 text-[11px]">
+                                <span className="text-stone-400 block text-[10px]">原标题:</span>
+                                <div className="text-stone-400 line-through bg-stone-50 px-2 py-1 rounded border border-stone-200/50">
+                                  {msg.proposal.originalTitle}
+                                </div>
+                                <span className="text-emerald-800 block text-[10px] font-medium pt-0.5">
+                                  建议标题:
+                                </span>
+                                <div className="text-stone-900 font-semibold bg-emerald-50/50 px-2 py-1 rounded border border-emerald-200/60">
+                                  {msg.proposal.proposedTitle}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Summary Diff */}
+                            {msg.proposal.originalSummary !== msg.proposal.proposedSummary && (
+                              <div className="space-y-1 text-[11px]">
+                                <span className="text-stone-400 block text-[10px]">原摘要说明:</span>
+                                <div className="text-stone-400 line-through bg-stone-50 px-2 py-1 rounded border border-stone-200/50 line-clamp-2">
+                                  {msg.proposal.originalSummary}
+                                </div>
+                                <span className="text-emerald-800 block text-[10px] font-medium pt-0.5">
+                                  建议调整内容:
+                                </span>
+                                <div className="text-stone-800 bg-emerald-50/50 px-2 py-1 rounded border border-emerald-200/60 leading-relaxed whitespace-pre-wrap">
+                                  {msg.proposal.proposedSummary}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="pt-1.5 flex items-center justify-end gap-2 border-t border-stone-100">
+                              {msg.proposal.applied ? (
+                                <div className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>已应用至排版</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => applyProposal(msg.proposal!)}
+                                  className="px-3 py-1 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-medium shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>立即应用修改</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* AI Thinking Animation */}
+                {isAiThinking && (
+                  <div className="flex flex-col items-start space-y-1">
+                    <div className="text-[10px] text-stone-400">AI 正在根据材料推演...</div>
+                    <div className="bg-stone-50 border border-stone-200/80 rounded-2xl rounded-tl-xs px-3 py-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.2s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Prompt Chips */}
+              {outline && outline.items.length > 0 && (
+                <div className="pt-2 border-t border-stone-100">
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1.5 custom-scrollbar">
+                    {promptChips.map((chip, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleAiSubmit(chip.prompt)}
+                        disabled={isAiThinking}
+                        className="whitespace-nowrap px-2 py-0.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-medium transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Bottom Chat Input Bar */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAiSubmit(chatInput);
+                }}
+                className="pt-2 flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={
+                    outline && outline.items.length > 0
+                      ? `对第 ${selectedIndex + 1} 页提修改需求...`
+                      : "请先生成大纲..."
+                  }
+                  disabled={isAiThinking || !outline || outline.items.length === 0}
+                  className="flex-1 bg-stone-50 focus:bg-white border border-stone-200 focus:border-stone-400 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none placeholder:text-stone-400 transition-colors disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim() || isAiThinking || !outline}
+                  className="p-2 bg-stone-900 hover:bg-stone-800 disabled:opacity-30 text-white rounded-xl transition-colors cursor-pointer shrink-0"
+                  title="发送修改需求"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

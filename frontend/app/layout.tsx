@@ -16,13 +16,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="w-7 h-7 rounded-lg bg-stone-900 flex items-center justify-center text-white text-xs font-serif font-bold shadow-xs hover:bg-stone-800 transition-colors"
+              className="w-7 h-7 rounded-lg bg-stone-900 flex items-center justify-center text-white text-xs font-bold tracking-tight shadow-xs hover:bg-stone-800 transition-colors"
             >
               D
             </Link>
             <Link
               href="/"
-              className="font-serif font-bold text-stone-900 text-sm hover:text-stone-700 transition-colors"
+              className="font-bold tracking-tight text-stone-900 text-sm hover:text-stone-700 transition-colors"
             >
               Draftboard
             </Link>

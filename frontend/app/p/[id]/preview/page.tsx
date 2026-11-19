@@ -90,7 +90,7 @@ export default function PreviewPage() {
             <span>返回大纲文档</span>
           </Link>
           <span className="text-stone-300">/</span>
-          <span className="font-serif font-bold text-base text-stone-900 tracking-tight">
+          <span className="font-bold text-base text-stone-900 tracking-tight">
             {pid} · 幻灯片演示影院
           </span>
           {preview && (

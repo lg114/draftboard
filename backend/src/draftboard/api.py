@@ -459,6 +459,7 @@ def get_preview(project_id: str):
 
 
 @app.post("/api/projects/{project_id}/preview/render")
+@app.post("/api/projects/{project_id}/render-preview")
 def render_preview_now(project_id: str):
     _require_project(project_id)
     from draftboard.render import render_preview
