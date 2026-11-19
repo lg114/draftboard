@@ -1433,39 +1433,39 @@ export default function ProjectWorkspacePage() {
 
             {/* 16:9 Presentation Canvas */}
             {outline && outline.items.length > 0 ? (
-              <div className="relative aspect-[16/9] rounded-xl border border-[#eaecf0] bg-[#111827] text-white overflow-hidden shadow-inner flex flex-col justify-between p-5">
+              <div className="relative aspect-[16/9] w-full rounded-xl border border-[#e5e7eb] bg-white overflow-hidden shadow-2xs flex flex-col justify-between">
                 {/* If real rendered preview image is ready, display it */}
                 {preview?.pages && preview.pages[selectedIndex] ? (
-                  <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
+                  <div className="absolute inset-0 z-10 bg-white flex items-center justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={preview.pages[selectedIndex]}
                       alt={`第 ${selectedIndex + 1} 页`}
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain select-none"
                     />
                   </div>
                 ) : currentItem ? (
                   /* Simulated Presentation Slide */
-                  <>
-                    <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-[#10b981]/15 blur-2xl" />
+                  <div className="relative p-5 flex flex-col justify-between h-full bg-white text-[#111827]">
+                    <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-[#4f46e5]/5 blur-2xl pointer-events-none" />
                     <div>
-                      <div className="text-[10px] font-mono text-[#34d399] tracking-widest uppercase mb-1">
+                      <div className="text-[10px] font-mono font-medium text-[#4f46e5] tracking-widest uppercase mb-1">
                         {currentItem.layout || "PRESENTATION"}
                       </div>
-                      <h3 className="text-sm font-bold leading-snug text-white max-w-[95%]">
+                      <h3 className="text-sm font-bold leading-snug text-[#111827] max-w-[95%]">
                         {currentItem.title}
                       </h3>
-                      <p className="text-xs text-[#d1d5db] mt-2.5 line-clamp-4 leading-relaxed whitespace-pre-wrap font-sans">
+                      <p className="text-xs text-[#4b5563] mt-2.5 line-clamp-4 leading-relaxed whitespace-pre-wrap font-sans">
                         {currentItem.summary}
                       </p>
                     </div>
-                    <div className="flex items-center justify-between text-[9px] font-mono text-[#9ca3af] pt-2 border-t border-white/10">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-[#9ca3af] pt-2 border-t border-[#f3f4f6]">
                       <span>16:9 版面排版模拟</span>
                       <span>
                         {selectedIndex + 1} / {outline.items.length}
                       </span>
                     </div>
-                  </>
+                  </div>
                 ) : null}
               </div>
             ) : (

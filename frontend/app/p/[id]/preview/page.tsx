@@ -156,26 +156,26 @@ export default function PreviewPage() {
             </div>
 
             {/* Slide Large Canvas */}
-            <div className="relative aspect-[16/9] rounded-xl bg-black overflow-hidden shadow-lg border border-[#111827] group">
+            <div className="relative aspect-[16/9] rounded-xl bg-white overflow-hidden shadow-sm border border-[#e5e7eb] group flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={preview.pages[selected]}
                 alt={`第 ${selected + 1} 页大图`}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain select-none"
               />
 
               {/* Prev / Next Stage Buttons */}
               <button
                 disabled={selected === 0}
                 onClick={() => setSelected((s) => Math.max(0, s - 1))}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#111827]/30 hover:bg-[#111827]/60 text-white backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
               <button
                 disabled={selected === preview.pages.length - 1}
                 onClick={() => setSelected((s) => Math.min(preview.pages.length - 1, s + 1))}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#111827]/30 hover:bg-[#111827]/60 text-white backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
               >
                 <ChevronRight className="w-6 h-6" />
               </button>
@@ -202,9 +202,9 @@ export default function PreviewPage() {
                     : "border-[#eaecf0] hover:border-[#d1d5db] bg-[#f9fafb]"
                 }`}
               >
-                <div className="aspect-[16/9] rounded-lg bg-black overflow-hidden mb-1.5 border border-[#eaecf0]">
+                <div className="aspect-[16/9] rounded-lg bg-white overflow-hidden mb-1.5 border border-[#eaecf0] flex items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt={`第 ${idx + 1} 页`} className="w-full h-full object-cover" />
+                  <img src={src} alt={`第 ${idx + 1} 页`} className="w-full h-full object-contain" />
                 </div>
                 <div className="flex items-center justify-between px-1 text-[11px] font-mono text-[#4b5563]">
                   <span>Slide {String(idx + 1).padStart(2, "0")}</span>
