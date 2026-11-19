@@ -8,7 +8,9 @@ outline generation, slide generation + export) runs as persisted tasks.
 
 import pathlib
 import re
+import uuid
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -17,6 +19,7 @@ from pydantic import BaseModel
 
 import draftboard.tasks as tasks
 import draftboard.tools as tools_module
+from draftboard.models import Outline, validate_outline
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
 
 load_dotenv()
@@ -74,6 +77,14 @@ def _export_reports(project_id: str) -> list[dict]:
         data["_mtime"] = path.stat().st_mtime
         reports.append(data)
     return sorted(reports, key=lambda r: r["_mtime"])
+
+
+def _latest_artifact_outline_version(project_id: str) -> Optional[str]:
+    artifact_files = list((_root() / project_id / "artifacts").glob("*/r*.json"))
+    if not artifact_files:
+        return None
+    latest = max(artifact_files, key=lambda p: p.stat().st_mtime)
+    return load_json(latest).get("outline_version")
 
 
 @asynccontextmanager
@@ -146,6 +157,7 @@ def get_project(project_id: str):
     return {
         "project_id": project_id,
         "outlines": _outline_summaries(project_id),
+        "generated_outline_version": _latest_artifact_outline_version(project_id),
         "latest_report": reports[-1] if reports else None,
         "download_available": latest_success is not None,
         "tasks": [t.model_dump() for t in tasks.list_tasks(_root(), project_id)],
@@ -207,6 +219,57 @@ def get_outline(project_id: str, version: str):
 def confirm_outline(project_id: str, version: str):
     _require_project(project_id)
     return _storage(project_id).confirm_outline(version).model_dump()
+
+
+class OutlineItemEdit(BaseModel):
+    outline_item_id: str
+    title: str
+    summary: str
+
+
+class OutlineEditRequest(BaseModel):
+    items: list[OutlineItemEdit]
+
+
+@app.put("/api/projects/{project_id}/outlines/{version}")
+def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
+    """Edit titles/summaries and page order of an outline.
+
+    Editing a confirmed outline never mutates it: a new draft version is
+    derived instead, so what was confirmed stays exactly what entered the
+    pipeline, and the old PPTX remains valid for that version.
+    """
+    _require_project(project_id)
+    storage = _storage(project_id)
+    outline = storage.load_outline(version)
+    existing = {item.outline_item_id: item for item in outline.items}
+    ids = [e.outline_item_id for e in req.items]
+    if len(ids) != len(set(ids)) or set(ids) != set(existing):
+        raise HTTPException(
+            400, "编辑必须恰好覆盖原有全部条目：不能新增、删除或重复条目"
+        )
+    new_items = []
+    for edit in req.items:
+        item = existing[edit.outline_item_id].model_copy(deep=True)
+        item.title = edit.title
+        item.summary = edit.summary
+        new_items.append(item)
+    errors = validate_outline(new_items, storage.load_source_ids())
+    if errors:
+        raise ValueError("Invalid outline:\n" + "\n".join(errors))
+
+    if outline.is_confirmed:
+        edited = Outline(
+            outline_version=f"v-{uuid.uuid4().hex[:8]}",
+            project_id=project_id,
+            items=new_items,
+            is_confirmed=False,
+        )
+    else:
+        edited = outline.model_copy(deep=True)
+        edited.items = new_items
+    storage.save_outline(edited)
+    return edited.model_dump()
 
 
 # ── Generation ───────────────────────────────────────────────────────────────

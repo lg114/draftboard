@@ -318,6 +318,140 @@ def test_api_download_matches_direct_export(client, env):
         assert api_boxes == direct_boxes
 
 
+# ── Outline editing ──────────────────────────────────────────────────────────
+
+
+def _edit_items(outline, titles=None, summaries=None, reverse=False):
+    items = [
+        {
+            "outline_item_id": i["outline_item_id"],
+            "title": i["title"],
+            "summary": i["summary"],
+        }
+        for i in outline["items"]
+    ]
+    if titles:
+        for item, title in zip(items, titles):
+            item["title"] = title
+    if summaries:
+        for item, summary in zip(items, summaries):
+            item["summary"] = summary
+    if reverse:
+        items.reverse()
+    return {"items": items}
+
+
+def test_edit_draft_in_place(client):
+    pid = _create(client)
+    _upload_txt(client, pid)
+    version = _run_outline(client, pid)
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+
+    r = client.put(
+        f"/api/projects/{pid}/outlines/{version}",
+        json=_edit_items(outline, titles=["新封面标题", "新结尾"], reverse=True),
+    )
+    assert r.status_code == 200
+    saved = r.json()
+    assert saved["outline_version"] == version  # draft edited in place
+    assert saved["is_confirmed"] is False
+    assert [i["title"] for i in saved["items"]] == ["新结尾", "新封面标题"]
+    # Citations and evidence survive the edit.
+    assert saved["items"][0]["source_ids"] == outline["items"][1]["source_ids"]
+    assert saved["items"][0]["evidence_status"] == "supported"
+
+
+def test_edit_confirmed_derives_new_draft(client):
+    pid = _create(client)
+    _upload_txt(client, pid)
+    version = _run_outline(client, pid)
+    client.post(f"/api/projects/{pid}/outlines/{version}/confirm")
+    r = client.post(f"/api/projects/{pid}/generate", json={"outline_version": version})
+    task = _wait_task(client, pid, r.json()["task_id"])
+    assert task["status"] == "succeeded"
+    old_pptx = client.get(f"/api/projects/{pid}/download").content
+
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    r = client.put(
+        f"/api/projects/{pid}/outlines/{version}",
+        json=_edit_items(outline, titles=["改过的封面", "改过的结尾"]),
+    )
+    assert r.status_code == 200
+    derived = r.json()
+    assert derived["outline_version"] != version
+    assert derived["is_confirmed"] is False
+
+    # The confirmed version is untouched.
+    original = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    assert original["is_confirmed"] is True
+    assert original["items"][0]["title"] == outline["items"][0]["title"]
+
+    # The old PPT stays downloadable and unchanged; the project reports
+    # which outline version the current file was generated from.
+    assert client.get(f"/api/projects/{pid}/download").content == old_pptx
+    project = client.get(f"/api/projects/{pid}").json()
+    assert project["generated_outline_version"] == version
+
+
+def test_edit_validation_rejects_and_saves_nothing(client):
+    pid = _create(client)
+    _upload_txt(client, pid)
+    version = _run_outline(client, pid)
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    url = f"/api/projects/{pid}/outlines/{version}"
+
+    # Empty title
+    r = client.put(url, json=_edit_items(outline, titles=["", "x"]))
+    assert r.status_code == 400
+    # Missing item (deletion not allowed)
+    r = client.put(url, json={"items": _edit_items(outline)["items"][:1]})
+    assert r.status_code == 400
+    # Duplicate item IDs
+    dup = _edit_items(outline)
+    dup["items"][1]["outline_item_id"] = dup["items"][0]["outline_item_id"]
+    r = client.put(url, json=dup)
+    assert r.status_code == 400
+    # Unknown item ID (addition not allowed)
+    unknown = _edit_items(outline)
+    unknown["items"][0]["outline_item_id"] = "no-such-item"
+    r = client.put(url, json=unknown)
+    assert r.status_code == 400
+
+    unchanged = client.get(url).json()
+    assert unchanged == outline
+
+
+def test_edit_confirm_regenerate_download_loop(client):
+    pid = _create(client)
+    _upload_txt(client, pid)
+    version = _run_outline(client, pid)
+    client.post(f"/api/projects/{pid}/outlines/{version}/confirm")
+    r = client.post(f"/api/projects/{pid}/generate", json={"outline_version": version})
+    assert _wait_task(client, pid, r.json()["task_id"])["status"] == "succeeded"
+    assert client.get(f"/api/projects/{pid}").json()["generated_outline_version"] == version
+
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    r = client.put(
+        f"/api/projects/{pid}/outlines/{version}",
+        json=_edit_items(outline, titles=["修改后的标题", "结尾"]),
+    )
+    new_version = r.json()["outline_version"]
+    assert client.get(f"/api/projects/{pid}").json()["generated_outline_version"] == version
+
+    client.post(f"/api/projects/{pid}/outlines/{new_version}/confirm")
+    r = client.post(f"/api/projects/{pid}/generate", json={"outline_version": new_version})
+    task = _wait_task(client, pid, r.json()["task_id"])
+    assert task["status"] == "succeeded", task["error"]
+    assert task["result"]["artifact_id"] != ""
+    assert client.get(f"/api/projects/{pid}").json()["generated_outline_version"] == new_version
+
+    prs = Presentation(io.BytesIO(client.get(f"/api/projects/{pid}/download").content))
+    first_slide_text = " ".join(
+        sh.text_frame.text for sh in prs.slides[0].shapes if sh.has_text_frame
+    )
+    assert "修改后的标题" in first_slide_text
+
+
 # ── Input validation ─────────────────────────────────────────────────────────
 
 

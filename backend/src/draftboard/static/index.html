@@ -10,7 +10,7 @@
   h2 { font-size: 1rem; margin: 0 0 .5rem; }
   button { padding: .35rem .8rem; cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
-  input, select { padding: .3rem; }
+  input, select, textarea { padding: .3rem; font: inherit; box-sizing: border-box; }
   .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
   .msg { margin-top: .5rem; white-space: pre-wrap; }
   .error { color: #b00020; }
@@ -49,7 +49,9 @@
   <div class="row">
     <button id="gen-outline">生成大纲</button>
     <select id="outline-select"></select>
+    <button id="save-outline">保存修改</button>
     <button id="confirm-generate">确认并生成 PPT</button>
+    <span id="pending-badge" class="error" style="display:none">有未生成的修改</span>
   </div>
   <div id="outline"></div>
   <div id="outline-msg" class="msg"></div>
@@ -71,6 +73,8 @@
 const $ = id => document.getElementById(id);
 let projectId = localStorage.getItem("draftboard.project") || "";
 let pollTimer = null;
+let currentOutline = null;
+let generatedVersion = null;
 
 function setMsg(id, text, cls) {
   const el = $(id);
@@ -114,6 +118,7 @@ async function refreshProject() {
   setMsg("outline-msg", ""); setMsg("upload-msg", "");
   $("issues").innerHTML = ""; $("status").textContent = "";
   const data = await api(`/api/projects/${projectId}`);
+  generatedVersion = data.generated_outline_version;
 
   const mats = await api(`/api/projects/${projectId}/materials`);
   const ul = $("materials");
@@ -134,7 +139,7 @@ async function refreshProject() {
     sel.appendChild(opt);
   }
   if (outlines.length) await showOutline(outlines[0].outline_version);
-  else $("outline").innerHTML = "";
+  else { $("outline").innerHTML = ""; currentOutline = null; updatePendingBadge(); }
 
   renderResult(data);
   const active = data.tasks.find(t => t.status === "queued" || t.status === "running");
@@ -185,22 +190,57 @@ function renderIssues(issues) {
 }
 
 async function showOutline(version) {
-  const outline = await api(`/api/projects/${projectId}/outlines/${version}`);
+  currentOutline = await api(`/api/projects/${projectId}/outlines/${version}`);
+  renderOutlineItems();
+  updatePendingBadge();
+}
+
+function updatePendingBadge() {
+  const version = $("outline-select").value;
+  const stale = generatedVersion && version && version !== generatedVersion;
+  $("pending-badge").style.display = stale ? "" : "none";
+}
+
+function renderOutlineItems() {
   const div = $("outline");
   div.innerHTML = "";
-  outline.items.forEach((item, idx) => {
+  currentOutline.items.forEach((item, idx) => {
     const box = document.createElement("div");
     box.className = "item";
-    const title = document.createElement("div");
-    title.textContent = `${idx + 1}. ${item.title}`;
-    const summary = document.createElement("div");
-    summary.textContent = item.summary;
+    const title = document.createElement("input");
+    title.value = item.title;
+    title.style.width = "100%";
+    title.oninput = () => { item.title = title.value; };
+    const summary = document.createElement("textarea");
+    summary.rows = 2;
+    summary.value = item.summary;
+    summary.style.width = "100%";
+    summary.oninput = () => { item.summary = summary.value; };
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = `来源: ${item.source_ids.join(", ") || "无"} | 证据: ${item.evidence_status}`;
-    box.append(title, summary, meta);
+    const controls = document.createElement("div");
+    controls.className = "row";
+    const up = document.createElement("button");
+    up.textContent = "上移";
+    up.disabled = idx === 0;
+    up.onclick = () => moveItem(idx, -1);
+    const down = document.createElement("button");
+    down.textContent = "下移";
+    down.disabled = idx === currentOutline.items.length - 1;
+    down.onclick = () => moveItem(idx, 1);
+    controls.append(up, down);
+    box.append(title, summary, meta, controls);
     div.appendChild(box);
   });
+}
+
+function moveItem(idx, delta) {
+  const j = idx + delta;
+  const arr = currentOutline.items;
+  if (j < 0 || j >= arr.length) return;
+  [arr[idx], arr[j]] = [arr[j], arr[idx]];
+  renderOutlineItems();
 }
 
 function stopPolling() {
@@ -286,6 +326,37 @@ $("gen-outline").onclick = async () => {
 };
 
 $("outline-select").onchange = () => showOutline($("outline-select").value);
+
+$("save-outline").onclick = async () => {
+  const version = $("outline-select").value;
+  if (!projectId || !currentOutline || !version) {
+    setMsg("outline-msg", "请先选择大纲", "error");
+    return;
+  }
+  try {
+    const saved = await api(`/api/projects/${projectId}/outlines/${version}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: currentOutline.items.map(i => ({
+          outline_item_id: i.outline_item_id,
+          title: i.title,
+          summary: i.summary,
+        })),
+      }),
+    });
+    await refreshProject();
+    $("outline-select").value = saved.outline_version;
+    await showOutline(saved.outline_version);
+    setMsg(
+      "outline-msg",
+      saved.outline_version !== version
+        ? `已保存为新候选版本 ${saved.outline_version}，原确认版本保持不变；重新确认后才会进入生成。`
+        : "已保存。",
+      "ok"
+    );
+  } catch (e) { setMsg("outline-msg", e.message, "error"); }
+};
 
 $("confirm-generate").onclick = async () => {
   const version = $("outline-select").value;
