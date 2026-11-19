@@ -124,6 +124,78 @@ async def conflict_handler(request, exc):
 
 class CreateProjectRequest(BaseModel):
     project_id: str
+    name: Optional[str] = None
+
+
+def _project_summary(pid: str) -> dict:
+    p_dir = _root() / pid
+    meta_path = p_dir / "meta.json"
+    name = pid
+    if meta_path.exists():
+        try:
+            name = load_json(meta_path).get("name") or pid
+        except Exception:
+            pass
+
+    outlines = _outline_summaries(pid)
+    reports = _export_reports(pid)
+    latest_report = reports[-1] if reports else None
+    latest_success = _latest_success_report(pid)
+
+    assets_dir = p_dir / "assets"
+    materials_count = len([f for f in assets_dir.glob("*") if f.is_file()]) if assets_dir.exists() else 0
+
+    slide_count = 0
+    insufficient_evidence_count = 0
+    is_confirmed = False
+
+    if outlines:
+        latest_outline_meta = max(outlines, key=lambda o: o["mtime"])
+        is_confirmed = latest_outline_meta["is_confirmed"]
+        slide_count = latest_outline_meta["item_count"]
+        try:
+            outline_data = load_json(p_dir / "outlines" / f"{latest_outline_meta['outline_version']}.json")
+            for it in outline_data.get("items", []):
+                if it.get("evidence_status") == "insufficient" or not it.get("source_ids"):
+                    insufficient_evidence_count += 1
+        except Exception:
+            pass
+    elif latest_report:
+        slide_count = latest_report.get("slide_count", 0)
+
+    if latest_success:
+        stage = "ready"
+        stage_label = "PPT 已就绪"
+    elif is_confirmed:
+        stage = "confirmed"
+        stage_label = "大纲已确认"
+    elif outlines:
+        stage = "outline_draft"
+        stage_label = "大纲待审核"
+    elif materials_count > 0:
+        stage = "materials_ready"
+        stage_label = "素材已导入"
+    else:
+        stage = "empty"
+        stage_label = "待上传素材"
+
+    mtime = p_dir.stat().st_mtime
+    if outlines:
+        mtime = max(mtime, max(o["mtime"] for o in outlines))
+    if reports:
+        mtime = max(mtime, max(r["_mtime"] for r in reports))
+
+    return {
+        "project_id": pid,
+        "name": name,
+        "stage": stage,
+        "stage_label": stage_label,
+        "slide_count": slide_count,
+        "materials_count": materials_count,
+        "insufficient_evidence_count": insufficient_evidence_count,
+        "download_available": latest_success is not None,
+        "mtime": mtime,
+    }
 
 
 @app.post("/api/projects")
@@ -135,8 +207,14 @@ def create_project(req: CreateProjectRequest):
     if (_root() / req.project_id).exists():
         raise HTTPException(409, f"项目 '{req.project_id}' 已存在")
     try:
-        _storage(req.project_id)
-        return {"project_id": req.project_id}
+        storage = _storage(req.project_id)
+        if req.name:
+            import json, time
+            (storage.root / "meta.json").write_text(
+                json.dumps({"project_id": req.project_id, "name": req.name, "created_at": time.time()}, ensure_ascii=False),
+                encoding="utf-8"
+            )
+        return {"project_id": req.project_id, "name": req.name or req.project_id}
     except Exception as exc:
         raise HTTPException(500, f"创建项目目录失败: {exc}")
 
@@ -146,20 +224,26 @@ def list_projects():
     root = _root()
     if not root.exists():
         return {"projects": []}
+    pids = [p.name for p in root.iterdir() if p.is_dir()]
     return {
-        "projects": [
-            {"project_id": p.name} for p in sorted(root.iterdir()) if p.is_dir()
-        ]
+        "projects": [_project_summary(pid) for pid in sorted(pids)]
     }
 
 
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: str):
     _require_project(project_id)
+    summary = _project_summary(project_id)
     reports = _export_reports(project_id)
     latest_success = _latest_success_report(project_id)
     return {
         "project_id": project_id,
+        "name": summary["name"],
+        "stage": summary["stage"],
+        "stage_label": summary["stage_label"],
+        "slide_count": summary["slide_count"],
+        "materials_count": summary["materials_count"],
+        "insufficient_evidence_count": summary["insufficient_evidence_count"],
         "outlines": _outline_summaries(project_id),
         "generated_outline_version": _latest_artifact_outline_version(project_id),
         "latest_report": reports[-1] if reports else None,
@@ -201,6 +285,10 @@ def read_materials(project_id: str):
 @app.post("/api/projects/{project_id}/outline/generate", status_code=202)
 def generate_outline(project_id: str):
     _require_project(project_id)
+    assets_dir = _root() / project_id / "assets"
+    materials = [f for f in assets_dir.glob("*") if f.is_file()] if assets_dir.exists() else []
+    if not materials:
+        raise HTTPException(400, "项目中暂无可用素材，请先上传 Markdown 笔记或图片后再生成大纲")
     record = tasks.submit(
         _root(), project_id, "outline", tasks.outline_work(_root(), project_id)
     )

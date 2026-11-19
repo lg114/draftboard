@@ -183,11 +183,15 @@ def _latest_outline_version(root: pathlib.Path, project_id: str) -> Optional[str
 
 def outline_work(root: pathlib.Path, project_id: str) -> Callable[[TaskContext], dict]:
     def work(ctx: TaskContext) -> dict:
+        assets_dir = root / project_id / "assets"
+        materials = [f for f in assets_dir.glob("*") if f.is_file()] if assets_dir.exists() else []
+        if not materials:
+            raise RuntimeError("项目中暂无可用素材，请先上传 Markdown 笔记或图片后再生成大纲。")
         ctx.set_step("读取材料并生成大纲")
         outline_via_agent(project_id)
         version = _latest_outline_version(root, project_id)
         if version is None:
-            raise RuntimeError("模型没有保存任何大纲，请检查材料内容后重试。")
+            raise RuntimeError("未成功提取到大纲，请检查素材内容格式或稍后重试。")
         return {"outline_version": version}
 
     return work

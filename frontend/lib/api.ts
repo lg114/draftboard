@@ -54,8 +54,26 @@ export interface ExportReport {
   issues: Issue[];
 }
 
+export interface ProjectSummary {
+  project_id: string;
+  name?: string;
+  stage?: "ready" | "confirmed" | "outline_draft" | "materials_ready" | "empty";
+  stage_label?: string;
+  slide_count?: number;
+  materials_count?: number;
+  insufficient_evidence_count?: number;
+  download_available?: boolean;
+  mtime?: number;
+}
+
 export interface Project {
   project_id: string;
+  name?: string;
+  stage?: string;
+  stage_label?: string;
+  slide_count?: number;
+  materials_count?: number;
+  insufficient_evidence_count?: number;
   outlines: OutlineSummary[];
   generated_outline_version: string | null;
   latest_report: ExportReport | null;

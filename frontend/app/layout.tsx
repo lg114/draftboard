@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex items-center gap-4 text-xs font-medium text-stone-500">
             <BackendStatus />
             <Link href="/" className="hover:text-stone-900 transition-colors">
-              项目库
+              项目
             </Link>
           </div>
         </header>
