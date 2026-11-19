@@ -87,6 +87,14 @@ def _latest_artifact_outline_version(project_id: str) -> Optional[str]:
     return load_json(latest).get("outline_version")
 
 
+def _latest_success_report(project_id: str) -> Optional[dict]:
+    for report in reversed(_export_reports(project_id)):
+        path = report.get("pptx_path")
+        if report["success"] and path and pathlib.Path(path).exists():
+            return report
+    return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     tasks.sweep_interrupted(_root())
@@ -146,14 +154,7 @@ def list_projects():
 def get_project(project_id: str):
     _require_project(project_id)
     reports = _export_reports(project_id)
-    latest_success = next(
-        (
-            r
-            for r in reversed(reports)
-            if r["success"] and r.get("pptx_path") and pathlib.Path(r["pptx_path"]).exists()
-        ),
-        None,
-    )
+    latest_success = _latest_success_report(project_id)
     return {
         "project_id": project_id,
         "outlines": _outline_summaries(project_id),
@@ -333,6 +334,64 @@ def download(project_id: str):
                 filename=f"{project_id}.pptx",
             )
     raise HTTPException(404, "没有可下载的 PPTX：尚未成功导出过文件")
+
+
+# ── Per-page preview (same artifact/revision as the download) ────────────────
+
+
+def _preview_dir(project_id: str, report: dict) -> pathlib.Path:
+    return (
+        _root() / project_id / "previews"
+        / f"{report['artifact_id']}-r{report['artifact_revision']}"
+    )
+
+
+def _preview_payload(project_id: str, report: dict, pages: list[pathlib.Path]) -> dict:
+    return {
+        "artifact_id": report["artifact_id"],
+        "artifact_revision": report["artifact_revision"],
+        "pages": [f"/api/projects/{project_id}/preview/{p.name}" for p in pages],
+    }
+
+
+@app.get("/api/projects/{project_id}/preview")
+def get_preview(project_id: str):
+    _require_project(project_id)
+    report = _latest_success_report(project_id)
+    if not report:
+        raise HTTPException(404, "尚未成功导出，没有可预览的内容")
+    pages = sorted(_preview_dir(project_id, report).glob("page-*.png"))
+    if not pages:
+        raise HTTPException(404, "预览尚未渲染，可调用 POST preview/render 重新渲染")
+    return _preview_payload(project_id, report, pages)
+
+
+@app.post("/api/projects/{project_id}/preview/render")
+def render_preview_now(project_id: str):
+    _require_project(project_id)
+    from draftboard.render import render_preview
+
+    report = _latest_success_report(project_id)
+    if not report:
+        raise HTTPException(404, "尚未成功导出，没有可渲染的内容")
+    pages = render_preview(
+        pathlib.Path(report["pptx_path"]), _preview_dir(project_id, report)
+    )
+    return _preview_payload(project_id, report, pages)
+
+
+@app.get("/api/projects/{project_id}/preview/{name}")
+def preview_image(project_id: str, name: str):
+    _require_project(project_id)
+    if not re.fullmatch(r"page-\d+\.png", name):
+        raise HTTPException(400, "非法的预览图片名")
+    report = _latest_success_report(project_id)
+    if not report:
+        raise HTTPException(404, "尚未成功导出")
+    path = _preview_dir(project_id, report) / name
+    if not path.exists():
+        raise HTTPException(404, "预览图片不存在")
+    return FileResponse(path, media_type="image/png")
 
 
 # ── Minimal closed-loop page ─────────────────────────────────────────────────

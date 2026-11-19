@@ -229,6 +229,23 @@ def generate_work(
             raise RuntimeError("幻灯片结构校验未通过，未导出文件。")
         if not export.success:
             raise RuntimeError("排版检查未通过，未生成文件。请根据问题列表调整大纲后重新生成。")
+        if export.pptx_path:
+            ctx.set_step("渲染逐页预览")
+            import pathlib as _pathlib
+
+            from draftboard.render import render_preview
+
+            preview_dir = (
+                root / project_id / "previews"
+                / f"{artifact.artifact_id}-r{artifact.artifact_revision}"
+            )
+            try:
+                pages = render_preview(_pathlib.Path(export.pptx_path), preview_dir)
+                result["preview_pages"] = len(pages)
+            except Exception as e:
+                # Preview failure never invalidates the written PPTX.
+                result["preview_error"] = str(e)
+            ctx.set_result(result)
         return result
 
     return work

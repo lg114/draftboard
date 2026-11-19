@@ -32,3 +32,6 @@ pytest-of-*/
 
 # Local web workbench data (DRAFTBOARD_STORAGE_ROOT)
 web-data/
+
+# LibreOffice scratch for preview rendering
+.lo-scratch/

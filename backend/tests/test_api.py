@@ -7,6 +7,8 @@ directly; every other step runs the real pipeline code with synthetic fonts.
 """
 
 import io
+import pathlib
+import shutil
 import time
 
 import pytest
@@ -61,6 +63,11 @@ def env(tmp_path, monkeypatch, font_files):
     latin, ea = font_files
     monkeypatch.setenv("DRAFTBOARD_LATIN_FONT", str(latin))
     monkeypatch.setenv("DRAFTBOARD_EA_FONT", str(ea))
+    # Short, writable scratch dir for LibreOffice (system temp is denied
+    # in the sandbox and deep pytest paths crash LO on Windows).
+    scratch = pathlib.Path.cwd() / ".lo-scratch"
+    scratch.mkdir(exist_ok=True)
+    monkeypatch.setenv("DRAFTBOARD_LO_SCRATCH", str(scratch))
     return tmp_path
 
 
@@ -316,6 +323,45 @@ def test_api_download_matches_direct_export(client, env):
             for s in direct_slide.shapes if s.has_text_frame
         ]
         assert api_boxes == direct_boxes
+
+
+# ── Per-page preview ─────────────────────────────────────────────────────────
+
+_SOFFICE_AVAILABLE = (
+    pathlib.Path(r"C:\Program Files\LibreOffice\program\soffice.com").exists()
+    or shutil.which("soffice") is not None
+)
+
+
+def test_preview_404_without_export(client):
+    pid = _create(client)
+    assert client.get(f"/api/projects/{pid}/preview").status_code == 404
+
+
+@pytest.mark.skipif(not _SOFFICE_AVAILABLE, reason="LibreOffice not installed")
+def test_preview_rendered_from_same_generation(client):
+    pid = _create(client)
+    _upload_txt(client, pid)
+    version = _run_outline(client, pid)
+    client.post(f"/api/projects/{pid}/outlines/{version}/confirm")
+    r = client.post(f"/api/projects/{pid}/generate", json={"outline_version": version})
+    task = _wait_task(client, pid, r.json()["task_id"], timeout=120.0)
+    assert task["status"] == "succeeded", task["error"]
+    assert task["result"].get("preview_pages") == 2, task["result"].get("preview_error")
+
+    preview = client.get(f"/api/projects/{pid}/preview").json()
+    assert preview["artifact_id"] == task["result"]["artifact_id"]
+    assert preview["artifact_revision"] == task["result"]["artifact_revision"]
+    assert len(preview["pages"]) == 2
+
+    image = client.get(preview["pages"][0])
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/png"
+    assert image.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+    # On-demand re-render serves the same artifact/revision.
+    again = client.post(f"/api/projects/{pid}/preview/render").json()
+    assert again == preview
 
 
 # ── Outline editing ──────────────────────────────────────────────────────────
