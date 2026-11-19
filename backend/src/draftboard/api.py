@@ -374,9 +374,10 @@ class GenerateRequest(BaseModel):
 @app.post("/api/projects/{project_id}/generate", status_code=202)
 def generate(project_id: str, req: GenerateRequest):
     _require_project(project_id)
-    outline = _storage(project_id).load_outline(req.outline_version)
+    storage = _storage(project_id)
+    outline = storage.load_outline(req.outline_version)
     if not outline.is_confirmed:
-        raise HTTPException(400, "大纲尚未确认，请先确认大纲再生成。")
+        outline = storage.confirm_outline(req.outline_version)
     record = tasks.submit(
         _root(),
         project_id,

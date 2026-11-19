@@ -308,13 +308,29 @@ export default function ProjectWorkspacePage() {
     setRawError(null);
     setStatusKind("");
     setIsGenerating(true);
-    setStatus("正在执行字形度量并编译 PowerPoint 演示文稿...");
+    setStatus("正在确认大纲并编译 PowerPoint 演示文稿...");
     try {
-      const task = await api<Task>(`/api/projects/${pid}/generate`, {
+      let targetVersion = version;
+      // 1. If user made edits to the outline, save them first
+      if (isStale && outline) {
+        const saved = await api<Outline>(
+          `/api/projects/${pid}/outlines/${version}`,
+          jsonOptions("PUT", outline)
+        );
+        setOutline(saved);
+        setSavedOutline(JSON.parse(JSON.stringify(saved)));
+        targetVersion = saved.outline_version;
+        setVersion(saved.outline_version);
+      }
+      // 2. Confirm the outline version
+      await api(`/api/projects/${pid}/outlines/${targetVersion}/confirm`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outline_version: version }),
       });
+      // 3. Trigger PPT generation
+      const task = await api<Task>(
+        `/api/projects/${pid}/generate`,
+        jsonOptions("POST", { outline_version: targetVersion })
+      );
       startPolling(task.task_id);
     } catch (e) {
       setIsGenerating(false);
@@ -331,7 +347,7 @@ export default function ProjectWorkspacePage() {
         { method: "POST" }
       );
       await loadPreview();
-      setMsg(`已生成 ${res.pages} 页真机渲染截图`);
+      setMsg(`已生成 ${res.pages} 页高保真排版预览截图`);
       setMsgKind("ok");
       setTimeout(() => setMsg(""), 2500);
     } catch (e) {
@@ -1060,19 +1076,20 @@ export default function ProjectWorkspacePage() {
               </div>
             )}
 
-            {/* Real Machine Render Button */}
+            {/* High-Fidelity Office Render Button */}
             {project?.download_available && (
               <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs">
                 <span className="text-xs text-stone-500">
-                  {preview ? "已加载真机渲染截图" : "可一键渲染高保真真机截图"}
+                  {preview ? "已同步 Office 真实排版效果" : "可生成与 Office 完全一致的高保真视图"}
                 </span>
                 <button
                   onClick={renderPreviewsNow}
                   disabled={renderingPreview}
                   className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                  title="调用 Office 引擎对生成的 PPTX 执行真实页面栅格化截图"
                 >
                   <RefreshCw className={`w-3 h-3 ${renderingPreview ? "animate-spin" : ""}`} />
-                  <span>{renderingPreview ? "渲染中..." : "渲染真机截图"}</span>
+                  <span>{renderingPreview ? "渲染中..." : "更新真实排版图"}</span>
                 </button>
               </div>
             )}
