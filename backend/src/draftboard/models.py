@@ -260,6 +260,28 @@ class ExportResult(BaseModel):
     )
 
 
+class TaskStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class TaskRecord(BaseModel):
+    task_id: str = Field(description="Unique task identifier")
+    project_id: str = Field(description="Project the task belongs to")
+    kind: str = Field(description="Task kind: 'outline' or 'generate'")
+    status: TaskStatus = Field(TaskStatus.QUEUED, description="Current task status")
+    step: str = Field("", description="Human-readable label of the current real step")
+    error: Optional[str] = Field(None, description="Failure reason, if failed")
+    result: dict = Field(
+        default_factory=dict,
+        description="References to saved intermediate/final products",
+    )
+    created_at: str = Field(description="ISO timestamp of submission")
+    updated_at: str = Field(description="ISO timestamp of last status change")
+
+
 # ── Tool input / output schemas ──────────────────────────────────────────────
 
 

@@ -8,6 +8,7 @@ Usage:
     draftboard outline <project_id> <version>
     draftboard confirm <project_id> <version>
     draftboard export-deck <project_id> <artifact_id> [--revision N]
+    draftboard serve [--host HOST] [--port PORT]
 """
 
 import argparse
@@ -58,6 +59,11 @@ def main() -> None:
     deck_p.add_argument(
         "--revision", type=int, default=None, help="Revision (default: latest)"
     )
+
+    # serve: run the web API + minimal workbench page
+    serve_p = sub.add_parser("serve", help="Run the Draftboard web API")
+    serve_p.add_argument("--host", default="127.0.0.1", help="Bind host")
+    serve_p.add_argument("--port", type=int, default=8000, help="Bind port")
 
     args = parser.parse_args()
 
@@ -175,6 +181,13 @@ def main() -> None:
         for issue in result.issues:
             print(f"  [{issue.code}] {issue.message}", file=sys.stderr)
         sys.exit(1)
+
+    elif args.command == "serve":
+        import uvicorn
+
+        print(f"Draftboard workbench: http://{args.host}:{args.port}/")
+        uvicorn.run("draftboard.api:app", host=args.host, port=args.port)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -29,3 +29,6 @@ THIRD_PARTY_LICENSES.md
 
 # pytest session basetemp (pytest-of-<user>)
 pytest-of-*/
+
+# Local web workbench data (DRAFTBOARD_STORAGE_ROOT)
+web-data/

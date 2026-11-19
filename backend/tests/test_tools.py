@@ -115,6 +115,19 @@ def test_read_materials_markdown(tmp_path):
 # ── 2. read_materials reads image files ──────────────────────────────────────
 
 
+def test_read_materials_txt(tmp_path):
+    assets_dir = tmp_path / PROJECT_ID / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "notes.txt").write_text("Line 1\nLine 2\n", encoding="utf-8")
+
+    fn = _raw(tools_module.read_materials)
+    output = fn(project_id=PROJECT_ID)
+    assert len(output.materials) == 1
+    assert output.materials[0].asset_id == "notes"
+    assert "Line 1" in output.materials[0].content
+    assert output.source_fragments[0].location.startswith("L1")
+
+
 def test_read_materials_image(tmp_path):
     assets_dir = tmp_path / PROJECT_ID / "assets"
     assets_dir.mkdir(parents=True)

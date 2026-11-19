@@ -33,7 +33,7 @@ from draftboard.models import (
     validate_outline,
 )
 from draftboard.pptx_export import export_pptx
-from draftboard.storage import ProjectStorage
+from draftboard.storage import STORAGE_ROOT, ProjectStorage
 
 # Set to a pathlib.Path in tests to redirect storage to a temporary directory.
 _storage_root: Optional[pathlib.Path] = None
@@ -51,10 +51,10 @@ def read_materials(
     project_id: str,
     asset_ids: Optional[list[str]] = None,
 ) -> ReadMaterialsOutput:
-    """Read project materials (Markdown files and images) from disk.
+    """Read project materials (Markdown/TXT files and images) from disk.
 
-    Scans ~/.draftboard/projects/{project_id}/assets/ for .md, .png, and .jpg
-    files.  Markdown content is returned verbatim and split into 50-line
+    Scans ~/.draftboard/projects/{project_id}/assets/ for .md, .txt, .png, and
+    .jpg files.  Text content is returned verbatim and split into 50-line
     source fragments.  Images are represented as a stub string of the form
     '[image: {filename}]' – the agent must NOT fabricate any image analysis.
 
@@ -75,7 +75,7 @@ def read_materials(
 
     # Collect candidate files
     candidate_files: list[pathlib.Path] = []
-    for ext in ("*.md", "*.png", "*.jpg", "*.jpeg"):
+    for ext in ("*.md", "*.txt", "*.png", "*.jpg", "*.jpeg"):
         candidate_files.extend(assets_dir.glob(ext))
 
     for filepath in sorted(candidate_files):
@@ -83,7 +83,7 @@ def read_materials(
         if asset_ids is not None and stem not in asset_ids:
             continue
 
-        if filepath.suffix.lower() == ".md":
+        if filepath.suffix.lower() in (".md", ".txt"):
             text = filepath.read_text(encoding="utf-8", errors="replace")
             materials.append(
                 MaterialContent(
@@ -339,7 +339,7 @@ def patch_slide(
     # We need to search across all projects – but patch_slide requires knowing the
     # project_id.  To keep the tool simple, we embed project lookup via storage root.
     # In practice the agent should track project_id; we derive it here by scanning.
-    storage_root = _storage_root or (pathlib.Path.home() / ".draftboard" / "projects")
+    storage_root = _storage_root or STORAGE_ROOT
 
     # Find project that owns this artifact
     project_id: Optional[str] = None
@@ -424,7 +424,7 @@ def validate_artifact(artifact_id: str, revision: int) -> ValidationReport:
     Returns:
         ValidationReport listing all issues found.
     """
-    storage_root = _storage_root or (pathlib.Path.home() / ".draftboard" / "projects")
+    storage_root = _storage_root or STORAGE_ROOT
 
     project_id: Optional[str] = None
     if storage_root.exists():

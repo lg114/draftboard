@@ -6,12 +6,28 @@ Storage root: ~/.draftboard/projects/{project_id}/
 
 import json
 import hashlib
+import os
 import pathlib
+import time
 from typing import Optional
 
 from draftboard.models import Artifact, Outline, SourceFragment, ValidationReport
 
-STORAGE_ROOT = pathlib.Path.home() / ".draftboard" / "projects"
+STORAGE_ROOT = pathlib.Path(
+    os.environ.get("DRAFTBOARD_STORAGE_ROOT")
+    or pathlib.Path.home() / ".draftboard" / "projects"
+)
+
+
+def load_json(path: pathlib.Path) -> dict:
+    """Read a JSON file, retrying briefly on Windows replace/read races."""
+    for attempt in range(20):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 class ProjectStorage:
@@ -33,7 +49,16 @@ class ProjectStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
+        # On Windows os.replace fails with WinError 5 while a concurrent
+        # reader (e.g. task polling) holds the target open; retry briefly.
+        for attempt in range(20):
+            try:
+                tmp.replace(path)
+                return
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
 
     # ── source fragments ─────────────────────────────────────────────────────
 
@@ -49,7 +74,7 @@ class ProjectStorage:
         path = self.root / "sources.json"
         if not path.exists():
             return set()
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_json(path)
         return {f["source_id"] for f in data["fragments"]}
 
     # ── outline ──────────────────────────────────────────────────────────────
@@ -64,7 +89,7 @@ class ProjectStorage:
         path = self.root / "outlines" / f"{outline_version}.json"
         if not path.exists():
             raise KeyError(f"Outline '{outline_version}' not found in project '{self.project_id}'")
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_json(path)
         return Outline.model_validate(data)
 
     def confirm_outline(self, outline_version: str) -> Outline:
@@ -94,13 +119,17 @@ class ProjectStorage:
                 f"Artifact '{artifact_id}' revision {revision} not found "
                 f"in project '{self.project_id}'"
             )
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_json(path)
         return Artifact.model_validate(data)
 
     def save_export_report(self, artifact_id: str, revision: int, result: dict) -> None:
         """Persist an export result report next to the exported file."""
         path = self.root / "exports" / f"{artifact_id}-r{revision}.report.json"
         self._atomic_write(path, result)
+
+    def save_task(self, task_id: str, record: dict) -> None:
+        """Persist a background task status record."""
+        self._atomic_write(self.root / "tasks" / f"{task_id}.json", record)
 
     def next_revision(self, artifact_id: str) -> int:
         """Return next revision number (max existing + 1, minimum 1)."""
@@ -131,4 +160,4 @@ class ProjectStorage:
         path = self._idem_path(key)
         if not path.exists():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        return load_json(path)

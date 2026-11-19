@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draftboard</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #262626; }
+  section { margin-bottom: 1.5rem; }
+  h2 { font-size: 1rem; margin: 0 0 .5rem; }
+  button { padding: .35rem .8rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select { padding: .3rem; }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .msg { margin-top: .5rem; white-space: pre-wrap; }
+  .error { color: #b00020; }
+  .ok { color: #1b7f3b; }
+  .item { border: 1px solid #ddd; border-radius: 4px; padding: .5rem .7rem; margin-bottom: .5rem; }
+  .item .meta { color: #777; font-size: .8rem; }
+  ul { margin: .3rem 0; padding-left: 1.2rem; }
+  #status { min-height: 1.2rem; }
+</style>
+</head>
+<body>
+<h1>Draftboard</h1>
+
+<section>
+  <h2>项目</h2>
+  <div class="row">
+    <select id="project-select"></select>
+    <input id="new-project" placeholder="新项目 ID（字母/数字/-/_）">
+    <button id="create-project">创建</button>
+  </div>
+  <div id="project-msg" class="msg"></div>
+</section>
+
+<section>
+  <h2>材料</h2>
+  <div class="row">
+    <input type="file" id="file-input" accept=".md,.txt,.png,.jpg,.jpeg">
+    <button id="upload">上传</button>
+  </div>
+  <ul id="materials"></ul>
+  <div id="upload-msg" class="msg"></div>
+</section>
+
+<section>
+  <h2>大纲</h2>
+  <div class="row">
+    <button id="gen-outline">生成大纲</button>
+    <select id="outline-select"></select>
+    <button id="confirm-generate">确认并生成 PPT</button>
+  </div>
+  <div id="outline"></div>
+  <div id="outline-msg" class="msg"></div>
+</section>
+
+<section>
+  <h2>状态</h2>
+  <div id="status" class="msg"></div>
+  <div id="issues"></div>
+</section>
+
+<section>
+  <h2>结果</h2>
+  <div id="result" class="msg">尚未生成。</div>
+  <a id="download" style="display:none">下载 PPTX</a>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+let projectId = localStorage.getItem("draftboard.project") || "";
+let pollTimer = null;
+
+function setMsg(id, text, cls) {
+  const el = $(id);
+  el.textContent = text || "";
+  el.className = "msg" + (cls ? " " + cls : "");
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+async function loadProjects() {
+  const data = await api("/api/projects");
+  const sel = $("project-select");
+  sel.innerHTML = "";
+  for (const p of data.projects) {
+    const opt = document.createElement("option");
+    opt.value = opt.textContent = p.project_id;
+    sel.appendChild(opt);
+  }
+  if (projectId && data.projects.some(p => p.project_id === projectId)) {
+    sel.value = projectId;
+  } else if (data.projects.length) {
+    projectId = data.projects[0].project_id;
+    sel.value = projectId;
+  } else {
+    projectId = "";
+  }
+  if (projectId) await refreshProject();
+}
+
+async function refreshProject() {
+  localStorage.setItem("draftboard.project", projectId);
+  stopPolling();
+  setMsg("outline-msg", ""); setMsg("upload-msg", "");
+  $("issues").innerHTML = ""; $("status").textContent = "";
+  const data = await api(`/api/projects/${projectId}`);
+
+  const mats = await api(`/api/projects/${projectId}/materials`);
+  const ul = $("materials");
+  ul.innerHTML = "";
+  for (const m of mats.materials) {
+    const li = document.createElement("li");
+    li.textContent = `${m.asset_id}（${m.asset_type}）`;
+    ul.appendChild(li);
+  }
+
+  const sel = $("outline-select");
+  sel.innerHTML = "";
+  const outlines = data.outlines.sort((a, b) => b.mtime - a.mtime);
+  for (const o of outlines) {
+    const opt = document.createElement("option");
+    opt.value = o.outline_version;
+    opt.textContent = `${o.outline_version}（${o.item_count} 页，${o.is_confirmed ? "已确认" : "候选"}）`;
+    sel.appendChild(opt);
+  }
+  if (outlines.length) await showOutline(outlines[0].outline_version);
+  else $("outline").innerHTML = "";
+
+  renderResult(data);
+  const active = data.tasks.find(t => t.status === "queued" || t.status === "running");
+  if (active) {
+    startPolling(active.task_id);
+  } else if (data.tasks.length) {
+    const last = data.tasks[data.tasks.length - 1];
+    $("status").textContent = `任务 ${last.task_id}：${last.status}${last.step ? " — " + last.step : ""}`
+      + (last.status === "failed" ? `\n失败原因：${last.error || "未知"}` : "");
+    $("status").className = "msg " + (last.status === "failed" ? "error" : "ok");
+  }
+}
+
+function renderResult(data) {
+  const report = data.latest_report;
+  if (report && report.success) {
+    $("result").textContent = `已导出 ${report.slide_count} 页（${report.artifact_id} r${report.artifact_revision}）。`;
+    $("result").className = "msg ok";
+  } else if (report) {
+    $("result").textContent = "最近一次导出未通过检查。";
+    $("result").className = "msg error";
+    renderIssues(report.issues || []);
+  } else {
+    $("result").textContent = "尚未生成。";
+    $("result").className = "msg";
+  }
+  const dl = $("download");
+  if (data.download_available) {
+    dl.style.display = "";
+    dl.href = `/api/projects/${projectId}/download`;
+  } else {
+    dl.style.display = "none";
+  }
+}
+
+function renderIssues(issues) {
+  const div = $("issues");
+  div.innerHTML = "";
+  if (!issues.length) return;
+  const ul = document.createElement("ul");
+  for (const i of issues) {
+    const li = document.createElement("li");
+    li.className = "error";
+    li.textContent = `[${i.code}]${i.slide_id ? " " + i.slide_id : ""} ${i.message}`;
+    ul.appendChild(li);
+  }
+  div.appendChild(ul);
+}
+
+async function showOutline(version) {
+  const outline = await api(`/api/projects/${projectId}/outlines/${version}`);
+  const div = $("outline");
+  div.innerHTML = "";
+  outline.items.forEach((item, idx) => {
+    const box = document.createElement("div");
+    box.className = "item";
+    const title = document.createElement("div");
+    title.textContent = `${idx + 1}. ${item.title}`;
+    const summary = document.createElement("div");
+    summary.textContent = item.summary;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = `来源: ${item.source_ids.join(", ") || "无"} | 证据: ${item.evidence_status}`;
+    box.append(title, summary, meta);
+    div.appendChild(box);
+  });
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function startPolling(taskId) {
+  stopPolling();
+  const tick = async () => {
+    let task;
+    try {
+      task = await api(`/api/projects/${projectId}/tasks/${taskId}`);
+    } catch (e) {
+      stopPolling();
+      setMsg("outline-msg", e.message, "error");
+      return;
+    }
+    $("status").textContent = `任务 ${task.task_id}：${task.status}${task.step ? " — " + task.step : ""}`;
+    if (task.status === "succeeded" || task.status === "failed") {
+      stopPolling();
+      if (task.status === "failed") {
+        $("status").textContent += `\n失败原因：${task.error || "未知"}`;
+        $("status").className = "msg error";
+        const exp = task.result && task.result.export;
+        if (exp && exp.issues) renderIssues(exp.issues);
+        const val = task.result && task.result.validation;
+        if (val && val.issues) renderIssues(val.issues);
+      } else {
+        $("status").className = "msg ok";
+      }
+      await refreshProject();
+      if (task.status === "succeeded" && task.kind === "outline" && task.result.outline_version) {
+        $("outline-select").value = task.result.outline_version;
+        await showOutline(task.result.outline_version);
+      }
+    }
+  };
+  tick();
+  pollTimer = setInterval(tick, 1500);
+}
+
+$("create-project").onclick = async () => {
+  const id = $("new-project").value.trim();
+  if (!id) { setMsg("project-msg", "请输入项目 ID", "error"); return; }
+  try {
+    await api("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: id }),
+    });
+    projectId = id;
+    $("new-project").value = "";
+    setMsg("project-msg", "");
+    await loadProjects();
+  } catch (e) { setMsg("project-msg", e.message, "error"); }
+};
+
+$("project-select").onchange = async () => {
+  projectId = $("project-select").value;
+  await refreshProject();
+};
+
+$("upload").onclick = async () => {
+  const file = $("file-input").files[0];
+  if (!projectId) { setMsg("upload-msg", "请先创建或选择项目", "error"); return; }
+  if (!file) { setMsg("upload-msg", "请选择文件", "error"); return; }
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const r = await api(`/api/projects/${projectId}/materials`, { method: "POST", body: form });
+    setMsg("upload-msg", `已上传 ${r.asset_id}，切分为 ${r.source_fragments} 个来源片段。`, "ok");
+    await refreshProject();
+  } catch (e) { setMsg("upload-msg", e.message, "error"); }
+};
+
+$("gen-outline").onclick = async () => {
+  if (!projectId) { setMsg("outline-msg", "请先创建或选择项目", "error"); return; }
+  try {
+    const task = await api(`/api/projects/${projectId}/outline/generate`, { method: "POST" });
+    setMsg("outline-msg", "");
+    startPolling(task.task_id);
+  } catch (e) { setMsg("outline-msg", e.message, "error"); }
+};
+
+$("outline-select").onchange = () => showOutline($("outline-select").value);
+
+$("confirm-generate").onclick = async () => {
+  const version = $("outline-select").value;
+  if (!projectId || !version) { setMsg("outline-msg", "请先生成大纲", "error"); return; }
+  try {
+    await api(`/api/projects/${projectId}/outlines/${version}/confirm`, { method: "POST" });
+    const task = await api(`/api/projects/${projectId}/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outline_version: version }),
+    });
+    setMsg("outline-msg", "");
+    startPolling(task.task_id);
+  } catch (e) { setMsg("outline-msg", e.message, "error"); }
+};
+
+loadProjects().catch(e => setMsg("project-msg", e.message, "error"));
+</script>
+</body>
+</html>
