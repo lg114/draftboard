@@ -19,6 +19,14 @@ class AssetType(str, Enum):
     IMAGE = "image"
 
 
+class SlideLayout(str, Enum):
+    COVER = "cover"
+    CONTENT = "content"
+    BULLETS = "bullets"
+    TWO_COLUMN = "two_column"
+    CLOSING = "closing"
+
+
 class SourceFragment(BaseModel):
     source_id: str = Field(description="Unique source fragment ID")
     asset_id: str = Field(description="Asset this fragment comes from")
@@ -40,6 +48,51 @@ class OutlineItem(BaseModel):
     evidence_status: EvidenceStatus = Field(
         description="Evidence quality: supported, partial, or unsupported"
     )
+    layout: Optional[SlideLayout] = Field(
+        None,
+        description=(
+            "Requested slide layout; None lets the program apply its default "
+            "rule (first item cover, last closing, others content). "
+            "two_column is not derivable from an outline summary."
+        ),
+    )
+
+
+# Layouts the program can build from a confirmed outline item.
+OUTLINE_LAYOUTS = {
+    SlideLayout.COVER,
+    SlideLayout.CONTENT,
+    SlideLayout.BULLETS,
+    SlideLayout.CLOSING,
+}
+
+
+def validate_outline(items: list[OutlineItem], known_source_ids: set[str]) -> list[str]:
+    """Program-side outline validation; returns error messages (empty = valid)."""
+    errors: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        iid = item.outline_item_id
+        if iid in seen:
+            errors.append(f"Duplicate outline_item_id '{iid}'.")
+        seen.add(iid)
+        if not item.title.strip():
+            errors.append(f"Outline item '{iid}' has an empty title.")
+        if not item.summary.strip():
+            errors.append(f"Outline item '{iid}' has an empty summary.")
+        if not item.source_ids:
+            errors.append(f"Outline item '{iid}' cites no source_ids.")
+        for sid in item.source_ids:
+            if sid not in known_source_ids:
+                errors.append(
+                    f"Outline item '{iid}' cites unknown source_id '{sid}'."
+                )
+        if item.layout is not None and item.layout not in OUTLINE_LAYOUTS:
+            errors.append(
+                f"Outline item '{iid}': layout '{item.layout.value}' cannot be "
+                "generated from an outline; author the IR directly instead."
+            )
+    return errors
 
 
 class Outline(BaseModel):
@@ -49,14 +102,6 @@ class Outline(BaseModel):
     is_confirmed: bool = Field(
         False, description="True when user has approved this outline"
     )
-
-
-class SlideLayout(str, Enum):
-    COVER = "cover"
-    CONTENT = "content"
-    BULLETS = "bullets"
-    TWO_COLUMN = "two_column"
-    CLOSING = "closing"
 
 
 # Element roles allowed in the IR.  image/shape are reserved from M0 and
@@ -202,6 +247,17 @@ class ValidationReport(BaseModel):
     def has_errors(self) -> bool:
         """Return True if any issue has ERROR level."""
         return any(i.level == ValidationLevel.ERROR for i in self.issues)
+
+
+class ExportResult(BaseModel):
+    success: bool = Field(description="True only if the file was written and checks passed")
+    artifact_id: str = Field(description="Artifact that was exported")
+    artifact_revision: int = Field(description="Revision that was exported")
+    pptx_path: Optional[str] = Field(None, description="Written file path on success")
+    slide_count: int = Field(0, description="Number of slides in the written file")
+    issues: list[ValidationIssue] = Field(
+        default_factory=list, description="Problems that blocked the export"
+    )
 
 
 # ── Tool input / output schemas ──────────────────────────────────────────────

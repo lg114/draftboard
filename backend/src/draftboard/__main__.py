@@ -4,6 +4,10 @@ CLI entry point for the Draftboard workbench.
 Usage:
     draftboard run "Your prompt here" [--output result.json]
     draftboard init <project_id>
+    draftboard export <ir_json> [-o out.pptx]
+    draftboard outline <project_id> <version>
+    draftboard confirm <project_id> <version>
+    draftboard export-deck <project_id> <artifact_id> [--revision N]
 """
 
 import argparse
@@ -35,6 +39,24 @@ def main() -> None:
     export_p.add_argument("ir_json", help="Path to the artifact IR JSON file")
     export_p.add_argument(
         "--output", "-o", help="Output .pptx path (default: alongside the IR file)"
+    )
+
+    # outline: show a saved outline for review
+    outline_p = sub.add_parser("outline", help="Show a saved outline for review")
+    outline_p.add_argument("project_id", help="Project ID")
+    outline_p.add_argument("version", help="Outline version, e.g. v-abc12345")
+
+    # confirm: user explicitly approves an outline
+    confirm_p = sub.add_parser("confirm", help="Confirm an outline (user approval)")
+    confirm_p.add_argument("project_id", help="Project ID")
+    confirm_p.add_argument("version", help="Outline version to confirm")
+
+    # export-deck: export a stored artifact revision to PPTX
+    deck_p = sub.add_parser("export-deck", help="Export a stored artifact to PPTX")
+    deck_p.add_argument("project_id", help="Project ID")
+    deck_p.add_argument("artifact_id", help="Artifact ID")
+    deck_p.add_argument(
+        "--revision", type=int, default=None, help="Revision (default: latest)"
     )
 
     args = parser.parse_args()
@@ -95,6 +117,64 @@ def main() -> None:
             f"Exported {len(artifact.slides)} slides to {output}"
         )
         sys.exit(0)
+
+    elif args.command == "outline":
+        from draftboard.storage import ProjectStorage
+
+        try:
+            storage = ProjectStorage(args.project_id)
+            outline = storage.load_outline(args.version)
+        except KeyError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        status = "CONFIRMED" if outline.is_confirmed else "DRAFT (not confirmed)"
+        print(f"Outline {outline.outline_version} [{status}]")
+        for i, item in enumerate(outline.items, start=1):
+            layout = item.layout.value if item.layout else "auto"
+            print(f"\n{i}. [{item.outline_item_id}] {item.title} (layout: {layout})")
+            print(f"   {item.summary}")
+            print(f"   sources: {', '.join(item.source_ids)} | evidence: {item.evidence_status.value}")
+        if not outline.is_confirmed:
+            path = storage.root / "outlines" / f"{outline.outline_version}.json"
+            print(f"\nTo edit: modify {path}")
+            print(f"To approve: draftboard confirm {args.project_id} {outline.outline_version}")
+        sys.exit(0)
+
+    elif args.command == "confirm":
+        from draftboard.storage import ProjectStorage
+
+        try:
+            storage = ProjectStorage(args.project_id)
+            outline = storage.confirm_outline(args.version)
+        except KeyError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Outline {outline.outline_version} confirmed ({len(outline.items)} items).")
+        sys.exit(0)
+
+    elif args.command == "export-deck":
+        from draftboard.storage import ProjectStorage
+        from draftboard.tools import export_deck_impl
+
+        storage = ProjectStorage(args.project_id)
+        revision = args.revision
+        if revision is None:
+            revision = storage.next_revision(args.artifact_id) - 1
+        if revision < 1:
+            print(f"Error: artifact '{args.artifact_id}' has no revisions.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            result = export_deck_impl(args.project_id, args.artifact_id, revision)
+        except KeyError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        if result.success:
+            print(f"Exported {result.slide_count} slides to {result.pptx_path}")
+            sys.exit(0)
+        print("Export failed:", file=sys.stderr)
+        for issue in result.issues:
+            print(f"  [{issue.code}] {issue.message}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

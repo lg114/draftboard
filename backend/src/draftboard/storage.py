@@ -9,7 +9,7 @@ import hashlib
 import pathlib
 from typing import Optional
 
-from draftboard.models import Artifact, Outline, ValidationReport
+from draftboard.models import Artifact, Outline, SourceFragment, ValidationReport
 
 STORAGE_ROOT = pathlib.Path.home() / ".draftboard" / "projects"
 
@@ -34,6 +34,23 @@ class ProjectStorage:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(path)
+
+    # ── source fragments ─────────────────────────────────────────────────────
+
+    def save_sources(self, fragments: list[SourceFragment]) -> None:
+        """Persist the latest material read so citations can be validated."""
+        self._atomic_write(
+            self.root / "sources.json",
+            {"fragments": [f.model_dump() for f in fragments]},
+        )
+
+    def load_source_ids(self) -> set[str]:
+        """Return known source fragment IDs; empty set if never read."""
+        path = self.root / "sources.json"
+        if not path.exists():
+            return set()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {f["source_id"] for f in data["fragments"]}
 
     # ── outline ──────────────────────────────────────────────────────────────
 
@@ -79,6 +96,11 @@ class ProjectStorage:
             )
         data = json.loads(path.read_text(encoding="utf-8"))
         return Artifact.model_validate(data)
+
+    def save_export_report(self, artifact_id: str, revision: int, result: dict) -> None:
+        """Persist an export result report next to the exported file."""
+        path = self.root / "exports" / f"{artifact_id}-r{revision}.report.json"
+        self._atomic_write(path, result)
 
     def next_revision(self, artifact_id: str) -> int:
         """Return next revision number (max existing + 1, minimum 1)."""

@@ -10,6 +10,7 @@ from agents import Agent, OpenAIChatCompletionsModel, Runner
 from openai import AsyncOpenAI
 
 from draftboard.tools import (
+    export_deck,
     generate_slides,
     patch_slide,
     propose_outline,
@@ -24,7 +25,11 @@ Rules:
 - Always cite source_ids when making claims about materials
 - Never fabricate line numbers or image content
 - Mark evidence as 'unsupported' or 'partial' when you are not sure
-- Outline must be confirmed by the user before you can generate slides
+- Follow the pipeline: read_materials -> propose_outline -> user confirms -> generate_slides -> validate_artifact -> export_deck
+- The outline must be confirmed by the user (via the draftboard confirm CLI command) before you generate slides; you cannot confirm it yourself
+- generate_slides copies the confirmed outline verbatim; never rewrite or re-summarize confirmed content
+- After generating, call validate_artifact, then export_deck
+- Only report success when export_deck returns success=true with a file path; if it returns issues, relay them to the user with the slide and element IDs — never claim completion otherwise
 - Only use the provided tools; do not access external URLs or run shell commands
 """
 
@@ -70,7 +75,7 @@ def create_agent(model: Any = None) -> Agent:
     return Agent(
         name="DraftboardAgent",
         instructions=SYSTEM_PROMPT,
-        tools=[read_materials, propose_outline, generate_slides, patch_slide, validate_artifact],
+        tools=[read_materials, propose_outline, generate_slides, patch_slide, validate_artifact, export_deck],
         model=resolved_model,
     )
 

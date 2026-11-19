@@ -17,17 +17,22 @@ from draftboard.models import (
     Artifact,
     AssetType,
     EvidenceStatus,
+    ExportResult,
     MaterialContent,
     OutlineItem,
     Outline,
     ReadMaterialsOutput,
     Slide,
     SlideElement,
+    SlideLayout,
     SourceFragment,
     ValidationIssue,
     ValidationLevel,
     ValidationReport,
+    validate_ir,
+    validate_outline,
 )
+from draftboard.pptx_export import export_pptx
 from draftboard.storage import ProjectStorage
 
 # Set to a pathlib.Path in tests to redirect storage to a temporary directory.
@@ -121,6 +126,7 @@ def read_materials(
                 )
             )
 
+    storage.save_sources(fragments)
     return ReadMaterialsOutput(
         project_id=project_id,
         materials=materials,
@@ -151,8 +157,16 @@ def propose_outline(
 
     Returns:
         The saved Outline with a generated outline_version.
+
+    Raises:
+        ValueError: If titles/summaries are empty, item IDs repeat, citations
+            reference unknown source fragments, or a layout cannot be built
+            from an outline.  Nothing is saved on failure.
     """
     storage = _get_storage(project_id)
+    errors = validate_outline(items, storage.load_source_ids())
+    if errors:
+        raise ValueError("Invalid outline:\n" + "\n".join(errors))
     outline_version = f"v-{uuid.uuid4().hex[:8]}"
     outline = Outline(
         outline_version=outline_version,
@@ -210,30 +224,57 @@ def generate_slides(
             "Ask the user to confirm the outline before generating slides."
         )
 
-    # Build slides
+    # Build slides verbatim from the confirmed outline.  Layout comes from
+    # the confirmed item, or the program default: first cover, last closing,
+    # others content.  No model rewriting happens here.
+    n = len(outline.items)
     slides: list[Slide] = []
     for idx, item in enumerate(outline.items):
         slide_id = f"slide-{idx + 1:03d}"
         source_id = item.source_ids[0] if item.source_ids else None
-        slides.append(
-            Slide(
-                slide_id=slide_id,
-                elements=[
-                    SlideElement(
-                        element_id=f"{slide_id}-title",
-                        type="title",
-                        content=item.title,
-                        source_id=source_id,
-                    ),
-                    SlideElement(
-                        element_id=f"{slide_id}-text",
-                        type="text",
-                        content=item.summary,
-                        source_id=source_id,
-                    ),
-                ],
+        layout = item.layout
+        if layout is None:
+            if idx == 0:
+                layout = SlideLayout.COVER
+            elif idx == n - 1:
+                layout = SlideLayout.CLOSING
+            else:
+                layout = SlideLayout.CONTENT
+
+        elements = [
+            SlideElement(
+                element_id=f"{slide_id}-title",
+                type="title",
+                content=item.title,
+                source_id=source_id,
             )
-        )
+        ]
+        if layout == SlideLayout.BULLETS:
+            lines = [ln for ln in item.summary.split("\n") if ln.strip()]
+            for bi, line in enumerate(lines, start=1):
+                elements.append(
+                    SlideElement(
+                        element_id=f"{slide_id}-bullet-{bi}",
+                        type="bullet",
+                        content=line,
+                        source_id=source_id,
+                    )
+                )
+        else:
+            role = {
+                SlideLayout.COVER: "subtitle",
+                SlideLayout.CONTENT: "text",
+                SlideLayout.CLOSING: "conclusion",
+            }[layout]
+            elements.append(
+                SlideElement(
+                    element_id=f"{slide_id}-{role}",
+                    type=role,
+                    content=item.summary,
+                    source_id=source_id,
+                )
+            )
+        slides.append(Slide(slide_id=slide_id, layout=layout, elements=elements))
 
     artifact_id = f"art-{uuid.uuid4().hex[:8]}"
     artifact = Artifact(
@@ -244,6 +285,9 @@ def generate_slides(
         outline_version=approved_outline_version,
         template_id=template_id,
     )
+    ir_errors = validate_ir(artifact)
+    if ir_errors:
+        raise ValueError("Generated IR is invalid:\n" + "\n".join(ir_errors))
     storage.save_artifact(artifact)
 
     if idempotency_key:
@@ -398,6 +442,15 @@ def validate_artifact(artifact_id: str, revision: int) -> ValidationReport:
 
     issues: list[ValidationIssue] = []
 
+    for msg in validate_ir(artifact):
+        issues.append(
+            ValidationIssue(
+                level=ValidationLevel.ERROR,
+                code="IR_INVALID",
+                message=msg,
+            )
+        )
+
     for slide in artifact.slides:
         has_title = any(el.type == "title" for el in slide.elements)
         if not has_title:
@@ -428,3 +481,76 @@ def validate_artifact(artifact_id: str, revision: int) -> ValidationReport:
         artifact_revision=revision,
         issues=issues,
     )
+
+
+# ── Tool 6: export_deck ───────────────────────────────────────────────────────
+
+
+def export_deck_impl(
+    project_id: str,
+    artifact_id: str,
+    revision: int,
+    idempotency_key: str = "",
+) -> ExportResult:
+    """Export a validated artifact revision to an editable PPTX file.
+
+    The program performs layout measurement, validation, and file writing;
+    success means the file exists on disk and all checks passed — never
+    trust a verbal claim of completion.  The result and any blocking issues
+    are saved as a JSON report next to the file.  On failure no PPTX is
+    written and the issues identify the affected slides and elements.
+
+    Args:
+        project_id: Project that owns the artifact.
+        artifact_id: Artifact to export.
+        revision: Revision to export.
+        idempotency_key: Unique key; identical keys return the cached
+            successful result without re-exporting.
+
+    Returns:
+        ExportResult with success flag, file path, and issue list.
+    """
+    storage = _get_storage(project_id)
+
+    if idempotency_key:
+        cached = storage.load_idempotent_result(idempotency_key)
+        if cached is not None:
+            return ExportResult.model_validate(cached)
+
+    artifact = storage.load_artifact(artifact_id, revision)
+    exports_dir = storage.root / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    pptx_path = exports_dir / f"{artifact_id}-r{revision}.pptx"
+
+    try:
+        export_pptx(artifact, pptx_path)
+    except (ValueError, FileNotFoundError) as e:
+        result = ExportResult(
+            success=False,
+            artifact_id=artifact_id,
+            artifact_revision=revision,
+            issues=[
+                ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    code="EXPORT_FAILED",
+                    message=str(e),
+                )
+            ],
+        )
+        storage.save_export_report(artifact_id, revision, result.model_dump())
+        return result
+
+    result = ExportResult(
+        success=True,
+        artifact_id=artifact_id,
+        artifact_revision=revision,
+        pptx_path=str(pptx_path),
+        slide_count=len(artifact.slides),
+    )
+    storage.save_export_report(artifact_id, revision, result.model_dump())
+    if idempotency_key:
+        storage.save_idempotent_result(idempotency_key, result.model_dump())
+    return result
+
+
+export_deck = function_tool(export_deck_impl)

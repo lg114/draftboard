@@ -164,3 +164,53 @@ async def test_full_pipeline_smoke(api_key, tmp_project, monkeypatch):
     )
     result2 = await run_agent(prompt2)
     assert isinstance(result2, str)
+
+
+# ── 6. Full pipeline through export: success judged by file + report ─────────
+
+
+async def test_full_pipeline_export(api_key, tmp_project, monkeypatch):
+    import json
+
+    import draftboard.tools as tools_module
+    from draftboard.storage import ProjectStorage
+    from draftboard.agent import run_agent
+
+    project_id, tmp_path = tmp_project
+    monkeypatch.setattr(tools_module, "_storage_root", tmp_path)
+
+    prompt = (
+        f"Read materials for project '{project_id}' using read_materials, "
+        f"then call propose_outline to save an outline with 2 items citing "
+        f"real source_ids. Report the outline_version returned."
+    )
+    await run_agent(prompt)
+
+    storage = ProjectStorage(project_id, storage_root=tmp_path)
+    outlines_dir = storage.root / "outlines"
+    outline_files = list(outlines_dir.glob("*.json")) if outlines_dir.exists() else []
+    if not outline_files:
+        pytest.skip("Agent did not save an outline")
+    outline_version = outline_files[0].stem
+    storage.confirm_outline(outline_version)
+
+    await asyncio.sleep(6)
+
+    prompt2 = (
+        f"Call generate_slides for project '{project_id}' with "
+        f"approved_outline_version='{outline_version}' and idempotency_key='export-smoke-001'. "
+        f"Then call validate_artifact on the returned artifact_id at revision 1, "
+        f"then call export_deck for the same artifact at revision 1. "
+        f"Report whether export_deck returned success=true and the file path."
+    )
+    await run_agent(prompt2)
+
+    # Success is judged by the written file and report, not the model's words.
+    exports_dir = storage.root / "exports"
+    pptx_files = list(exports_dir.glob("*.pptx")) if exports_dir.exists() else []
+    if not pptx_files:
+        pytest.skip("Agent did not complete the export")
+    report_path = pptx_files[0].with_name(pptx_files[0].stem + ".report.json")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["success"] is True
+    assert report["slide_count"] == 2
