@@ -2,7 +2,7 @@
 
 @layer base {
   body {
-    background-color: #f8f9fa;
+    background-color: #f6f6f7;
     color: #111827;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -12,11 +12,11 @@
 }
 
 .shadow-bento {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
 }
 
 .shadow-bento-hover {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
 }
 
 .custom-scrollbar::-webkit-scrollbar {

@@ -80,7 +80,7 @@ export default function PreviewPage() {
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
       {/* Top Header */}
-      <div className="bg-white border border-[#eaecf0] rounded-2xl px-5 py-3.5 shadow-bento flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white border border-[#e5e7eb] rounded-2xl px-5 py-3.5 shadow-bento flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
             href={`/p/${pid}`}
@@ -144,7 +144,7 @@ export default function PreviewPage() {
       {preview && preview.pages.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* Main Stage (9 cols) */}
-          <div className="lg:col-span-9 bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-3">
+          <div className="lg:col-span-9 bg-white border border-[#e5e7eb] rounded-2xl p-5 shadow-bento space-y-3">
             <div className="flex items-center justify-between text-xs text-[#6b7280] pb-3 border-b border-[#f3f4f6] font-mono">
               <span className="flex items-center gap-1.5 text-[#111827] font-medium font-sans">
                 <FileCheck className="w-4 h-4 text-[#059669]" />
@@ -187,7 +187,7 @@ export default function PreviewPage() {
           </div>
 
           {/* Thumbnails Sidebar (3 cols) */}
-          <div className="lg:col-span-3 bg-white border border-[#eaecf0] rounded-2xl p-4 shadow-bento space-y-2.5 max-h-[700px] overflow-y-auto custom-scrollbar">
+          <div className="lg:col-span-3 bg-white border border-[#e5e7eb] rounded-2xl p-4 shadow-bento space-y-2.5 max-h-[700px] overflow-y-auto custom-scrollbar">
             <div className="text-xs font-semibold text-[#111827] uppercase tracking-wider mb-2">
               幻灯片列表 ({preview.pages.length})
             </div>

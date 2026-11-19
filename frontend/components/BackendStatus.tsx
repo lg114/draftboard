@@ -61,25 +61,25 @@ export function BackendStatus() {
           ? "未检测到后端服务，请确认 draftboard serve 是否已启动"
           : "正在探测后端服务状态..."
       }
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border transition-all select-none cursor-default ${
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border transition-all select-none cursor-default shadow-2xs ${
         status === "online"
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200/80"
+          ? "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]"
           : status === "offline"
-          ? "bg-rose-50 text-rose-700 border-rose-200/80"
-          : "bg-stone-100 text-stone-500 border-stone-200"
+          ? "bg-[#fdf2f8] text-[#db2777] border-[#fbcfe8]"
+          : "bg-[#f1f3f5] text-[#6b7280] border-[#e2e4e8]"
       }`}
     >
       <span className="relative flex h-2 w-2">
         {status === "online" && (
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34d399] opacity-75"></span>
         )}
         <span
           className={`relative inline-flex rounded-full h-2 w-2 ${
             status === "online"
-              ? "bg-emerald-500"
+              ? "bg-[#10b981]"
               : status === "offline"
-              ? "bg-rose-500"
-              : "bg-amber-400 animate-pulse"
+              ? "bg-[#f43f5e]"
+              : "bg-[#f59e0b] animate-pulse"
           }`}
         ></span>
       </span>

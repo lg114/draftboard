@@ -678,7 +678,7 @@ export default function ProjectWorkspacePage() {
       />
 
       {/* Top Workspace Header Bar (Kite Bento Bar) */}
-      <div className="bg-white border border-[#eaecf0] rounded-2xl px-5 py-3 shadow-bento flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white border border-[#e5e7eb] rounded-2xl px-5 py-3 shadow-bento flex flex-wrap items-center justify-between gap-4">
         {/* Left: Clean Breadcrumb & Project Name */}
         <div className="flex items-center gap-2.5">
           <Link
@@ -692,7 +692,7 @@ export default function ProjectWorkspacePage() {
             {project?.name || pid}
           </span>
           {outline && (
-            <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-[#f3f4f6] text-[#4b5563] border border-[#eaecf0]">
+            <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-[#f3f4f6] text-[#4b5563] border border-[#e5e7eb]">
               {outline.items.length} 页
             </span>
           )}
@@ -705,7 +705,7 @@ export default function ProjectWorkspacePage() {
         </div>
 
         {/* Center: Kite-style Metric Pipeline Progress */}
-        <div className="hidden md:flex items-center gap-2 text-xs font-medium px-4 py-1.5 bg-[#f9fafb] rounded-full border border-[#eaecf0] select-none shadow-2xs">
+        <div className="hidden md:flex items-center gap-2 text-xs font-medium px-4 py-1.5 bg-[#f8f9fa] rounded-full border border-[#e5e7eb] select-none shadow-2xs">
           <span
             className={`flex items-center gap-1.5 ${
               materials.length > 0 ? "text-[#059669] font-semibold" : "text-[#9ca3af]"
@@ -754,7 +754,7 @@ export default function ProjectWorkspacePage() {
               <button
                 type="button"
                 onClick={() => setIsVersionDropdownOpen(!isVersionDropdownOpen)}
-                className="flex items-center gap-2 bg-white hover:bg-[#f9fafb] border border-[#eaecf0] hover:border-[#d1d5db] rounded-xl px-3 py-1.5 text-xs text-[#374151] font-mono transition-colors shadow-2xs cursor-pointer"
+                className="flex items-center gap-2 bg-white hover:bg-[#f9fafb] border border-[#e5e7eb] hover:border-[#d1d5db] rounded-xl px-3 py-1.5 text-xs text-[#374151] font-mono transition-colors shadow-2xs cursor-pointer"
                 title="切换历史大纲版本"
               >
                 <History className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
@@ -779,7 +779,7 @@ export default function ProjectWorkspacePage() {
                     className="fixed inset-0 z-40"
                     onClick={() => setIsVersionDropdownOpen(false)}
                   />
-                  <div className="absolute left-0 top-full mt-2 z-50 w-72 bg-white border border-[#eaecf0] rounded-2xl shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute left-0 top-full mt-2 z-50 w-72 bg-white border border-[#e5e7eb] rounded-2xl shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-3 py-1.5 text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">
                       历史大纲版本
                     </div>
@@ -842,7 +842,7 @@ export default function ProjectWorkspacePage() {
           {/* Material Pool Drawer Toggle */}
           <button
             onClick={() => setShowMaterialsDrawer(!showMaterialsDrawer)}
-            className="px-3 py-1.5 rounded-xl border border-[#eaecf0] bg-white hover:bg-[#f9fafb] text-[#374151] text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f9fafb] text-[#374151] text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
           >
             <FileText className="w-3.5 h-3.5 text-[#6b7280]" />
             <span>素材池 ({materials.length})</span>
@@ -856,7 +856,7 @@ export default function ProjectWorkspacePage() {
               className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
                 isStale
                   ? "bg-[#111827] hover:bg-black text-white shadow-xs cursor-pointer"
-                  : "bg-white border border-[#eaecf0] text-[#9ca3af] cursor-default"
+                  : "bg-white border border-[#e5e7eb] text-[#9ca3af] cursor-default"
               }`}
             >
               <Save className="w-3.5 h-3.5" />
@@ -870,7 +870,7 @@ export default function ProjectWorkspacePage() {
             className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
               isCopilotOpen
                 ? "bg-[#eef2ff] border-[#c7d2fe] text-[#4f46e5] shadow-2xs font-semibold"
-                : "bg-white hover:bg-[#f9fafb] border-[#eaecf0] text-[#374151]"
+                : "bg-white hover:bg-[#f9fafb] border-[#e5e7eb] text-[#374151]"
             }`}
             title="切换 AI 协同侧边栏"
           >
@@ -947,7 +947,7 @@ export default function ProjectWorkspacePage() {
 
       {/* Slide Materials Drawer (Kite Bento Drawer) */}
       {showMaterialsDrawer && (
-        <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4 animate-in fade-in duration-150">
+        <div className="bg-white border border-[#e5e7eb] rounded-2xl p-5 shadow-bento space-y-4 animate-in fade-in duration-150">
           <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#111827]">
               <Upload className="w-4 h-4 text-[#6b7280]" />
@@ -955,7 +955,7 @@ export default function ProjectWorkspacePage() {
             </div>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer px-3.5 py-1.5 bg-white hover:bg-[#f9fafb] border border-[#eaecf0] rounded-xl text-[#374151] text-xs font-medium shadow-2xs transition-colors flex items-center gap-1.5"
+              className="cursor-pointer px-3.5 py-1.5 bg-white hover:bg-[#f9fafb] border border-[#e5e7eb] rounded-xl text-[#374151] text-xs font-medium shadow-2xs transition-colors flex items-center gap-1.5"
             >
               <Plus className="w-3.5 h-3.5 text-[#6b7280]" />
               <span>上传材料 (.md, .txt, .png, .jpg)</span>
@@ -967,7 +967,7 @@ export default function ProjectWorkspacePage() {
               {materials.map((m) => (
                 <div
                   key={m.asset_id}
-                  className="p-3 rounded-xl bg-[#f9fafb] border border-[#eaecf0] flex items-center justify-between text-xs"
+                  className="p-3 rounded-xl bg-[#f8f9fa] border border-[#e5e7eb] flex items-center justify-between text-xs"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {m.asset_type === "image" ? (
@@ -1105,7 +1105,7 @@ export default function ProjectWorkspacePage() {
         <div
           className={`${
             isCopilotOpen ? "lg:col-span-5 xl:col-span-4" : "lg:col-span-7"
-          } bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4 min-h-[580px] flex flex-col justify-between transition-all duration-200`}
+          } bg-white border border-[#e5e7eb] rounded-2xl p-5 shadow-bento space-y-4 min-h-[580px] flex flex-col justify-between transition-all duration-200`}
         >
           <div className="space-y-4">
             {/* Header: Plain Naming ("大纲") */}
@@ -1116,7 +1116,7 @@ export default function ProjectWorkspacePage() {
                     大纲
                   </h2>
                   {outline && (
-                    <span className="text-xs font-mono text-[#4b5563] bg-[#f3f4f6] border border-[#eaecf0] px-2 py-0.5 rounded-lg">
+                    <span className="text-xs font-mono text-[#4b5563] bg-[#f3f4f6] border border-[#e5e7eb] px-2 py-0.5 rounded-lg">
                       {outline.items.length} 页
                     </span>
                   )}
@@ -1129,7 +1129,7 @@ export default function ProjectWorkspacePage() {
               {outline && outline.items.length > 0 && (
                 <button
                   onClick={addBlock}
-                  className="px-3 py-1 bg-white hover:bg-[#f9fafb] text-[#374151] border border-[#eaecf0] rounded-xl text-xs font-medium shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+                  className="px-3 py-1 bg-white hover:bg-[#f9fafb] text-[#374151] border border-[#e5e7eb] rounded-xl text-xs font-medium shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5 text-[#6b7280]" />
                   <span>添加一页</span>
@@ -1215,8 +1215,8 @@ export default function ProjectWorkspacePage() {
                       onClick={() => setSelectedIndex(idx)}
                       className={`doc-block-transition pl-3.5 pr-3 py-3 rounded-xl transition-all cursor-pointer relative border ${
                         isActive
-                          ? "border-[#eaecf0] bg-[#f9fafb] shadow-2xs border-l-[3.5px] border-l-[#4f46e5]"
-                          : "border-[#eaecf0]/80 bg-white hover:bg-[#f9fafb]/60 hover:border-[#eaecf0]"
+                          ? "border-[#e5e7eb] bg-[#f8f9fa] shadow-2xs border-l-[3.5px] border-l-[#4f46e5]"
+                          : "border-[#e5e7eb]/80 bg-white hover:bg-[#f8f9fa]/70 hover:border-[#cbd5e1]"
                       }`}
                     >
                       <div className="flex items-center justify-between text-xs mb-1.5">
@@ -1401,7 +1401,7 @@ export default function ProjectWorkspacePage() {
             isCopilotOpen ? "lg:col-span-4 xl:col-span-5" : "lg:col-span-5"
           } space-y-4 lg:sticky lg:top-16 transition-all duration-200`}
         >
-          <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4">
+          <div className="bg-white border border-[#e5e7eb] rounded-2xl p-5 shadow-bento space-y-4">
             {/* Header: Plain Naming ("预览", "全屏") */}
             <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
               <div className="flex items-center gap-2">
@@ -1413,7 +1413,7 @@ export default function ProjectWorkspacePage() {
                 <span className="font-bold text-sm text-[#111827] tracking-tight">
                   预览
                 </span>
-                <span className="text-[11px] px-2 py-0.5 bg-[#f3f4f6] text-[#4b5563] border border-[#eaecf0] rounded-lg font-mono">
+                <span className="text-[11px] px-2 py-0.5 bg-[#f3f4f6] text-[#4b5563] border border-[#e5e7eb] rounded-lg font-mono">
                   {outline && outline.items.length > 0
                     ? `第 ${selectedIndex + 1} 页 / 共 ${outline.items.length} 页`
                     : "待排版"}
@@ -1521,7 +1521,7 @@ export default function ProjectWorkspacePage() {
             )}
 
             {/* 版面检查 (QA Panel) - Kite Status Badge Style */}
-            <div className="p-4 rounded-xl bg-[#f9fafb] border border-[#eaecf0] space-y-2.5 text-xs">
+            <div className="p-4 rounded-xl bg-[#f8f9fa] border border-[#e5e7eb] space-y-2.5 text-xs">
               <div className="flex items-center justify-between font-semibold text-[#111827]">
                 <span className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-[#059669]" />
@@ -1613,7 +1613,7 @@ export default function ProjectWorkspacePage() {
         {/* Right Column: AI Copilot Sidebar (Collapsible) */}
         {isCopilotOpen && (
           <div className="lg:col-span-3 xl:col-span-3 space-y-4 lg:sticky lg:top-16 animate-in fade-in slide-in-from-right-4 duration-200">
-            <div className="bg-white border border-[#eaecf0] rounded-2xl p-4 shadow-bento flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-h-[820px] justify-between">
+            <div className="bg-white border border-[#e5e7eb] rounded-2xl p-4 shadow-bento flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-h-[820px] justify-between">
               {/* Copilot Header */}
               <div className="pb-3 border-b border-[#f3f4f6] flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 shrink-0">

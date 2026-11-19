@@ -11,8 +11,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className="min-h-screen flex flex-col bg-[#f8f9fa] text-[#111827]">
-        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#eaecf0] px-6 py-2.5 flex items-center justify-between gap-4">
+      <body className="min-h-screen flex flex-col bg-[#f6f6f7] text-[#111827]">
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#e5e7eb] px-6 py-2.5 flex items-center justify-between gap-4 shadow-2xs">
           {/* Left: Brand Logo & Title */}
           <div className="flex items-center gap-3">
             <Link
@@ -30,14 +30,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
 
           {/* Center: Kite-style Quick Search Bar */}
-          <div className="hidden md:flex items-center gap-8 bg-[#f3f4f6] hover:bg-[#eceef2] border border-transparent hover:border-[#e5e7eb] rounded-xl px-3.5 py-1.5 text-xs text-[#6b7280] cursor-pointer transition-all">
+          <div className="hidden md:flex items-center gap-8 bg-[#f0f1f3] hover:bg-[#e9eaee] border border-transparent hover:border-[#d1d5db] rounded-xl px-3.5 py-1.5 text-xs text-[#6b7280] cursor-pointer transition-all">
             <div className="flex items-center gap-2">
               <svg className="w-3.5 h-3.5 text-[#9ca3af]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <span>搜索项目或材料...</span>
             </div>
-            <span className="font-mono text-[10px] bg-white border border-[#eaecf0] text-[#6b7280] px-1.5 py-0.5 rounded shadow-2xs">
+            <span className="font-mono text-[10px] bg-white border border-[#e5e7eb] text-[#6b7280] px-1.5 py-0.5 rounded shadow-2xs">
               ⌘K
             </span>
           </div>
@@ -47,7 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <BackendStatus />
             <Link
               href="/"
-              className="hover:text-[#111827] px-2.5 py-1 rounded-lg hover:bg-[#f3f4f6] transition-colors"
+              className="hover:text-[#111827] px-2.5 py-1 rounded-lg hover:bg-[#f0f1f3] transition-colors"
             >
               项目工坊
             </Link>
