@@ -216,16 +216,28 @@ export default function ProjectsPage() {
     );
   }, [projects, search]);
 
+  const totalMaterials = useMemo(
+    () => projects.reduce((acc, p) => acc + (p.materials_count || 0), 0),
+    [projects]
+  );
+  const totalSlides = useMemo(
+    () => projects.reduce((acc, p) => acc + (p.slide_count || 0), 0),
+    [projects]
+  );
+
   return (
-    <main className="max-w-5xl mx-auto px-6 py-10 space-y-10">
-      {/* Hero Section */}
-      <div className="flex items-start justify-between gap-4 border-b border-stone-200 pb-6">
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      {/* Kite Hero Greeting & Action Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-2">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
-            项目
+          <div className="text-xs font-medium text-[#6b7280]">
+            工坊概览 · 事实驱动的演示文稿工坊
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#111827] tracking-tight">
+            项目概览
           </h1>
-          <p className="text-sm text-stone-600 font-sans">
-            把素材整理成有出处的演示文稿
+          <p className="text-xs sm:text-sm text-[#4b5563]">
+            严格以原始素材为唯一论据，杜绝幻觉虚构，物理度量排版。
           </p>
         </div>
 
@@ -236,7 +248,7 @@ export default function ProjectsPage() {
               setShowCreate(!showCreate);
               setError("");
             }}
-            className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 mt-1"
+            className="px-4 py-2 bg-[#111827] hover:bg-black text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 self-start md:self-auto"
           >
             {showCreate ? (
               <>
@@ -253,17 +265,45 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      {/* Inline Create Drawer / Form (When Toggled) */}
+      {/* Kite-style Horizontal Metrics Capsule */}
+      {projects.length > 0 && (
+        <div className="bg-white border border-[#eaecf0] rounded-2xl px-5 py-3 shadow-bento flex flex-wrap items-center gap-3 sm:gap-6 text-xs text-[#4b5563]">
+          <div className="flex items-center gap-2">
+            <FolderPlus className="w-4 h-4 text-[#4f46e5]" />
+            <span className="font-semibold text-[#111827]">{projects.length}</span>
+            <span>个项目</span>
+          </div>
+          <span className="text-[#eaecf0] hidden sm:inline">|</span>
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-[#059669]" />
+            <span className="font-semibold text-[#111827]">{totalMaterials}</span>
+            <span>份原始素材</span>
+          </div>
+          <span className="text-[#eaecf0] hidden sm:inline">|</span>
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-[#d97706]" />
+            <span className="font-semibold text-[#111827]">{totalSlides}</span>
+            <span>页幻灯片</span>
+          </div>
+          <span className="text-[#eaecf0] hidden sm:inline">|</span>
+          <div className="flex items-center gap-2 text-[#059669]">
+            <ShieldCheck className="w-4 h-4 text-[#059669]" />
+            <span className="font-medium">100% 原始材料严密溯源</span>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Create Drawer / Form (Kite Bento Style) */}
       {showCreate && (
-        <section className="bg-stone-50 border border-stone-300 rounded-2xl p-5 shadow-xs space-y-3.5 transition-all animate-in fade-in duration-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-semibold text-stone-800">
-              <FolderPlus className="w-4 h-4 text-stone-600" />
+        <section className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4 transition-all animate-in fade-in duration-200">
+          <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#111827]">
+              <FolderPlus className="w-4 h-4 text-[#4f46e5]" />
               <span>创建新项目</span>
             </div>
             <button
               onClick={() => setShowCreate(false)}
-              className="text-stone-400 hover:text-stone-700 text-xs transition-colors"
+              className="text-[#9ca3af] hover:text-[#111827] text-xs transition-colors cursor-pointer"
             >
               取消
             </button>
@@ -282,12 +322,12 @@ export default function ProjectsPage() {
                 }}
                 disabled={loading}
                 autoFocus
-                className="flex-1 text-sm bg-white border border-stone-300 rounded-xl px-3.5 py-2 text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-500 transition-all font-sans"
+                className="flex-1 text-sm bg-[#f9fafb] focus:bg-white border border-[#eaecf0] rounded-xl px-3.5 py-2.5 text-[#111827] placeholder-[#9ca3af] focus:outline-none focus:border-[#4f46e5] transition-all font-sans"
               />
               <button
                 type="submit"
                 disabled={loading || !nameInput.trim()}
-                className="px-5 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 shrink-0 cursor-pointer"
+                className="px-5 py-2.5 bg-[#111827] hover:bg-black text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 shrink-0 cursor-pointer"
               >
                 {loading ? "创建中..." : "创建并进入"}
               </button>
@@ -295,7 +335,7 @@ export default function ProjectsPage() {
 
             {/* Auto-generated ID helper & optional customize */}
             {nameInput.trim() && (
-              <div className="flex items-center justify-between text-xs text-stone-500 font-mono px-1">
+              <div className="flex items-center justify-between text-xs text-[#6b7280] font-mono px-1">
                 <div className="flex items-center gap-2">
                   <span>目录标识:</span>
                   {isCustomizingId ? (
@@ -303,10 +343,10 @@ export default function ProjectsPage() {
                       value={customId}
                       onChange={(e) => setCustomId(e.target.value)}
                       placeholder="自定义英文 ID"
-                      className="bg-white border border-stone-300 rounded px-2 py-0.5 text-xs text-stone-800 focus:outline-none focus:border-stone-500"
+                      className="bg-white border border-[#eaecf0] rounded-lg px-2 py-0.5 text-xs text-[#111827] focus:outline-none focus:border-[#4f46e5]"
                     />
                   ) : (
-                    <span className="font-semibold text-stone-700 bg-stone-200/60 px-1.5 py-0.5 rounded">
+                    <span className="font-semibold text-[#374151] bg-[#f3f4f6] border border-[#eaecf0] px-2 py-0.5 rounded-md">
                       {effectiveId || "..."}
                     </span>
                   )}
@@ -314,7 +354,7 @@ export default function ProjectsPage() {
                 <button
                   type="button"
                   onClick={() => setIsCustomizingId(!isCustomizingId)}
-                  className="text-stone-500 hover:text-stone-800 underline text-[11px]"
+                  className="text-[#6b7280] hover:text-[#111827] underline text-[11px] cursor-pointer"
                 >
                   {isCustomizingId ? "恢复自动生成" : "自定义标识"}
                 </button>
@@ -335,104 +375,104 @@ export default function ProjectsPage() {
         <section className="space-y-4">
           {/* List Toolbar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
-            <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#111827]">
               <span>全部项目</span>
-              <span className="text-xs font-mono text-stone-500 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-mono text-[#4b5563] bg-[#f3f4f6] border border-[#eaecf0] px-2 py-0.5 rounded-lg">
                 {projects.length}
               </span>
             </div>
 
-            {/* Filter Search */}
+            {/* Filter Search (Kite Style Pill) */}
             {projects.length > 3 && (
               <div className="relative w-full sm:w-64">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-stone-400" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#9ca3af]" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="搜索项目名称或 ID..."
-                  className="w-full text-xs bg-white border border-stone-200 rounded-xl pl-8 pr-3 py-1.5 text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400"
+                  className="w-full text-xs bg-white border border-[#eaecf0] rounded-xl pl-8 pr-3 py-1.5 text-[#111827] placeholder-[#9ca3af] focus:outline-none focus:border-[#d1d5db] shadow-2xs"
                 />
               </div>
             )}
           </div>
 
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {/* Bento Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((p) => {
               const stageColors = {
-                ready: "bg-emerald-50 text-emerald-800 border-emerald-200/80",
-                confirmed: "bg-blue-50 text-blue-800 border-blue-200/80",
-                outline_draft: "bg-amber-50 text-amber-800 border-amber-200/80",
-                materials_ready: "bg-violet-50 text-violet-800 border-violet-200/80",
-                empty: "bg-stone-100 text-stone-600 border-stone-200/80",
+                ready: "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]",
+                confirmed: "bg-[#eef2ff] text-[#4f46e5] border-[#c7d2fe]",
+                outline_draft: "bg-[#fef3c7] text-[#b45309] border-[#fde68a]",
+                materials_ready: "bg-[#fdf2f8] text-[#db2777] border-[#fbcfe8]",
+                empty: "bg-[#f3f4f6] text-[#6b7280] border-[#eaecf0]",
               }[p.stage];
 
-              const stageIcons = {
-                ready: <CheckCircle2 className="w-3 h-3 text-emerald-600" />,
-                confirmed: <Layers className="w-3 h-3 text-blue-600" />,
-                outline_draft: <FileText className="w-3 h-3 text-amber-600" />,
-                materials_ready: <FileCode className="w-3 h-3 text-violet-600" />,
-                empty: <Plus className="w-3 h-3 text-stone-400" />,
+              const stageDots = {
+                ready: "bg-[#10b981]",
+                confirmed: "bg-[#4f46e5]",
+                outline_draft: "bg-[#f59e0b]",
+                materials_ready: "bg-[#f43f5e]",
+                empty: "bg-[#9ca3af]",
               }[p.stage];
 
               return (
                 <div
                   key={p.project_id}
-                  className="group bg-white border border-stone-200/90 hover:border-stone-400/80 hover:shadow-xs p-5 rounded-2xl transition-all flex flex-col justify-between space-y-4"
+                  className="group bg-white border border-[#eaecf0] hover:border-[#d1d5db] rounded-2xl p-5 shadow-bento hover:shadow-bento-hover transition-all flex flex-col justify-between space-y-4"
                 >
-                  {/* Card Header: Title + Pipeline Stage Badge */}
+                  {/* Card Header: Title + Kite Pastel Stage Pill */}
                   <div className="space-y-1.5">
                     <div className="flex items-start justify-between gap-3">
                       <Link
                         href={`/p/${p.project_id}`}
-                        className="font-bold text-base text-stone-900 group-hover:text-stone-700 transition-colors line-clamp-1"
+                        className="font-bold text-base text-[#111827] group-hover:text-[#4f46e5] transition-colors line-clamp-1 tracking-tight"
                         title={p.name}
                       >
                         {p.name}
                       </Link>
 
                       <span
-                        className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${stageColors}`}
+                        className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-0.5 rounded-full border shrink-0 shadow-2xs ${stageColors}`}
                       >
-                        {stageIcons}
+                        <span className={`w-1.5 h-1.5 rounded-full ${stageDots}`} />
                         <span>{p.stage_label}</span>
                       </span>
                     </div>
 
                     {/* Secondary identifier when name differs from ID */}
                     {p.name !== p.project_id && (
-                      <p className="text-[11px] font-mono text-stone-400">
+                      <p className="text-[11px] font-mono text-[#9ca3af]">
                         {p.project_id}
                       </p>
                     )}
                   </div>
 
-                  {/* Card Middle: Pipeline Metrics */}
-                  <div className="grid grid-cols-3 gap-2 py-2.5 px-3.5 bg-stone-50 border border-stone-200/60 rounded-xl text-xs">
+                  {/* Card Middle: Pipeline Metrics in Kite Bento Style */}
+                  <div className="grid grid-cols-3 gap-2 py-2.5 px-3.5 bg-[#f9fafb] border border-[#eaecf0] rounded-xl text-xs">
                     <div>
-                      <div className="text-[11px] text-stone-500 font-medium">
+                      <div className="text-[11px] text-[#6b7280] font-medium">
                         幻灯片
                       </div>
-                      <div className="font-semibold text-stone-900 mt-0.5">
+                      <div className="font-semibold text-[#111827] mt-0.5">
                         {p.slide_count > 0 ? `${p.slide_count} 页` : "未生成"}
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] text-stone-500 font-medium">
+                      <div className="text-[11px] text-[#6b7280] font-medium">
                         材料溯源
                       </div>
                       <div className="mt-0.5">
                         {p.slide_count === 0 ? (
-                          <span className="text-stone-400">—</span>
+                          <span className="text-[#9ca3af]">—</span>
                         ) : p.insufficient_evidence_count > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
-                            <AlertTriangle className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#b45309]">
+                            <AlertTriangle className="w-3 h-3 text-[#f59e0b]" />
                             {p.insufficient_evidence_count} 处缺出处
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
-                            <ShieldCheck className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#059669]">
+                            <ShieldCheck className="w-3 h-3 text-[#10b981]" />
                             依据严密
                           </span>
                         )}
@@ -440,19 +480,19 @@ export default function ProjectsPage() {
                     </div>
 
                     <div>
-                      <div className="text-[11px] text-stone-500 font-medium">
+                      <div className="text-[11px] text-[#6b7280] font-medium">
                         素材池
                       </div>
-                      <div className="font-semibold text-stone-900 mt-0.5">
+                      <div className="font-semibold text-[#111827] mt-0.5">
                         {p.materials_count > 0 ? `${p.materials_count} 份` : "空"}
                       </div>
                     </div>
                   </div>
 
                   {/* Card Footer: Timestamp & Quick Action */}
-                  <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-100 text-stone-500">
-                    <div className="flex items-center gap-1 font-sans text-xs text-stone-500">
-                      <Clock className="w-3.5 h-3.5 text-stone-400" />
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-[#f3f4f6] text-[#6b7280]">
+                    <div className="flex items-center gap-1.5 font-sans text-xs text-[#9ca3af]">
+                      <Clock className="w-3.5 h-3.5 text-[#9ca3af]" />
                       <span>{formatRelativeTime(p.mtime)}</span>
                     </div>
 
@@ -462,7 +502,7 @@ export default function ProjectsPage() {
                           href={`/api/projects/${p.project_id}/download`}
                           download
                           onClick={(e) => e.stopPropagation()}
-                          className="text-[11px] font-medium text-stone-600 hover:text-stone-900 flex items-center gap-1 transition-colors"
+                          className="text-[11px] font-medium text-[#4b5563] hover:text-[#111827] flex items-center gap-1 transition-colors"
                           title="下载 PPTX 文件"
                         >
                           <Download className="w-3 h-3" />
@@ -472,7 +512,7 @@ export default function ProjectsPage() {
 
                       <Link
                         href={`/p/${p.project_id}`}
-                        className="font-medium text-stone-900 hover:text-stone-600 flex items-center gap-1 transition-colors"
+                        className="font-semibold text-[#111827] hover:text-[#4f46e5] flex items-center gap-1 transition-colors"
                       >
                         <span>进入工作台</span>
                         <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -485,17 +525,17 @@ export default function ProjectsPage() {
           </div>
         </section>
       ) : loaded ? (
-        /* Empty State: Focused Creation Prompt */
-        <section className="bg-white border border-stone-200 rounded-3xl p-8 sm:p-12 text-center max-w-xl mx-auto space-y-6 shadow-xs">
-          <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center mx-auto text-stone-700">
-            <Sparkles className="w-6 h-6" />
+        /* Empty State: Focused Creation Prompt in Kite Bento Style */
+        <section className="bg-white border border-[#eaecf0] rounded-3xl p-8 sm:p-12 text-center max-w-xl mx-auto space-y-6 shadow-bento">
+          <div className="w-12 h-12 bg-[#f3f4f6] rounded-2xl flex items-center justify-center mx-auto text-[#111827] border border-[#eaecf0]">
+            <Sparkles className="w-6 h-6 text-[#4f46e5]" />
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-lg font-bold text-stone-900">
+            <h2 className="text-lg font-bold text-[#111827] tracking-tight">
               创建你的第一个演示文稿项目
             </h2>
-            <p className="text-sm text-stone-500 leading-relaxed max-w-md mx-auto">
+            <p className="text-xs sm:text-sm text-[#6b7280] leading-relaxed max-w-md mx-auto">
               输入项目名称，导入原始材料，AI 将为你提炼严密大纲并物理排版为 PowerPoint 文稿。
             </p>
           </div>
@@ -513,24 +553,24 @@ export default function ProjectsPage() {
                 }}
                 disabled={loading}
                 autoFocus
-                className="flex-1 text-sm bg-stone-50 border border-stone-300 rounded-xl px-3.5 py-2.5 text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-500 focus:bg-white transition-all font-sans"
+                className="flex-1 text-sm bg-[#f9fafb] border border-[#eaecf0] rounded-xl px-3.5 py-2.5 text-[#111827] placeholder-[#9ca3af] focus:outline-none focus:border-[#4f46e5] focus:bg-white transition-all font-sans"
               />
               <button
                 type="submit"
                 disabled={loading || !nameInput.trim()}
-                className="px-5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 shrink-0 cursor-pointer"
+                className="px-5 py-2.5 bg-[#111827] hover:bg-black text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 shrink-0 cursor-pointer"
               >
                 {loading ? "创建中..." : "创建并开始"}
               </button>
             </div>
 
             {nameInput.trim() && (
-              <div className="flex items-center justify-between text-xs text-stone-500 font-mono px-1">
+              <div className="flex items-center justify-between text-xs text-[#6b7280] font-mono px-1">
                 <span>生成目录: {effectiveId}</span>
                 <button
                   type="button"
                   onClick={() => setIsCustomizingId(!isCustomizingId)}
-                  className="text-stone-500 hover:text-stone-800 underline text-[11px]"
+                  className="text-[#6b7280] hover:text-[#111827] underline text-[11px] cursor-pointer"
                 >
                   {isCustomizingId ? "自动生成" : "自定义 ID"}
                 </button>
@@ -542,7 +582,7 @@ export default function ProjectsPage() {
                 value={customId}
                 onChange={(e) => setCustomId(e.target.value)}
                 placeholder="自定义英文 ID (例如: 2026-strategy)"
-                className="w-full text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-stone-800 focus:outline-none focus:border-stone-500"
+                className="w-full text-xs font-mono bg-[#f9fafb] border border-[#eaecf0] rounded-lg px-3 py-1.5 text-[#111827] focus:outline-none focus:border-[#4f46e5]"
               />
             )}
 
@@ -555,42 +595,42 @@ export default function ProjectsPage() {
         </section>
       ) : null}
 
-      {/* Pipeline Three-Step Guide (Solves Lower-Half Empty Feel & Guides the User) */}
-      <section className="border-t border-stone-200/80 pt-8 space-y-4">
-        <div className="flex items-center justify-between text-xs font-semibold text-stone-700 uppercase tracking-wider px-1">
+      {/* Pipeline Three-Step Guide (Kite Bento Cards) */}
+      <section className="border-t border-[#eaecf0] pt-8 space-y-4">
+        <div className="flex items-center justify-between text-xs font-semibold text-[#111827] uppercase tracking-wider px-1">
           <span>制作流水线概览</span>
-          <span className="text-stone-400 font-normal font-sans normal-case">
+          <span className="text-[#6b7280] font-normal font-sans normal-case">
             严密事实核验 · 物理排版安全
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-          <div className="bg-white border border-stone-200/80 rounded-2xl p-4.5 space-y-2">
-            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-700 text-xs font-bold font-mono">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#f3f4f6] border border-[#eaecf0] flex items-center justify-center text-[#111827] text-xs font-bold font-mono">
               01
             </div>
-            <h3 className="font-semibold text-sm text-stone-900">投入原始素材</h3>
-            <p className="text-xs text-stone-500 leading-relaxed">
+            <h3 className="font-semibold text-sm text-[#111827]">投入原始素材</h3>
+            <p className="text-xs text-[#6b7280] leading-relaxed">
               上传 Markdown 笔记、报告段落与图片。系统自动解析切片并建立事实索引与引用锚点。
             </p>
           </div>
 
-          <div className="bg-white border border-stone-200/80 rounded-2xl p-4.5 space-y-2">
-            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-700 text-xs font-bold font-mono">
+          <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#f3f4f6] border border-[#eaecf0] flex items-center justify-center text-[#111827] text-xs font-bold font-mono">
               02
             </div>
-            <h3 className="font-semibold text-sm text-stone-900">大纲梳理与溯源</h3>
-            <p className="text-xs text-stone-500 leading-relaxed">
+            <h3 className="font-semibold text-sm text-[#111827]">大纲梳理与溯源</h3>
+            <p className="text-xs text-[#6b7280] leading-relaxed">
               AI 结构化提炼逐页要点，每页严格绑定原始材料来源。依据不足即时标黄预警，杜绝虚构。
             </p>
           </div>
 
-          <div className="bg-white border border-stone-200/80 rounded-2xl p-4.5 space-y-2">
-            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-700 text-xs font-bold font-mono">
+          <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#f3f4f6] border border-[#eaecf0] flex items-center justify-center text-[#111827] text-xs font-bold font-mono">
               03
             </div>
-            <h3 className="font-semibold text-sm text-stone-900">物理度量与排版导出</h3>
-            <p className="text-xs text-stone-500 leading-relaxed">
+            <h3 className="font-semibold text-sm text-[#111827]">物理度量与排版导出</h3>
+            <p className="text-xs text-[#6b7280] leading-relaxed">
               通过字形物理度量引擎校验字符边界（杜绝文字重叠和溢出），一键编译为标准 16:9 PPTX。
             </p>
           </div>

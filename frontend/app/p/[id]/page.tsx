@@ -659,68 +659,81 @@ export default function ProjectWorkspacePage() {
         className="hidden"
       />
 
-      {/* Top Workspace Header Bar */}
-      <div className="bg-white border border-stone-200/90 rounded-2xl px-5 py-3 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      {/* Top Workspace Header Bar (Kite Bento Bar) */}
+      <div className="bg-white border border-[#eaecf0] rounded-2xl px-5 py-3 shadow-bento flex flex-wrap items-center justify-between gap-4">
         {/* Left: Clean Breadcrumb & Project Name */}
         <div className="flex items-center gap-2.5">
           <Link
             href="/"
-            className="text-stone-500 hover:text-stone-900 text-xs font-medium transition-colors"
+            className="text-[#6b7280] hover:text-[#111827] text-xs font-medium transition-colors"
           >
             项目
           </Link>
-          <span className="text-stone-300">/</span>
-          <span className="font-bold text-base text-stone-900 tracking-tight">
+          <span className="text-[#d1d5db]">/</span>
+          <span className="font-bold text-base text-[#111827] tracking-tight">
             {project?.name || pid}
           </span>
           {outline && (
-            <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 border border-stone-200">
+            <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-[#f3f4f6] text-[#4b5563] border border-[#eaecf0]">
               {outline.items.length} 页
             </span>
           )}
           {isStale && (
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-              未保存的修改
+            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-[#fef3c7] text-[#b45309] border border-[#fde68a] flex items-center gap-1.5 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
+              <span>未保存的修改</span>
             </span>
           )}
         </div>
 
-        {/* Center: Clean 3-Stage Pipeline Progress (Replaces disabled buttons) */}
-        <div className="hidden md:flex items-center gap-1.5 text-xs text-stone-500 font-medium px-3 py-1 bg-stone-50 rounded-full border border-stone-200/60 select-none">
+        {/* Center: Kite-style Metric Pipeline Progress */}
+        <div className="hidden md:flex items-center gap-2 text-xs font-medium px-4 py-1.5 bg-[#f9fafb] rounded-full border border-[#eaecf0] select-none shadow-2xs">
           <span
-            className={`flex items-center gap-1 ${
-              materials.length > 0 ? "text-emerald-700 font-semibold" : "text-stone-500"
+            className={`flex items-center gap-1.5 ${
+              materials.length > 0 ? "text-[#059669] font-semibold" : "text-[#9ca3af]"
             }`}
           >
-            {materials.length > 0 ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />}
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                materials.length > 0 ? "bg-[#10b981]" : "bg-[#d1d5db]"
+              }`}
+            />
             <span>素材 ({materials.length})</span>
           </span>
-          <span className="text-stone-300">→</span>
+          <span className="text-[#d1d5db]">→</span>
           <span
-            className={`flex items-center gap-1 ${
-              outline ? "text-emerald-700 font-semibold" : "text-stone-500"
+            className={`flex items-center gap-1.5 ${
+              outline ? "text-[#059669] font-semibold" : "text-[#9ca3af]"
             }`}
           >
-            {outline ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />}
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                outline ? "bg-[#10b981]" : "bg-[#d1d5db]"
+              }`}
+            />
             <span>大纲 ({outline?.items?.length || 0}页)</span>
           </span>
-          <span className="text-stone-300">→</span>
+          <span className="text-[#d1d5db]">→</span>
           <span
-            className={`flex items-center gap-1 ${
-              project?.download_available ? "text-emerald-700 font-semibold" : "text-stone-500"
+            className={`flex items-center gap-1.5 ${
+              project?.download_available ? "text-[#059669] font-semibold" : "text-[#9ca3af]"
             }`}
           >
-            {project?.download_available ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />}
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                project?.download_available ? "bg-[#10b981]" : "bg-[#d1d5db]"
+              }`}
+            />
             <span>生成 PPT</span>
           </span>
         </div>
 
         {/* Right: Dynamic Adaptive Action Controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Outline Version Switcher (Only visible when versions exist) */}
+          {/* Outline Version Switcher */}
           {(project?.outlines?.length ?? 0) > 0 && (
-            <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1.5 text-stone-700">
-              <History className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+            <div className="flex items-center gap-1.5 bg-white border border-[#eaecf0] hover:border-[#d1d5db] rounded-xl px-2.5 py-1.5 text-[#374151] transition-colors shadow-2xs">
+              <History className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
               <select
                 value={version}
                 onChange={(e) => void showOutline(e.target.value)}
@@ -741,21 +754,21 @@ export default function ProjectWorkspacePage() {
           {/* Material Pool Drawer Toggle */}
           <button
             onClick={() => setShowMaterialsDrawer(!showMaterialsDrawer)}
-            className="px-3 py-1.5 rounded-xl border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 rounded-xl border border-[#eaecf0] bg-white hover:bg-[#f9fafb] text-[#374151] text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
           >
-            <FileText className="w-3.5 h-3.5 text-stone-500" />
+            <FileText className="w-3.5 h-3.5 text-[#6b7280]" />
             <span>素材池 ({materials.length})</span>
           </button>
 
-          {/* Save Outline Button (Only active when an outline is loaded) */}
+          {/* Save Outline Button */}
           {outline && (
             <button
               onClick={saveOutline}
               disabled={!isStale}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
                 isStale
-                  ? "bg-stone-100 hover:bg-stone-200 border-stone-300 text-stone-900 shadow-xs cursor-pointer"
-                  : "bg-white border-stone-200 text-stone-400 cursor-default"
+                  ? "bg-[#111827] hover:bg-black text-white shadow-xs cursor-pointer"
+                  : "bg-white border border-[#eaecf0] text-[#9ca3af] cursor-default"
               }`}
             >
               <Save className="w-3.5 h-3.5" />
@@ -768,20 +781,20 @@ export default function ProjectWorkspacePage() {
             onClick={() => setIsCopilotOpen(!isCopilotOpen)}
             className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
               isCopilotOpen
-                ? "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-2xs font-semibold"
-                : "bg-white hover:bg-stone-50 border-stone-200 text-stone-700"
+                ? "bg-[#eef2ff] border-[#c7d2fe] text-[#4f46e5] shadow-2xs font-semibold"
+                : "bg-white hover:bg-[#f9fafb] border-[#eaecf0] text-[#374151]"
             }`}
             title="切换 AI 协同侧边栏"
           >
             <Sparkles
               className={`w-3.5 h-3.5 ${
-                isCopilotOpen ? "text-emerald-600" : "text-stone-500"
+                isCopilotOpen ? "text-[#4f46e5]" : "text-[#6b7280]"
               }`}
             />
             <span>AI 协同</span>
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                isCopilotOpen ? "bg-emerald-600" : "bg-stone-300"
+                isCopilotOpen ? "bg-[#4f46e5]" : "bg-[#d1d5db]"
               }`}
             />
           </button>
@@ -790,9 +803,9 @@ export default function ProjectWorkspacePage() {
           {currentStage === "no_materials" && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-1.5 rounded-xl bg-[#111827] hover:bg-[#1f2937] text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <Upload className="w-3.5 h-3.5 text-emerald-400" />
+              <Upload className="w-3.5 h-3.5 text-[#34d399]" />
               <span>上传素材</span>
             </button>
           )}
@@ -801,9 +814,9 @@ export default function ProjectWorkspacePage() {
             <button
               onClick={genOutline}
               disabled={isGenerating}
-              className="px-4 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 rounded-xl bg-[#111827] hover:bg-[#1f2937] text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <Sparkles className="w-3.5 h-3.5 text-[#34d399]" />
               <span>{isGenerating ? "正在提炼..." : "生成大纲"}</span>
             </button>
           )}
@@ -812,9 +825,9 @@ export default function ProjectWorkspacePage() {
             <button
               onClick={confirmGenerate}
               disabled={isGenerating || !version}
-              className="px-4 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 rounded-xl bg-[#111827] hover:bg-[#1f2937] text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <Sparkles className="w-3.5 h-3.5 text-[#34d399]" />
               <span>{isGenerating ? "正在生成..." : "确认大纲并生成 PPT"}</span>
             </button>
           )}
@@ -824,7 +837,7 @@ export default function ProjectWorkspacePage() {
               <button
                 onClick={confirmGenerate}
                 disabled={isGenerating}
-                className="px-3 py-1.5 rounded-xl border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl border border-[#eaecf0] bg-white hover:bg-[#f9fafb] text-[#374151] text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
                 title="重新渲染生成 PPTX"
               >
                 <RefreshCw className={`w-3 h-3 ${isGenerating ? "animate-spin" : ""}`} />
@@ -834,7 +847,7 @@ export default function ProjectWorkspacePage() {
               <a
                 href={`/api/projects/${pid}/download`}
                 download
-                className="px-4 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-xl bg-[#059669] hover:bg-[#047857] text-white text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>下载 PPTX</span>
@@ -844,19 +857,19 @@ export default function ProjectWorkspacePage() {
         </div>
       </div>
 
-      {/* Slide Materials Drawer (Collapsible) */}
+      {/* Slide Materials Drawer (Kite Bento Drawer) */}
       {showMaterialsDrawer && (
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-xs space-y-4 animate-in fade-in duration-150">
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div className="flex items-center gap-2 text-xs font-semibold text-stone-800">
-              <Upload className="w-4 h-4 text-stone-600" />
+        <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#111827]">
+              <Upload className="w-4 h-4 text-[#6b7280]" />
               <span>原始素材池管理 ({materials.length})</span>
             </div>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer px-3 py-1.5 bg-stone-100 hover:bg-stone-200 rounded-xl text-stone-800 text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="cursor-pointer px-3.5 py-1.5 bg-white hover:bg-[#f9fafb] border border-[#eaecf0] rounded-xl text-[#374151] text-xs font-medium shadow-2xs transition-colors flex items-center gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 text-[#6b7280]" />
               <span>上传材料 (.md, .txt, .png, .jpg)</span>
             </button>
           </div>
@@ -866,39 +879,45 @@ export default function ProjectWorkspacePage() {
               {materials.map((m) => (
                 <div
                   key={m.asset_id}
-                  className="p-3 rounded-xl bg-stone-50 border border-stone-200/80 flex items-center justify-between text-xs"
+                  className="p-3 rounded-xl bg-[#f9fafb] border border-[#eaecf0] flex items-center justify-between text-xs"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {m.asset_type === "image" ? (
-                      <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" />
+                      <ImageIcon className="w-4 h-4 text-[#d97706] shrink-0" />
                     ) : (
-                      <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <FileText className="w-4 h-4 text-[#059669] shrink-0" />
                     )}
-                    <span className="truncate font-mono font-medium text-stone-800">
+                    <span className="truncate font-mono font-medium text-[#111827]">
                       {m.asset_id}
                     </span>
                   </div>
-                  <span className="text-[10px] text-stone-500 font-mono uppercase bg-white px-1.5 py-0.5 rounded border border-stone-200">
+                  <span
+                    className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-md border ${
+                      m.asset_type === "image"
+                        ? "bg-[#fef3c7] text-[#b45309] border-[#fde68a]"
+                        : "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]"
+                    }`}
+                  >
                     {m.asset_type}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-6 text-stone-400 text-xs">
+            <div className="text-center py-6 text-[#9ca3af] text-xs">
               暂无上传的材料。点击右上角按钮添加 Markdown 笔记或图片。
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-2 border-t border-stone-100 text-xs">
-            <span className="text-stone-500">
+          <div className="flex items-center justify-between pt-2 border-t border-[#f3f4f6] text-xs">
+            <span className="text-[#6b7280]">
               上传素材后，系统将建立不可篡改的事实索引切片，作为后续大纲与幻灯片的唯一论据。
             </span>
             {materials.length > 0 && (
               <button
                 onClick={genOutline}
                 disabled={isGenerating}
-                className="text-emerald-700 font-semibold hover:underline flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                className="text-[#059669] font-semibold hover:underline flex items-center gap-1 disabled:opacity-50 cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>{isGenerating ? "提炼中..." : "重新提取大纲"}</span>
@@ -972,12 +991,12 @@ export default function ProjectWorkspacePage() {
 
       {/* Progress / Step Toast */}
       {status && statusKind !== "error" && (
-        <div className="px-4 py-2 rounded-xl text-xs flex items-center justify-between bg-stone-100 text-stone-700 border border-stone-200">
+        <div className="px-4 py-2.5 rounded-xl text-xs flex items-center justify-between bg-[#f9fafb] text-[#374151] border border-[#eaecf0] shadow-2xs">
           <div className="flex items-center gap-2 font-mono">
             {statusKind === "ok" ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <CheckCircle2 className="w-4 h-4 text-[#059669]" />
             ) : (
-              <Clock className="w-4 h-4 text-stone-500 animate-spin" />
+              <Clock className="w-4 h-4 text-[#6b7280] animate-spin" />
             )}
             <span>{status}</span>
           </div>
@@ -986,8 +1005,9 @@ export default function ProjectWorkspacePage() {
 
       {/* Success Notification */}
       {msg && (
-        <div className="px-4 py-2 rounded-xl text-xs bg-emerald-50 text-emerald-800 border border-emerald-200">
-          {msg}
+        <div className="px-4 py-2.5 rounded-xl text-xs bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0] flex items-center gap-2 shadow-2xs">
+          <CheckCircle2 className="w-4 h-4 text-[#059669]" />
+          <span>{msg}</span>
         </div>
       )}
 
@@ -997,23 +1017,23 @@ export default function ProjectWorkspacePage() {
         <div
           className={`${
             isCopilotOpen ? "lg:col-span-5 xl:col-span-4" : "lg:col-span-7"
-          } bg-white border border-stone-200/90 rounded-2xl p-6 shadow-xs space-y-4 min-h-[580px] flex flex-col justify-between transition-all duration-200`}
+          } bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4 min-h-[580px] flex flex-col justify-between transition-all duration-200`}
         >
           <div className="space-y-4">
             {/* Header: Plain Naming ("大纲") */}
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-bold text-base text-stone-900 tracking-tight">
+                  <h2 className="font-bold text-base text-[#111827] tracking-tight">
                     大纲
                   </h2>
                   {outline && (
-                    <span className="text-xs font-mono text-stone-500 bg-stone-100 px-2 py-0.5 rounded">
+                    <span className="text-xs font-mono text-[#4b5563] bg-[#f3f4f6] border border-[#eaecf0] px-2 py-0.5 rounded-lg">
                       {outline.items.length} 页
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-stone-500">
+                <p className="text-xs text-[#6b7280]">
                   修改将实时反映在右侧预览中；每页均受材料事实严格约束。
                 </p>
               </div>
@@ -1021,9 +1041,9 @@ export default function ProjectWorkspacePage() {
               {outline && outline.items.length > 0 && (
                 <button
                   onClick={addBlock}
-                  className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                  className="px-3 py-1 bg-white hover:bg-[#f9fafb] text-[#374151] border border-[#eaecf0] rounded-xl text-xs font-medium shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5 text-[#6b7280]" />
                   <span>添加一页</span>
                 </button>
               )}
@@ -1038,25 +1058,25 @@ export default function ProjectWorkspacePage() {
                 onClick={() => fileInputRef.current?.click()}
                 className={`py-16 px-6 text-center rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center space-y-4 ${
                   isDragging
-                    ? "border-emerald-500 bg-emerald-50/50"
-                    : "border-stone-300 hover:border-stone-400 bg-stone-50/60 hover:bg-stone-50"
+                    ? "border-[#4f46e5] bg-[#eef2ff]/50"
+                    : "border-[#d1d5db] hover:border-[#9ca3af] bg-[#f9fafb] hover:bg-[#f3f4f6]"
                 }`}
               >
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-stone-200 flex items-center justify-center text-stone-700">
-                  <Upload className="w-5 h-5 text-emerald-700" />
+                <div className="w-12 h-12 rounded-2xl bg-white shadow-2xs border border-[#eaecf0] flex items-center justify-center text-[#374151]">
+                  <Upload className="w-5 h-5 text-[#4f46e5]" />
                 </div>
                 <div className="space-y-1.5 max-w-sm">
-                  <div className="text-sm font-semibold text-stone-900">
+                  <div className="text-sm font-semibold text-[#111827]">
                     第一步：投入原始材料
                   </div>
-                  <p className="text-xs text-stone-500 leading-relaxed">
+                  <p className="text-xs text-[#6b7280] leading-relaxed">
                     点击选择或直接将 Markdown (.md / .txt) 笔记、数据切片或图片拖入此处。
                   </p>
                 </div>
-                <span className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-medium shadow-xs">
+                <span className="px-4 py-2 bg-[#111827] hover:bg-black text-white rounded-xl text-xs font-medium shadow-xs">
                   选择本地文件
                 </span>
-                <span className="text-[11px] text-stone-400">
+                <span className="text-[11px] text-[#9ca3af]">
                   系统将严格以你上传的内容为事实基准，绝不编造虚构内容。
                 </span>
               </div>
@@ -1064,15 +1084,15 @@ export default function ProjectWorkspacePage() {
 
             {/* Stage 2: Has Materials, No Outline -> Clear Next Step Guide */}
             {currentStage === "has_materials_no_outline" && (
-              <div className="py-12 px-6 text-center rounded-2xl border border-stone-200 bg-stone-50/50 space-y-4">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center mx-auto text-emerald-800">
+              <div className="py-12 px-6 text-center rounded-2xl border border-[#eaecf0] bg-[#f9fafb] space-y-4">
+                <div className="w-10 h-10 rounded-xl bg-[#ecfdf5] border border-[#a7f3d0] flex items-center justify-center mx-auto text-[#059669]">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div className="space-y-1.5 max-w-sm mx-auto">
-                  <div className="text-sm font-semibold text-stone-900">
+                  <div className="text-sm font-semibold text-[#111827]">
                     已导入 {materials.length} 份材料
                   </div>
-                  <p className="text-xs text-stone-500 leading-relaxed">
+                  <p className="text-xs text-[#6b7280] leading-relaxed">
                     原始材料已就绪，点击下方按钮让 AI 梳理结构化大纲并建立事实引用索引。
                   </p>
                 </div>
@@ -1081,14 +1101,14 @@ export default function ProjectWorkspacePage() {
                   <button
                     onClick={genOutline}
                     disabled={isGenerating}
-                    className="w-full sm:w-auto px-5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="w-full sm:w-auto px-5 py-2.5 bg-[#111827] hover:bg-black text-white text-xs font-medium rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    <Sparkles className="w-3.5 h-3.5 text-[#34d399]" />
                     <span>{isGenerating ? "正在提炼大纲..." : "开始提炼大纲"}</span>
                   </button>
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-medium rounded-xl transition-colors cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-2.5 bg-white border border-[#eaecf0] hover:bg-[#f9fafb] text-[#374151] text-xs font-medium rounded-xl transition-colors cursor-pointer shadow-2xs"
                   >
                     + 继续上传素材
                   </button>
@@ -1096,32 +1116,32 @@ export default function ProjectWorkspacePage() {
               </div>
             )}
 
-            {/* Stage 3 & 4: Sequential Block Outline Editor */}
+            {/* Stage 3 & 4: Sequential Block Outline Editor (Kite Schedule Block Style) */}
             {outline && outline.items.length > 0 && (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {outline.items.map((item, idx) => {
                   const isActive = idx === selectedIndex;
                   return (
                     <div
                       key={item.outline_item_id}
                       onClick={() => setSelectedIndex(idx)}
-                      className={`doc-block-transition border-l-2 pl-3.5 pr-3 py-3 rounded-r-xl transition-all cursor-pointer relative ${
+                      className={`doc-block-transition pl-3.5 pr-3 py-3 rounded-xl transition-all cursor-pointer relative border ${
                         isActive
-                          ? "border-emerald-600 bg-emerald-50/40 shadow-xs"
-                          : "border-transparent hover:border-stone-300 hover:bg-stone-50/60"
+                          ? "border-[#eaecf0] bg-[#f9fafb] shadow-2xs border-l-[3.5px] border-l-[#4f46e5]"
+                          : "border-[#eaecf0]/80 bg-white hover:bg-[#f9fafb]/60 hover:border-[#eaecf0]"
                       }`}
                     >
                       <div className="flex items-center justify-between text-xs mb-1.5">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-stone-500">
+                          <span className="font-mono text-xs font-bold text-[#6b7280]">
                             {String(idx + 1).padStart(2, "0")}
                           </span>
-                          {/* Layout Selector (Plain Chinese Labels) */}
+                          {/* Layout Selector */}
                           <select
                             value={item.layout || "content"}
                             onChange={(e) => updateItem(idx, "layout", e.target.value)}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-[11px] font-sans bg-white border border-stone-300 rounded-md px-1.5 py-0.5 text-stone-700 focus:outline-none"
+                            className="text-[11px] font-sans bg-white border border-[#eaecf0] rounded-md px-1.5 py-0.5 text-[#374151] focus:outline-none shadow-2xs"
                           >
                             <option value="cover">封面</option>
                             <option value="content">正文</option>
@@ -1132,21 +1152,32 @@ export default function ProjectWorkspacePage() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {/* Evidence Pill */}
+                          {/* Kite Pastel Evidence Pill with Solid Dot */}
                           <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                            className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5 shadow-2xs ${
                               item.evidence_status === "supported"
-                                ? "bg-emerald-100 text-emerald-800"
+                                ? "bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0]/60"
                                 : item.evidence_status === "partial"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-stone-100 text-stone-600"
+                                ? "bg-[#fef3c7] text-[#b45309] border border-[#fde68a]/60"
+                                : "bg-[#fdf2f8] text-[#db2777] border border-[#fbcfe8]/60"
                             }`}
                           >
-                            {item.evidence_status === "supported"
-                              ? "依据充分"
-                              : item.evidence_status === "partial"
-                              ? "部分依据"
-                              : "缺出处"}
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                item.evidence_status === "supported"
+                                  ? "bg-[#10b981]"
+                                  : item.evidence_status === "partial"
+                                  ? "bg-[#f59e0b]"
+                                  : "bg-[#f43f5e]"
+                              }`}
+                            />
+                            <span>
+                              {item.evidence_status === "supported"
+                                ? "依据充分"
+                                : item.evidence_status === "partial"
+                                ? "部分依据"
+                                : "缺出处"}
+                            </span>
                           </span>
 
                           {/* Reorder & Delete tools */}
@@ -1158,7 +1189,7 @@ export default function ProjectWorkspacePage() {
                               disabled={idx === 0}
                               onClick={(e) => moveItem(idx, -1, e)}
                               title="上移"
-                              className="p-1 text-stone-400 hover:text-stone-700 disabled:opacity-20 cursor-pointer"
+                              className="p-1 text-[#9ca3af] hover:text-[#374151] disabled:opacity-20 cursor-pointer"
                             >
                               <ArrowUp className="w-3.5 h-3.5" />
                             </button>
@@ -1166,7 +1197,7 @@ export default function ProjectWorkspacePage() {
                               disabled={idx === outline.items.length - 1}
                               onClick={(e) => moveItem(idx, 1, e)}
                               title="下移"
-                              className="p-1 text-stone-400 hover:text-stone-700 disabled:opacity-20 cursor-pointer"
+                              className="p-1 text-[#9ca3af] hover:text-[#374151] disabled:opacity-20 cursor-pointer"
                             >
                               <ArrowDown className="w-3.5 h-3.5" />
                             </button>
@@ -1174,7 +1205,7 @@ export default function ProjectWorkspacePage() {
                               <button
                                 onClick={(e) => deleteBlock(idx, e)}
                                 title="删除此页"
-                                className="p-1 text-stone-400 hover:text-rose-600 cursor-pointer"
+                                className="p-1 text-[#9ca3af] hover:text-[#e11d48] cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1187,7 +1218,7 @@ export default function ProjectWorkspacePage() {
                       <input
                         value={item.title}
                         onChange={(e) => updateItem(idx, "title", e.target.value)}
-                        className="w-full font-bold text-sm text-stone-900 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-stone-400 focus:bg-white outline-none py-0.5 transition-all"
+                        className="w-full font-semibold text-sm text-[#111827] bg-transparent border-b border-transparent hover:border-[#e5e7eb] focus:border-[#4f46e5] focus:bg-white rounded-md px-1 py-0.5 outline-none transition-all"
                       />
 
                       {/* Editable Summary */}
@@ -1195,16 +1226,16 @@ export default function ProjectWorkspacePage() {
                         rows={2}
                         value={item.summary}
                         onChange={(e) => updateItem(idx, "summary", e.target.value)}
-                        className="w-full text-xs text-stone-700 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-stone-400 focus:bg-white outline-none mt-1 py-0.5 leading-relaxed resize-none"
+                        className="w-full text-xs text-[#4b5563] bg-transparent border-b border-transparent hover:border-[#e5e7eb] focus:border-[#4f46e5] focus:bg-white rounded-md px-1 py-0.5 outline-none mt-1 leading-relaxed resize-none transition-all"
                       />
 
                       {/* Sources citation footer */}
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-stone-500 pt-1.5 border-t border-stone-100">
-                        <span className="font-mono text-stone-500 truncate max-w-[80%]">
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-[#6b7280] pt-2 border-t border-[#f3f4f6]">
+                        <span className="font-mono text-[#4b5563] bg-white border border-[#eaecf0] px-2 py-0.5 rounded text-[10px] truncate max-w-[80%]">
                           🔗 材料出处: {item.source_ids.join(", ") || "暂无具体切片编号"}
                         </span>
                         {isActive && (
-                          <span className="text-emerald-700 font-medium whitespace-nowrap">
+                          <span className="text-[#4f46e5] font-semibold whitespace-nowrap text-[11px]">
                             当前聚焦 👁
                           </span>
                         )}
@@ -1217,12 +1248,12 @@ export default function ProjectWorkspacePage() {
           </div>
 
           {/* Bottom Card Footer: Help Note */}
-          <div className="pt-3 border-t border-stone-100 text-xs text-stone-400 flex items-center justify-between">
+          <div className="pt-3 border-t border-[#f3f4f6] text-xs text-[#9ca3af] flex items-center justify-between">
             <span>支持拖拽文本直接复制修改，自动保持事实出处追踪。</span>
             {materials.length > 0 && (
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-stone-500 hover:text-stone-800 underline text-xs cursor-pointer"
+                className="text-[#6b7280] hover:text-[#111827] underline text-xs cursor-pointer"
               >
                 + 添加更多材料
               </button>
@@ -1236,19 +1267,19 @@ export default function ProjectWorkspacePage() {
             isCopilotOpen ? "lg:col-span-4 xl:col-span-5" : "lg:col-span-5"
           } space-y-4 lg:sticky lg:top-16 transition-all duration-200`}
         >
-          <div className="bg-white border border-stone-200/90 rounded-2xl p-5 shadow-xs space-y-4">
+          <div className="bg-white border border-[#eaecf0] rounded-2xl p-5 shadow-bento space-y-4">
             {/* Header: Plain Naming ("预览", "全屏") */}
-            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
               <div className="flex items-center gap-2">
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    outline ? "bg-emerald-500 animate-pulse" : "bg-stone-300"
+                    outline ? "bg-[#10b981] animate-pulse" : "bg-[#d1d5db]"
                   }`}
-                ></span>
-                <span className="font-bold text-xs text-stone-900">
+                />
+                <span className="font-bold text-sm text-[#111827] tracking-tight">
                   预览
                 </span>
-                <span className="text-[11px] px-2 py-0.5 bg-stone-100 text-stone-600 rounded font-mono">
+                <span className="text-[11px] px-2 py-0.5 bg-[#f3f4f6] text-[#4b5563] border border-[#eaecf0] rounded-lg font-mono">
                   {outline && outline.items.length > 0
                     ? `第 ${selectedIndex + 1} 页 / 共 ${outline.items.length} 页`
                     : "待排版"}
@@ -1258,7 +1289,7 @@ export default function ProjectWorkspacePage() {
               {outline && outline.items.length > 0 && (
                 <Link
                   href={`/p/${pid}/preview`}
-                  className="text-xs text-stone-500 hover:text-stone-900 flex items-center gap-1 transition-colors"
+                  className="text-xs text-[#6b7280] hover:text-[#111827] flex items-center gap-1 transition-colors"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
                   <span>全屏</span>
@@ -1266,9 +1297,9 @@ export default function ProjectWorkspacePage() {
               )}
             </div>
 
-            {/* 16:9 Presentation Canvas (Empty State: Light dotted outline; Populated: Presentation Slide) */}
+            {/* 16:9 Presentation Canvas */}
             {outline && outline.items.length > 0 ? (
-              <div className="relative aspect-[16/9] rounded-xl border border-stone-300 bg-stone-950 text-white overflow-hidden shadow-inner flex flex-col justify-between p-5">
+              <div className="relative aspect-[16/9] rounded-xl border border-[#eaecf0] bg-[#111827] text-white overflow-hidden shadow-inner flex flex-col justify-between p-5">
                 {/* If real rendered preview image is ready, display it */}
                 {preview?.pages && preview.pages[selectedIndex] ? (
                   <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
@@ -1282,19 +1313,19 @@ export default function ProjectWorkspacePage() {
                 ) : currentItem ? (
                   /* Simulated Presentation Slide */
                   <>
-                    <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-emerald-500/10 blur-2xl"></div>
+                    <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-[#10b981]/15 blur-2xl" />
                     <div>
-                      <div className="text-[10px] font-mono text-emerald-400 tracking-widest uppercase mb-1">
+                      <div className="text-[10px] font-mono text-[#34d399] tracking-widest uppercase mb-1">
                         {currentItem.layout || "PRESENTATION"}
                       </div>
                       <h3 className="text-sm font-bold leading-snug text-white max-w-[95%]">
                         {currentItem.title}
                       </h3>
-                      <p className="text-xs text-stone-300 mt-2.5 line-clamp-4 leading-relaxed whitespace-pre-wrap font-sans">
+                      <p className="text-xs text-[#d1d5db] mt-2.5 line-clamp-4 leading-relaxed whitespace-pre-wrap font-sans">
                         {currentItem.summary}
                       </p>
                     </div>
-                    <div className="flex items-center justify-between text-[9px] font-mono text-stone-400 pt-2 border-t border-stone-800">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-[#9ca3af] pt-2 border-t border-white/10">
                       <span>16:9 版面排版模拟</span>
                       <span>
                         {selectedIndex + 1} / {outline.items.length}
@@ -1304,31 +1335,31 @@ export default function ProjectWorkspacePage() {
                 ) : null}
               </div>
             ) : (
-              /* Light Dotted Outline Canvas in Empty State (Replaces heavy pitch-black box) */
-              <div className="aspect-[16/9] w-full rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/70 flex flex-col items-center justify-center p-6 text-center space-y-2">
-                <div className="w-9 h-9 rounded-xl bg-white shadow-2xs border border-stone-200 flex items-center justify-center text-stone-400">
-                  <Layers className="w-4 h-4 text-stone-400" />
+              /* Light Dotted Outline Canvas in Empty State */
+              <div className="aspect-[16/9] w-full rounded-xl border-2 border-dashed border-[#eaecf0] bg-[#f9fafb] flex flex-col items-center justify-center p-6 text-center space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-white shadow-2xs border border-[#eaecf0] flex items-center justify-center text-[#9ca3af]">
+                  <Layers className="w-5 h-5 text-[#6b7280]" />
                 </div>
-                <div className="text-xs font-semibold text-stone-700">
+                <div className="text-xs font-semibold text-[#111827]">
                   暂无排版预览
                 </div>
-                <p className="text-[11px] text-stone-500 leading-relaxed max-w-[220px]">
+                <p className="text-[11px] text-[#6b7280] leading-relaxed max-w-[220px]">
                   完成大纲提炼后，将在此呈现 16:9 实时排版镜面。
                 </p>
               </div>
             )}
 
-            {/* Slide Navigation Thumbnails Strip */}
+            {/* Slide Navigation Thumbnails Strip (Kite Weekday Capsule Style) */}
             {outline && outline.items.length > 0 && (
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
                 {outline.items.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setSelectedIndex(i)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all cursor-pointer ${
+                    className={`px-3 py-1 rounded-xl text-xs font-mono font-medium transition-all cursor-pointer ${
                       i === selectedIndex
-                        ? "bg-stone-900 text-white shadow-xs"
-                        : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                        ? "bg-[#4f46e5] text-white shadow-2xs font-semibold"
+                        : "bg-[#f3f4f6] text-[#4b5563] hover:bg-[#e5e7eb] hover:text-[#111827]"
                     }`}
                   >
                     #{i + 1}
@@ -1339,54 +1370,56 @@ export default function ProjectWorkspacePage() {
 
             {/* High-Fidelity Office Render Button */}
             {project?.download_available && (
-              <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs">
-                <span className="text-xs text-stone-500">
+              <div className="pt-2 border-t border-[#f3f4f6] flex items-center justify-between text-xs">
+                <span className="text-xs text-[#6b7280]">
                   {preview ? "已同步 Office 真实排版效果" : "可生成与 Office 完全一致的高保真视图"}
                 </span>
                 <button
                   onClick={renderPreviewsNow}
                   disabled={renderingPreview}
-                  className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                  className="px-3 py-1.5 bg-white hover:bg-[#f9fafb] border border-[#eaecf0] text-[#374151] rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
                   title="调用 Office 引擎对生成的 PPTX 执行真实页面栅格化截图"
                 >
-                  <RefreshCw className={`w-3 h-3 ${renderingPreview ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${renderingPreview ? "animate-spin" : ""}`} />
                   <span>{renderingPreview ? "渲染中..." : "更新真实排版图"}</span>
                 </button>
               </div>
             )}
 
-            {/* 版面检查 (QA Panel) - Fixed false Safe signal */}
-            <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200/90 space-y-2 text-xs">
-              <div className="flex items-center justify-between font-semibold text-stone-800">
+            {/* 版面检查 (QA Panel) - Kite Status Badge Style */}
+            <div className="p-4 rounded-xl bg-[#f9fafb] border border-[#eaecf0] space-y-2.5 text-xs">
+              <div className="flex items-center justify-between font-semibold text-[#111827]">
                 <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <ShieldCheck className="w-4 h-4 text-[#059669]" />
                   <span>版面检查</span>
                 </span>
 
-                {/* State-aware QA Badge: Never falsely green when empty! */}
+                {/* State-aware QA Badge */}
                 {!outline || outline.items.length === 0 ? (
-                  <span className="text-xs text-stone-500 bg-stone-200/70 border border-stone-300/60 px-2 py-0.5 rounded-full font-mono">
-                    等待内容
+                  <span className="text-[11px] text-[#6b7280] bg-[#f3f4f6] border border-[#eaecf0] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#9ca3af]" />
+                    <span>等待内容</span>
                   </span>
                 ) : report && !report.success ? (
-                  <span className="text-xs text-rose-800 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full font-mono">
-                    排版未通过
+                  <span className="text-[11px] text-[#db2777] bg-[#fdf2f8] border border-[#fbcfe8] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#f43f5e]" />
+                    <span>排版未通过</span>
                   </span>
                 ) : issues.length > 0 ? (
-                  <span className="text-xs text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
+                  <span className="text-[11px] text-[#b45309] bg-[#fef3c7] border border-[#fde68a] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
                     <span>{issues.length} 处需调整</span>
                   </span>
                 ) : (
-                  <span className="text-xs text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
-                    <Check className="w-3 h-3 text-emerald-700" />
+                  <span className="text-[11px] text-[#059669] bg-[#ecfdf5] border border-[#a7f3d0] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5 shadow-2xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
                     <span>0 处溢出 (已校验)</span>
                   </span>
                 )}
               </div>
 
               {issues.length > 0 ? (
-                <ul className="space-y-1 text-rose-700 text-xs pt-1">
+                <ul className="space-y-1 text-[#db2777] text-xs pt-1">
                   {issues.map((iss, i) => (
                     <li key={i} className="flex items-start gap-1 font-mono">
                       <span>•</span>
@@ -1398,10 +1431,10 @@ export default function ProjectWorkspacePage() {
                   ))}
                 </ul>
               ) : (
-                <div className="pt-1 border-t border-stone-200/60 text-xs text-stone-500">
+                <div className="pt-2 border-t border-[#eaecf0] text-xs text-[#6b7280]">
                   <button
                     onClick={() => setShowQADetails(!showQADetails)}
-                    className="text-stone-600 hover:text-stone-900 flex items-center gap-1 text-[11px] font-medium"
+                    className="text-[#374151] hover:text-[#111827] flex items-center gap-1 text-[11px] font-medium"
                   >
                     <span>{showQADetails ? "收起度量规则" : "查看度量规则详情"}</span>
                     <ChevronDown
@@ -1411,14 +1444,14 @@ export default function ProjectWorkspacePage() {
                     />
                   </button>
                   {showQADetails && (
-                    <div className="grid grid-cols-2 gap-2 text-[11px] text-stone-600 pt-2 font-mono">
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-[#4b5563] pt-2 font-mono">
                       <div>
-                        <span className="block text-stone-400">字符物理宽度:</span>
+                        <span className="block text-[#9ca3af]">字符物理宽度:</span>
                         <span>fontTools Advance Width</span>
                       </div>
                       <div>
-                        <span className="block text-stone-400">禁则排版:</span>
-                        <span className="text-emerald-700">中西文孤点行已锁</span>
+                        <span className="block text-[#9ca3af]">禁则排版:</span>
+                        <span className="text-[#059669]">中西文孤点行已锁</span>
                       </div>
                     </div>
                   )}
@@ -1426,16 +1459,16 @@ export default function ProjectWorkspacePage() {
               )}
             </div>
 
-            {/* 材料出处对照 (Plain Naming instead of No-Fabrication Guard) */}
+            {/* 材料出处对照 */}
             {currentItem && (
-              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-950 space-y-1.5">
-                <div className="font-semibold text-xs text-amber-900 flex items-center justify-between">
+              <div className="p-3.5 rounded-xl bg-[#f9fafb] border border-[#eaecf0] text-xs space-y-2">
+                <div className="font-semibold text-xs text-[#374151] flex items-center justify-between">
                   <span>材料出处对照</span>
-                  <span className="font-mono text-[11px] text-amber-700">
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-[#fef3c7] text-[#b45309] border border-[#fde68a]">
                     {currentItem.source_ids.join(", ") || "无特定片段引用"}
                   </span>
                 </div>
-                <p className="text-xs font-mono text-amber-900/90 leading-relaxed bg-white/80 p-2.5 rounded-lg border border-amber-200/70">
+                <p className="text-xs text-[#4b5563] leading-relaxed bg-white p-2.5 rounded-lg border border-[#eaecf0]">
                   {currentItem.summary || "当前大纲项暂无额外摘要"}
                 </p>
               </div>
@@ -1446,19 +1479,20 @@ export default function ProjectWorkspacePage() {
         {/* Right Column: AI Copilot Sidebar (Collapsible) */}
         {isCopilotOpen && (
           <div className="lg:col-span-3 xl:col-span-3 space-y-4 lg:sticky lg:top-16 animate-in fade-in slide-in-from-right-4 duration-200">
-            <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-h-[820px] justify-between">
+            <div className="bg-white border border-[#eaecf0] rounded-2xl p-4 shadow-bento flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-h-[820px] justify-between">
               {/* Copilot Header */}
-              <div className="pb-3 border-b border-stone-100 flex items-center justify-between gap-2">
+              <div className="pb-3 border-b border-[#f3f4f6] flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-700 shrink-0">
+                  <div className="w-6 h-6 rounded-lg bg-[#ecfdf5] border border-[#a7f3d0]/60 flex items-center justify-center text-[#059669] shrink-0">
                     <Sparkles className="w-3.5 h-3.5" />
                   </div>
                   <div className="flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="font-bold text-xs text-stone-900 whitespace-nowrap">
+                    <span className="font-bold text-xs text-[#111827] whitespace-nowrap">
                       AI 协同
                     </span>
-                    <span className="text-[10px] font-sans text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 whitespace-nowrap">
-                      零虚构
+                    <span className="text-[10px] font-medium text-[#059669] bg-[#ecfdf5] px-2 py-0.5 rounded-full border border-[#a7f3d0]/60 whitespace-nowrap flex items-center gap-1 shadow-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
+                      <span>零虚构</span>
                     </span>
                   </div>
                 </div>
@@ -1470,7 +1504,7 @@ export default function ProjectWorkspacePage() {
                     onChange={(e) =>
                       setCopilotScope(e.target.value as "current" | "all")
                     }
-                    className="text-[11px] bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-stone-700 font-sans cursor-pointer focus:outline-none"
+                    className="text-[11px] bg-[#f9fafb] border border-[#eaecf0] rounded-xl px-2.5 py-1 text-[#374151] font-sans cursor-pointer focus:outline-none"
                     title="选择协同修改范围"
                   >
                     <option value="current">
@@ -1482,7 +1516,7 @@ export default function ProjectWorkspacePage() {
                   {/* Close / Collapse Button */}
                   <button
                     onClick={() => setIsCopilotOpen(false)}
-                    className="p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer"
+                    className="p-1 text-[#9ca3af] hover:text-[#111827] rounded-lg hover:bg-[#f3f4f6] transition-colors cursor-pointer"
                     title="收起协同面板"
                   >
                     <X className="w-4 h-4" />
@@ -1492,9 +1526,9 @@ export default function ProjectWorkspacePage() {
 
               {/* Target Context Pill */}
               {outline && outline.items.length > 0 && (
-                <div className="my-2 px-2.5 py-1.5 bg-stone-50 border border-stone-200/70 rounded-xl text-[11px] text-stone-600 flex items-center justify-between">
+                <div className="my-2 px-3 py-1.5 bg-[#f9fafb] border border-[#eaecf0] rounded-xl text-[11px] text-[#4b5563] flex items-center justify-between shadow-2xs">
                   <div className="flex items-center gap-1.5 truncate">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5] shrink-0" />
                     <span className="truncate">
                       {copilotScope === "current"
                         ? `焦点: 第 ${selectedIndex + 1} 页 · ${
@@ -1503,7 +1537,7 @@ export default function ProjectWorkspacePage() {
                         : `焦点: 全文 (${outline.items.length} 页)`}
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono text-stone-400 shrink-0">
+                  <span className="text-[10px] font-mono text-[#9ca3af] shrink-0">
                     {copilotScope === "current"
                       ? `${selectedIndex + 1}/${outline.items.length}`
                       : "ALL"}
@@ -1524,7 +1558,7 @@ export default function ProjectWorkspacePage() {
                     }`}
                   >
                     {/* Sender Label & Timestamp */}
-                    <div className="text-[10px] text-stone-400 mb-1 flex items-center gap-1">
+                    <div className="text-[10px] text-[#9ca3af] mb-1 flex items-center gap-1 font-medium">
                       <span>{msg.sender === "user" ? "我" : "AI 助手"}</span>
                       <span>·</span>
                       <span>{msg.timestamp}</span>
@@ -1532,27 +1566,27 @@ export default function ProjectWorkspacePage() {
 
                     {/* Bubble */}
                     {msg.sender === "user" ? (
-                      <div className="bg-stone-900 text-white rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs font-sans max-w-[90%] leading-relaxed shadow-2xs">
+                      <div className="bg-[#111827] text-white rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs font-sans max-w-[90%] leading-relaxed shadow-2xs">
                         {msg.text}
                       </div>
                     ) : (
-                      <div className="bg-stone-50 border border-stone-200/80 rounded-2xl rounded-tl-xs p-3 text-xs text-stone-800 w-full space-y-2.5 shadow-2xs">
+                      <div className="bg-[#f9fafb] border border-[#eaecf0] rounded-2xl rounded-tl-xs p-3.5 text-xs text-[#111827] w-full space-y-2.5 shadow-2xs">
                         <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
 
                         {/* Grounding Badge */}
                         {msg.citation && (
-                          <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-800 bg-emerald-50/70 border border-emerald-200/60 rounded px-2 py-0.5 w-fit">
-                            <Paperclip className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-[#059669] bg-[#ecfdf5] border border-[#a7f3d0]/60 rounded-lg px-2 py-0.5 w-fit">
+                            <Paperclip className="w-3 h-3 text-[#059669] shrink-0" />
                             <span>依据材料切片: {msg.citation}</span>
                           </div>
                         )}
 
                         {/* Interactive Proposal Card */}
                         {msg.proposal && (
-                          <div className="bg-white rounded-xl border border-stone-200 p-3 shadow-2xs space-y-2.5">
-                            <div className="flex items-center justify-between pb-1.5 border-b border-stone-100">
-                              <span className="font-semibold text-stone-900 text-xs flex items-center gap-1">
-                                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                          <div className="bg-white rounded-xl border border-[#eaecf0] p-3 shadow-2xs space-y-2.5">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-[#f3f4f6]">
+                              <span className="font-semibold text-[#111827] text-xs flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5 text-[#4f46e5]" />
                                 <span>建议变更 · 第 {msg.proposal.slideIndex + 1} 页</span>
                               </span>
                             </div>
@@ -1560,14 +1594,14 @@ export default function ProjectWorkspacePage() {
                             {/* Title Diff */}
                             {msg.proposal.originalTitle !== msg.proposal.proposedTitle && (
                               <div className="space-y-1 text-[11px]">
-                                <span className="text-stone-400 block text-[10px]">原标题:</span>
-                                <div className="text-stone-400 line-through bg-stone-50 px-2 py-1 rounded border border-stone-200/50">
+                                <span className="text-[#9ca3af] block text-[10px]">原标题:</span>
+                                <div className="text-[#9ca3af] line-through bg-[#f9fafb] px-2.5 py-1 rounded-lg border border-[#eaecf0]">
                                   {msg.proposal.originalTitle}
                                 </div>
-                                <span className="text-emerald-800 block text-[10px] font-medium pt-0.5">
+                                <span className="text-[#059669] block text-[10px] font-medium pt-0.5">
                                   建议标题:
                                 </span>
-                                <div className="text-stone-900 font-semibold bg-emerald-50/50 px-2 py-1 rounded border border-emerald-200/60">
+                                <div className="text-[#111827] font-semibold bg-[#ecfdf5] px-2.5 py-1 rounded-lg border border-[#a7f3d0]/60">
                                   {msg.proposal.proposedTitle}
                                 </div>
                               </div>
@@ -1576,32 +1610,32 @@ export default function ProjectWorkspacePage() {
                             {/* Summary Diff */}
                             {msg.proposal.originalSummary !== msg.proposal.proposedSummary && (
                               <div className="space-y-1 text-[11px]">
-                                <span className="text-stone-400 block text-[10px]">原摘要说明:</span>
-                                <div className="text-stone-400 line-through bg-stone-50 px-2 py-1 rounded border border-stone-200/50 line-clamp-2">
+                                <span className="text-[#9ca3af] block text-[10px]">原摘要说明:</span>
+                                <div className="text-[#9ca3af] line-through bg-[#f9fafb] px-2.5 py-1 rounded-lg border border-[#eaecf0] line-clamp-2">
                                   {msg.proposal.originalSummary}
                                 </div>
-                                <span className="text-emerald-800 block text-[10px] font-medium pt-0.5">
+                                <span className="text-[#059669] block text-[10px] font-medium pt-0.5">
                                   建议调整内容:
                                 </span>
-                                <div className="text-stone-800 bg-emerald-50/50 px-2 py-1 rounded border border-emerald-200/60 leading-relaxed whitespace-pre-wrap">
+                                <div className="text-[#111827] bg-[#ecfdf5] px-2.5 py-1 rounded-lg border border-[#a7f3d0]/60 leading-relaxed whitespace-pre-wrap">
                                   {msg.proposal.proposedSummary}
                                 </div>
                               </div>
                             )}
 
                             {/* Action Buttons */}
-                            <div className="pt-1.5 flex items-center justify-end gap-2 border-t border-stone-100">
+                            <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#f3f4f6]">
                               {msg.proposal.applied ? (
-                                <div className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <div className="text-[11px] font-medium text-[#059669] bg-[#ecfdf5] border border-[#a7f3d0] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-2xs">
+                                  <Check className="w-3.5 h-3.5 text-[#059669]" />
                                   <span>已应用至排版</span>
                                 </div>
                               ) : (
                                 <button
                                   onClick={() => applyProposal(msg.proposal!)}
-                                  className="px-3 py-1 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-medium shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+                                  className="px-3.5 py-1.5 bg-[#111827] hover:bg-black text-white rounded-xl text-xs font-medium shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
                                 >
-                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <Check className="w-3.5 h-3.5 text-[#34d399]" />
                                   <span>立即应用修改</span>
                                 </button>
                               )}
@@ -1616,11 +1650,11 @@ export default function ProjectWorkspacePage() {
                 {/* AI Thinking Animation */}
                 {isAiThinking && (
                   <div className="flex flex-col items-start space-y-1">
-                    <div className="text-[10px] text-stone-400">AI 正在根据材料推演...</div>
-                    <div className="bg-stone-50 border border-stone-200/80 rounded-2xl rounded-tl-xs px-3 py-2 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.2s]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-bounce [animation-delay:0.4s]" />
+                    <div className="text-[10px] text-[#9ca3af]">AI 正在根据材料推演...</div>
+                    <div className="bg-[#f9fafb] border border-[#eaecf0] rounded-2xl rounded-tl-xs px-3 py-2 flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5] animate-bounce" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5] animate-bounce [animation-delay:0.2s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5] animate-bounce [animation-delay:0.4s]" />
                     </div>
                   </div>
                 )}
@@ -1628,14 +1662,14 @@ export default function ProjectWorkspacePage() {
 
               {/* Quick Prompt Chips */}
               {outline && outline.items.length > 0 && (
-                <div className="pt-2 border-t border-stone-100">
-                  <div className="flex items-center gap-1 overflow-x-auto pb-1.5 custom-scrollbar">
+                <div className="pt-2 border-t border-[#f3f4f6]">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 custom-scrollbar">
                     {promptChips.map((chip, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleAiSubmit(chip.prompt)}
                         disabled={isAiThinking}
-                        className="whitespace-nowrap px-2 py-0.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-medium transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+                        className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#374151] text-[11px] font-medium transition-colors cursor-pointer shrink-0 disabled:opacity-40 border border-[#eaecf0]/60"
                       >
                         {chip.label}
                       </button>
@@ -1662,12 +1696,12 @@ export default function ProjectWorkspacePage() {
                       : "请先生成大纲..."
                   }
                   disabled={isAiThinking || !outline || outline.items.length === 0}
-                  className="flex-1 bg-stone-50 focus:bg-white border border-stone-200 focus:border-stone-400 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none placeholder:text-stone-400 transition-colors disabled:opacity-50"
+                  className="flex-1 bg-[#f9fafb] focus:bg-white border border-[#eaecf0] focus:border-[#d1d5db] rounded-xl px-3.5 py-2 text-xs text-[#111827] focus:outline-none placeholder:text-[#9ca3af] transition-colors disabled:opacity-50"
                 />
                 <button
                   type="submit"
                   disabled={!chatInput.trim() || isAiThinking || !outline}
-                  className="p-2 bg-stone-900 hover:bg-stone-800 disabled:opacity-30 text-white rounded-xl transition-colors cursor-pointer shrink-0"
+                  className="p-2.5 bg-[#111827] hover:bg-black disabled:opacity-30 text-white rounded-xl transition-colors cursor-pointer shrink-0 shadow-2xs"
                   title="发送修改需求"
                 >
                   <Send className="w-3.5 h-3.5" />
