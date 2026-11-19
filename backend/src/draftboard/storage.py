@@ -8,6 +8,7 @@ import json
 import hashlib
 import os
 import pathlib
+import sys
 import time
 from typing import Optional
 
@@ -17,6 +18,25 @@ STORAGE_ROOT = pathlib.Path(
     os.environ.get("DRAFTBOARD_STORAGE_ROOT")
     or pathlib.Path.home() / ".draftboard" / "projects"
 )
+
+
+def _safe_mkdir(path: pathlib.Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        if sys.platform == "win32":
+            import subprocess
+            try:
+                subprocess.run(
+                    ["icacls", str(path.parent), "/setintegritylevel", "(OI)(CI)L"],
+                    check=False,
+                    capture_output=True,
+                )
+                path.mkdir(parents=True, exist_ok=True)
+                return
+            except Exception:
+                pass
+        raise
 
 
 def load_json(path: pathlib.Path) -> dict:
@@ -40,13 +60,13 @@ class ProjectStorage:
     ) -> None:
         self.project_id = project_id
         self.root = (storage_root or STORAGE_ROOT) / project_id
-        self.root.mkdir(parents=True, exist_ok=True)
+        _safe_mkdir(self.root)
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
     def _atomic_write(self, path: pathlib.Path, data: dict) -> None:
         """Write JSON atomically via a .tmp file."""
-        path.parent.mkdir(parents=True, exist_ok=True)
+        _safe_mkdir(path.parent)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         # On Windows os.replace fails with WinError 5 while a concurrent

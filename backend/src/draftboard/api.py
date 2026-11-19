@@ -134,8 +134,11 @@ def create_project(req: CreateProjectRequest):
         )
     if (_root() / req.project_id).exists():
         raise HTTPException(409, f"项目 '{req.project_id}' 已存在")
-    _storage(req.project_id)
-    return {"project_id": req.project_id}
+    try:
+        _storage(req.project_id)
+        return {"project_id": req.project_id}
+    except Exception as exc:
+        raise HTTPException(500, f"创建项目目录失败: {exc}")
 
 
 @app.get("/api/projects")

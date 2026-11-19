@@ -64,6 +64,7 @@ def main() -> None:
     serve_p = sub.add_parser("serve", help="Run the Draftboard web API")
     serve_p.add_argument("--host", default="127.0.0.1", help="Bind host")
     serve_p.add_argument("--port", type=int, default=8000, help="Bind port")
+    serve_p.add_argument("--reload", action="store_true", help="Enable auto-reload on code changes")
 
     args = parser.parse_args()
 
@@ -186,7 +187,7 @@ def main() -> None:
         import uvicorn
 
         print(f"Draftboard workbench: http://{args.host}:{args.port}/")
-        uvicorn.run("draftboard.api:app", host=args.host, port=args.port)
+        uvicorn.run("draftboard.api:app", host=args.host, port=args.port, reload=args.reload)
         sys.exit(0)
 
 
