@@ -64,6 +64,14 @@ interface ChatMessage {
   proposal?: Proposal;
 }
 
+const layoutLabels: Record<string, string> = {
+  cover: "封面",
+  content: "正文",
+  bullets: "分点要点",
+  two_column: "双栏对比",
+  closing: "致谢尾页",
+};
+
 export default function ProjectWorkspacePage() {
   const params = useParams<{ id: string }>();
   const pid = params.id;
@@ -90,6 +98,11 @@ export default function ProjectWorkspacePage() {
   const [showMaterialsDrawer, setShowMaterialsDrawer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Kite Custom Dropdown Popover States
+  const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
+  const [isScopeDropdownOpen, setIsScopeDropdownOpen] = useState(false);
+  const [activeLayoutDropdownIdx, setActiveLayoutDropdownIdx] = useState<number | null>(null);
 
   // AI Copilot States
   const [isCopilotOpen, setIsCopilotOpen] = useState(true);
@@ -243,6 +256,11 @@ export default function ProjectWorkspacePage() {
     if (!outline || !savedOutline) return false;
     return JSON.stringify(outline.items) !== JSON.stringify(savedOutline.items);
   }, [outline, savedOutline]);
+
+  // Current active outline metadata for Kite version switcher
+  const currentOutlineObj = useMemo(() => {
+    return project?.outlines?.find((o) => o.outline_version === version);
+  }, [project, version]);
 
   // Humanized error text
   const humanizedError = useMemo(() => {
@@ -730,24 +748,94 @@ export default function ProjectWorkspacePage() {
 
         {/* Right: Dynamic Adaptive Action Controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Outline Version Switcher */}
+          {/* Outline Version Switcher (Kite Custom Dropdown) */}
           {(project?.outlines?.length ?? 0) > 0 && (
-            <div className="flex items-center gap-1.5 bg-white border border-[#eaecf0] hover:border-[#d1d5db] rounded-xl px-2.5 py-1.5 text-[#374151] transition-colors shadow-2xs">
-              <History className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
-              <select
-                value={version}
-                onChange={(e) => void showOutline(e.target.value)}
-                className="text-xs bg-transparent focus:outline-none font-mono cursor-pointer pr-1"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsVersionDropdownOpen(!isVersionDropdownOpen)}
+                className="flex items-center gap-2 bg-white hover:bg-[#f9fafb] border border-[#eaecf0] hover:border-[#d1d5db] rounded-xl px-3 py-1.5 text-xs text-[#374151] font-mono transition-colors shadow-2xs cursor-pointer"
                 title="切换历史大纲版本"
               >
-                {[...(project?.outlines ?? [])]
-                  .sort((a, b) => b.mtime - a.mtime)
-                  .map((o) => (
-                    <option key={o.outline_version} value={o.outline_version}>
-                      {o.outline_version} ({o.item_count}页 · {o.is_confirmed ? "已确认" : "草稿"})
-                    </option>
-                  ))}
-              </select>
+                <History className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
+                <span className="font-semibold text-[#111827]">
+                  {version || project?.outlines?.[0]?.outline_version || "大纲版本"}
+                </span>
+                {currentOutlineObj && (
+                  <span className="text-[#6b7280] font-sans">
+                    ({currentOutlineObj.item_count}页 · {currentOutlineObj.is_confirmed ? "已确认" : "草稿"})
+                  </span>
+                )}
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-[#6b7280] transition-transform duration-200 ${
+                    isVersionDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {isVersionDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsVersionDropdownOpen(false)}
+                  />
+                  <div className="absolute left-0 top-full mt-2 z-50 w-72 bg-white border border-[#eaecf0] rounded-2xl shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">
+                      历史大纲版本
+                    </div>
+                    <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
+                      {[...(project?.outlines ?? [])]
+                        .sort((a, b) => b.mtime - a.mtime)
+                        .map((o) => {
+                          const isSelected = o.outline_version === version;
+                          return (
+                            <button
+                              key={o.outline_version}
+                              type="button"
+                              onClick={() => {
+                                setIsVersionDropdownOpen(false);
+                                void showOutline(o.outline_version);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                                isSelected
+                                  ? "bg-[#f3f4f6] text-[#111827] font-semibold"
+                                  : "text-[#374151] hover:bg-[#f9fafb]"
+                              }`}
+                            >
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-mono text-[#111827] flex items-center gap-1.5">
+                                  <span>{o.outline_version}</span>
+                                  <span className="text-[#6b7280] text-[11px] font-sans font-normal">
+                                    · {o.item_count} 页
+                                  </span>
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs ${
+                                    o.is_confirmed
+                                      ? "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]"
+                                      : "bg-[#fef3c7] text-[#b45309] border-[#fde68a]"
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      o.is_confirmed ? "bg-[#10b981]" : "bg-[#f59e0b]"
+                                    }`}
+                                  />
+                                  <span>{o.is_confirmed ? "已确认" : "草稿"}</span>
+                                </span>
+                                {isSelected && (
+                                  <Check className="w-3.5 h-3.5 text-[#4f46e5]" />
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1136,19 +1224,65 @@ export default function ProjectWorkspacePage() {
                           <span className="font-mono text-xs font-bold text-[#6b7280]">
                             {String(idx + 1).padStart(2, "0")}
                           </span>
-                          {/* Layout Selector */}
-                          <select
-                            value={item.layout || "content"}
-                            onChange={(e) => updateItem(idx, "layout", e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-[11px] font-sans bg-white border border-[#eaecf0] rounded-md px-1.5 py-0.5 text-[#374151] focus:outline-none shadow-2xs"
-                          >
-                            <option value="cover">封面</option>
-                            <option value="content">正文</option>
-                            <option value="bullets">分点要点</option>
-                            <option value="two_column">双栏对比</option>
-                            <option value="closing">致谢尾页</option>
-                          </select>
+                          {/* Layout Selector (Kite Custom Dropdown) */}
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActiveLayoutDropdownIdx(
+                                  activeLayoutDropdownIdx === idx ? null : idx
+                                )
+                              }
+                              className="text-[11px] font-sans bg-white hover:bg-[#f9fafb] border border-[#eaecf0] hover:border-[#d1d5db] rounded-lg px-2 py-0.5 text-[#374151] shadow-2xs flex items-center gap-1 cursor-pointer transition-colors"
+                              title="切换页面排版布局"
+                            >
+                              <span>
+                                {layoutLabels[item.layout || "content"] || "正文"}
+                              </span>
+                              <ChevronDown
+                                className={`w-3 h-3 text-[#6b7280] transition-transform duration-150 ${
+                                  activeLayoutDropdownIdx === idx ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+
+                            {activeLayoutDropdownIdx === idx && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-40"
+                                  onClick={() => setActiveLayoutDropdownIdx(null)}
+                                />
+                                <div className="absolute left-0 top-full mt-1.5 z-50 w-36 bg-white border border-[#eaecf0] rounded-xl shadow-xl p-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                                  {[
+                                    { value: "cover", label: "封面" },
+                                    { value: "content", label: "正文" },
+                                    { value: "bullets", label: "分点要点" },
+                                    { value: "two_column", label: "双栏对比" },
+                                    { value: "closing", label: "致谢尾页" },
+                                  ].map((opt) => (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() => {
+                                        updateItem(idx, "layout", opt.value);
+                                        setActiveLayoutDropdownIdx(null);
+                                      }}
+                                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                                        (item.layout || "content") === opt.value
+                                          ? "bg-[#f3f4f6] text-[#111827] font-semibold"
+                                          : "text-[#374151] hover:bg-[#f9fafb]"
+                                      }`}
+                                    >
+                                      <span>{opt.label}</span>
+                                      {(item.layout || "content") === opt.value && (
+                                        <Check className="w-3 h-3 text-[#4f46e5]" />
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -1498,20 +1632,75 @@ export default function ProjectWorkspacePage() {
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {/* Context Scope Selector */}
-                  <select
-                    value={copilotScope}
-                    onChange={(e) =>
-                      setCopilotScope(e.target.value as "current" | "all")
-                    }
-                    className="text-[11px] bg-[#f9fafb] border border-[#eaecf0] rounded-xl px-2.5 py-1 text-[#374151] font-sans cursor-pointer focus:outline-none"
-                    title="选择协同修改范围"
-                  >
-                    <option value="current">
-                      {outline ? `当前第 ${selectedIndex + 1} 页` : "当前页"}
-                    </option>
-                    <option value="all">整套演示文稿</option>
-                  </select>
+                  {/* Context Scope Selector (Kite Custom Dropdown) */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsScopeDropdownOpen(!isScopeDropdownOpen)}
+                      className="text-[11px] bg-[#f9fafb] hover:bg-white border border-[#eaecf0] hover:border-[#d1d5db] rounded-xl px-2.5 py-1 text-[#374151] font-sans cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                      title="选择协同修改范围"
+                    >
+                      <span>
+                        {copilotScope === "current"
+                          ? outline
+                            ? `当前第 ${selectedIndex + 1} 页`
+                            : "当前页"
+                          : "整套演示文稿"}
+                      </span>
+                      <ChevronDown
+                        className={`w-3 h-3 text-[#6b7280] transition-transform duration-150 ${
+                          isScopeDropdownOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {isScopeDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setIsScopeDropdownOpen(false)}
+                        />
+                        <div className="absolute right-0 top-full mt-1.5 z-50 w-40 bg-white border border-[#eaecf0] rounded-xl shadow-xl p-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCopilotScope("current");
+                              setIsScopeDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                              copilotScope === "current"
+                                ? "bg-[#f3f4f6] text-[#111827] font-semibold"
+                                : "text-[#374151] hover:bg-[#f9fafb]"
+                            }`}
+                          >
+                            <span>
+                              {outline ? `当前第 ${selectedIndex + 1} 页` : "当前页"}
+                            </span>
+                            {copilotScope === "current" && (
+                              <Check className="w-3 h-3 text-[#4f46e5]" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCopilotScope("all");
+                              setIsScopeDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                              copilotScope === "all"
+                                ? "bg-[#f3f4f6] text-[#111827] font-semibold"
+                                : "text-[#374151] hover:bg-[#f9fafb]"
+                            }`}
+                          >
+                            <span>整套演示文稿</span>
+                            {copilotScope === "all" && (
+                              <Check className="w-3 h-3 text-[#4f46e5]" />
+                            )}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* Close / Collapse Button */}
                   <button
