@@ -1,6 +1,12 @@
 export type EvidenceStatus = "supported" | "partial" | "unsupported";
 
-export type OutlineLayout = "cover" | "content" | "bullets" | "closing";
+export type OutlineLayout =
+  | "cover"
+  | "content"
+  | "bullets"
+  | "two_column"
+  | "text_image"
+  | "closing";
 
 export interface OutlineItem {
   outline_item_id: string;
@@ -9,6 +15,27 @@ export interface OutlineItem {
   source_ids: string[];
   evidence_status: EvidenceStatus | string;
   layout: OutlineLayout | string | null;
+  column_right?: string | null;
+  image_asset_id?: string | null;
+  speaker_notes?: string | null;
+}
+
+export interface ThemeSwatches {
+  bg: string;
+  cover_bg: string;
+  title: string;
+  cover_title: string;
+  body: string;
+  cover_body: string;
+  accent: string;
+  muted: string;
+}
+
+export interface ThemeOption {
+  id: string;
+  name: string;
+  description: string;
+  swatches: ThemeSwatches;
 }
 
 export interface SourceFragment {
@@ -93,6 +120,8 @@ export interface Project {
   insufficient_evidence_count?: number;
   outlines: OutlineSummary[];
   generated_outline_version: string | null;
+  latest_template_id?: string | null;
+  latest_auto_fit?: boolean | null;
   latest_report: ExportReport | null;
   download_available: boolean;
   tasks: Task[];

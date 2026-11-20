@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   ChevronDown,
+  Image as ImageIcon,
   Layers,
   Maximize2,
+  MessageSquareText,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
@@ -16,6 +18,7 @@ import type {
   Preview,
   Project,
   SourceFragment,
+  ThemeOption,
 } from "../../lib/api";
 import {
   inferEffectiveLayout,
@@ -33,6 +36,9 @@ interface SlidePreviewPanelProps {
   report: ExportReport | null;
   issues: Issue[];
   sourceFragments: SourceFragment[];
+  activeTheme: ThemeOption | null;
+  selectedThemeId: string;
+  autoFit: boolean;
   renderingPreview: boolean;
   onSelectIndex: (idx: number) => void;
   onRenderPreviewsNow: () => void;
@@ -49,6 +55,9 @@ export function SlidePreviewPanel({
   report,
   issues,
   sourceFragments,
+  activeTheme,
+  selectedThemeId,
+  autoFit,
   renderingPreview,
   onSelectIndex,
   onRenderPreviewsNow,
@@ -60,14 +69,17 @@ export function SlidePreviewPanel({
   const totalSlides = outline?.items.length ?? 0;
 
   const hasRenderedPage = Boolean(preview?.pages && preview.pages[selectedIndex]);
+  const settingsMatch =
+    !project?.latest_template_id ||
+    (project.latest_template_id === selectedThemeId &&
+      Boolean(project.latest_auto_fit) === autoFit);
   const previewMatchesCurrentOutline =
     !isStale &&
+    settingsMatch &&
     Boolean(version) &&
     version === project?.generated_outline_version &&
     hasRenderedPage;
 
-  // Automatically display live draft preview while editing or viewing an unexported version,
-  // unless user explicitly toggles to inspect the latest rendered image.
   const showRenderedImage =
     hasRenderedPage &&
     (preferDraftMode === null ? previewMatchesCurrentOutline : !preferDraftMode);
@@ -75,6 +87,21 @@ export function SlidePreviewPanel({
   const effectiveLayout = currentItem
     ? inferEffectiveLayout(currentItem.layout, selectedIndex, totalSlides)
     : "content";
+
+  const isHero = effectiveLayout === "cover" || effectiveLayout === "closing";
+  const swatches = activeTheme?.swatches || {
+    bg: "#FFFFFF",
+    cover_bg: "#FFFFFF",
+    title: "#111827",
+    cover_title: "#111827",
+    body: "#4B5563",
+    cover_body: "#4B5563",
+    accent: "#2563EB",
+    muted: "#9CA3AF",
+  };
+  const slideBg = isHero ? swatches.cover_bg : swatches.bg;
+  const slideTitleColor = isHero ? swatches.cover_title : swatches.title;
+  const slideBodyColor = isHero ? swatches.cover_body : swatches.body;
 
   const matchedFragments = currentItem
     ? currentItem.source_ids
@@ -145,7 +172,10 @@ export function SlidePreviewPanel({
 
         {/* 16:9 Canvas */}
         {outline && totalSlides > 0 ? (
-          <div className="relative aspect-[16/9] w-full rounded-xl border border-[#e5e7eb] bg-white overflow-hidden shadow-2xs flex flex-col justify-between">
+          <div
+            className="relative aspect-[16/9] w-full rounded-xl border border-[#e5e7eb] overflow-hidden shadow-2xs flex flex-col justify-between"
+            style={{ backgroundColor: showRenderedImage ? "#FFFFFF" : slideBg }}
+          >
             {showRenderedImage && preview?.pages[selectedIndex] ? (
               <div className="absolute inset-0 z-10 bg-white flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -161,29 +191,129 @@ export function SlidePreviewPanel({
                 )}
               </div>
             ) : currentItem ? (
-              <div className="relative p-6 flex flex-col justify-between h-full bg-white text-[#111827]">
-                <div className="flex items-center justify-between text-[10px] font-mono text-[#6b7280]">
-                  <span className="text-[#4f46e5] font-semibold uppercase tracking-wider">
+              <div className="relative p-5 flex flex-col justify-between h-full">
+                {/* Top Theme Accent Stripe */}
+                {selectedThemeId !== "default" && (
+                  <div
+                    className="absolute top-0 left-0 right-0 h-1"
+                    style={{ backgroundColor: swatches.accent }}
+                  />
+                )}
+
+                <div className="flex items-center justify-between text-[10px] font-mono">
+                  <span
+                    className="font-semibold uppercase tracking-wider"
+                    style={{ color: swatches.accent }}
+                  >
                     {OUTLINE_LAYOUT_LABELS[effectiveLayout] || effectiveLayout}
                   </span>
-                  <span className="text-[#9ca3af]">实时草稿预览</span>
+                  <span style={{ color: swatches.muted }}>
+                    {activeTheme?.name || "实时草稿"}
+                  </span>
                 </div>
 
-                {effectiveLayout === "cover" || effectiveLayout === "closing" ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center px-4 space-y-2.5 overflow-hidden">
-                    <h3 className="text-base sm:text-lg font-bold leading-snug text-[#111827] line-clamp-2">
+                {isHero ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center px-4 space-y-2 overflow-hidden">
+                    {selectedThemeId !== "default" && (
+                      <div
+                        className="w-10 h-0.5 rounded-full mb-1"
+                        style={{ backgroundColor: swatches.accent }}
+                      />
+                    )}
+                    <h3
+                      className="text-base sm:text-lg font-bold leading-snug line-clamp-2"
+                      style={{ color: slideTitleColor }}
+                    >
                       {currentItem.title || "未命名标题"}
                     </h3>
-                    <p className="text-xs text-[#4b5563] line-clamp-3 leading-relaxed whitespace-pre-wrap max-w-[85%]">
+                    <p
+                      className="text-xs line-clamp-3 leading-relaxed whitespace-pre-wrap max-w-[85%]"
+                      style={{ color: slideBodyColor }}
+                    >
                       {currentItem.summary}
                     </p>
                   </div>
-                ) : effectiveLayout === "bullets" ? (
-                  <div className="flex-1 py-2 overflow-hidden space-y-2">
-                    <h3 className="text-sm font-bold leading-snug text-[#111827] line-clamp-1">
+                ) : effectiveLayout === "two_column" ? (
+                  <div className="flex-1 py-2 overflow-hidden flex flex-col space-y-2">
+                    <h3
+                      className="text-sm font-bold leading-snug line-clamp-1 pb-1.5 border-b"
+                      style={{
+                        color: slideTitleColor,
+                        borderColor: `${swatches.muted}40`,
+                      }}
+                    >
                       {currentItem.title || "未命名标题"}
                     </h3>
-                    <ul className="space-y-1 text-xs text-[#4b5563] pl-4 list-disc">
+                    <div className="grid grid-cols-2 gap-3 flex-1 overflow-hidden">
+                      <p
+                        className="text-[11px] leading-relaxed whitespace-pre-wrap line-clamp-5 pr-2 border-r"
+                        style={{
+                          color: slideBodyColor,
+                          borderColor: `${swatches.muted}40`,
+                        }}
+                      >
+                        {currentItem.summary}
+                      </p>
+                      <p
+                        className="text-[11px] leading-relaxed whitespace-pre-wrap line-clamp-5"
+                        style={{ color: slideBodyColor }}
+                      >
+                        {currentItem.column_right || "（待填写右栏内容）"}
+                      </p>
+                    </div>
+                  </div>
+                ) : effectiveLayout === "text_image" ? (
+                  <div className="flex-1 py-2 overflow-hidden flex flex-col space-y-2">
+                    <h3
+                      className="text-sm font-bold leading-snug line-clamp-1 pb-1.5 border-b"
+                      style={{
+                        color: slideTitleColor,
+                        borderColor: `${swatches.muted}40`,
+                      }}
+                    >
+                      {currentItem.title || "未命名标题"}
+                    </h3>
+                    <div className="grid grid-cols-12 gap-3 flex-1 overflow-hidden items-center">
+                      <p
+                        className="col-span-7 text-[11px] leading-relaxed whitespace-pre-wrap line-clamp-5"
+                        style={{ color: slideBodyColor }}
+                      >
+                        {currentItem.summary}
+                      </p>
+                      <div className="col-span-5 h-full max-h-32 rounded-lg border border-black/10 bg-white/70 flex items-center justify-center overflow-hidden p-1">
+                        {currentItem.image_asset_id ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={`/api/projects/${pid}/assets/${encodeURIComponent(
+                              currentItem.image_asset_id
+                            )}`}
+                            alt={currentItem.image_asset_id}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 text-[10px] text-[#9ca3af]">
+                            <ImageIcon className="w-4 h-4" />
+                            <span>未选配图</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : effectiveLayout === "bullets" ? (
+                  <div className="flex-1 py-2 overflow-hidden space-y-2">
+                    <h3
+                      className="text-sm font-bold leading-snug line-clamp-1 pb-1.5 border-b"
+                      style={{
+                        color: slideTitleColor,
+                        borderColor: `${swatches.muted}40`,
+                      }}
+                    >
+                      {currentItem.title || "未命名标题"}
+                    </h3>
+                    <ul
+                      className="space-y-1 text-xs pl-4 list-disc"
+                      style={{ color: slideBodyColor }}
+                    >
                       {currentItem.summary
                         .split("\n")
                         .map((s) => s.trim())
@@ -198,16 +328,28 @@ export function SlidePreviewPanel({
                   </div>
                 ) : (
                   <div className="flex-1 py-2 overflow-hidden space-y-2">
-                    <h3 className="text-sm font-bold leading-snug text-[#111827] line-clamp-2">
+                    <h3
+                      className="text-sm font-bold leading-snug line-clamp-2 pb-1.5 border-b"
+                      style={{
+                        color: slideTitleColor,
+                        borderColor: `${swatches.muted}40`,
+                      }}
+                    >
                       {currentItem.title || "未命名标题"}
                     </h3>
-                    <p className="text-xs text-[#4b5563] line-clamp-5 leading-relaxed whitespace-pre-wrap">
+                    <p
+                      className="text-xs line-clamp-5 leading-relaxed whitespace-pre-wrap"
+                      style={{ color: slideBodyColor }}
+                    >
                       {currentItem.summary}
                     </p>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between text-[10px] font-mono text-[#9ca3af] pt-2 border-t border-[#f3f4f6]">
+                <div
+                  className="flex items-center justify-between text-[10px] font-mono pt-1"
+                  style={{ color: swatches.muted }}
+                >
                   <span>16:9 确定性母版草稿</span>
                   <span>
                     {selectedIndex + 1} / {totalSlides}
@@ -226,6 +368,19 @@ export function SlidePreviewPanel({
             </div>
             <p className="text-[11px] text-[#6b7280] leading-relaxed max-w-[220px]">
               完成大纲提炼后，将在此呈现 16:9 实时排版预览。
+            </p>
+          </div>
+        )}
+
+        {/* Speaker Notes Preview Strip */}
+        {currentItem?.speaker_notes && (
+          <div className="px-3 py-2 rounded-xl bg-[#eef2ff]/60 border border-[#c7d2fe]/70 text-xs space-y-1">
+            <div className="text-[10px] font-semibold text-[#4f46e5] flex items-center gap-1">
+              <MessageSquareText className="w-3 h-3" />
+              <span>本页演讲者备注</span>
+            </div>
+            <p className="text-[#374151] text-xs leading-relaxed whitespace-pre-wrap">
+              {currentItem.speaker_notes}
             </p>
           </div>
         )}
@@ -342,8 +497,10 @@ export function SlidePreviewPanel({
                     <span>fontTools Advance Width</span>
                   </div>
                   <div>
-                    <span className="block text-[#9ca3af]">禁则排版:</span>
-                    <span className="text-[#059669]">中西文行首行尾禁则</span>
+                    <span className="block text-[#9ca3af]">字号自适应:</span>
+                    <span className="text-[#059669]">
+                      {autoFit ? "18→16→14pt 阶梯退让" : "严格 18pt 固定"}
+                    </span>
                   </div>
                 </div>
               )}

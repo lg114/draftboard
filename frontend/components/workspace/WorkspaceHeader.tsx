@@ -8,12 +8,14 @@ import {
   Download,
   FileText,
   History,
+  Palette,
   RefreshCw,
   Save,
   Sparkles,
+  Type,
   Upload,
 } from "lucide-react";
-import type { Outline, Project } from "../../lib/api";
+import type { Outline, Project, ThemeOption } from "../../lib/api";
 
 export type WorkspaceStage =
   | "no_materials"
@@ -31,6 +33,11 @@ interface WorkspaceHeaderProps {
   isGenerating: boolean;
   currentStage: WorkspaceStage;
   showMaterialsDrawer: boolean;
+  themes: ThemeOption[];
+  selectedThemeId: string;
+  autoFit: boolean;
+  onSelectTheme: (themeId: string) => void;
+  onToggleAutoFit: () => void;
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
@@ -49,6 +56,11 @@ export function WorkspaceHeader({
   isGenerating,
   currentStage,
   showMaterialsDrawer,
+  themes,
+  selectedThemeId,
+  autoFit,
+  onSelectTheme,
+  onToggleAutoFit,
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
@@ -57,19 +69,28 @@ export function WorkspaceHeader({
   onConfirmGenerate,
 }: WorkspaceHeaderProps) {
   const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
+  const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
 
   const currentOutlineMeta = project?.outlines?.find(
     (o) => o.outline_version === version
   );
+  const activeTheme =
+    themes.find((t) => t.id === selectedThemeId) || themes[0] || null;
+
+  const settingsChangedSinceExport =
+    Boolean(project?.latest_template_id) &&
+    (project?.latest_template_id !== selectedThemeId ||
+      Boolean(project?.latest_auto_fit) !== autoFit);
 
   const outlineOutOfSyncWithPpt =
     currentStage === "ppt_ready" &&
     (isStale ||
+      settingsChangedSinceExport ||
       (outline && !outline.is_confirmed) ||
       (Boolean(version) && version !== project?.generated_outline_version));
 
   return (
-    <div className="bg-white border border-[#e5e7eb] rounded-2xl px-5 py-3 shadow-bento flex flex-wrap items-center justify-between gap-4">
+    <div className="bg-white border border-[#e5e7eb] rounded-2xl px-5 py-3 shadow-bento flex flex-wrap items-center justify-between gap-3">
       {/* Left: Breadcrumb & Project Name */}
       <div className="flex items-center gap-2.5">
         <Link
@@ -95,52 +116,118 @@ export function WorkspaceHeader({
         )}
       </div>
 
-      {/* Center: Pipeline Progress Pill */}
-      <div className="hidden md:flex items-center gap-2 text-xs font-medium px-4 py-1.5 bg-[#f8f9fa] rounded-full border border-[#e5e7eb] select-none shadow-2xs">
-        <span
-          className={`flex items-center gap-1.5 ${
-            materialsCount > 0 ? "text-[#059669] font-semibold" : "text-[#9ca3af]"
-          }`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              materialsCount > 0 ? "bg-[#10b981]" : "bg-[#d1d5db]"
-            }`}
-          />
-          <span>素材 ({materialsCount})</span>
-        </span>
-        <span className="text-[#d1d5db]">→</span>
-        <span
-          className={`flex items-center gap-1.5 ${
-            outline ? "text-[#059669] font-semibold" : "text-[#9ca3af]"
-          }`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              outline ? "bg-[#10b981]" : "bg-[#d1d5db]"
-            }`}
-          />
-          <span>大纲 ({outline?.items?.length || 0}页)</span>
-        </span>
-        <span className="text-[#d1d5db]">→</span>
-        <span
-          className={`flex items-center gap-1.5 ${
-            project?.download_available
-              ? "text-[#059669] font-semibold"
-              : "text-[#9ca3af]"
-          }`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              project?.download_available ? "bg-[#10b981]" : "bg-[#d1d5db]"
-            }`}
-          />
-          <span>生成 PPT</span>
-        </span>
-      </div>
-
       {/* Right: Adaptive Action Controls */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Theme Selector */}
+        {outline && themes.length > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)}
+              className="flex items-center gap-2 bg-white hover:bg-[#f9fafb] border border-[#e5e7eb] hover:border-[#d1d5db] rounded-xl px-3 py-1.5 text-xs text-[#374151] transition-colors shadow-2xs cursor-pointer"
+              title="选择演示文稿视觉主题"
+            >
+              {activeTheme ? (
+                <span className="flex items-center gap-1">
+                  <span
+                    className="w-3 h-3 rounded-full border border-black/15 shrink-0"
+                    style={{ backgroundColor: activeTheme.swatches.cover_bg }}
+                  />
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: activeTheme.swatches.accent }}
+                  />
+                </span>
+              ) : (
+                <Palette className="w-3.5 h-3.5 text-[#6b7280]" />
+              )}
+              <span className="font-medium text-[#111827]">
+                {activeTheme?.name || selectedThemeId}
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-[#6b7280] transition-transform duration-200 ${
+                  isThemeDropdownOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {isThemeDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsThemeDropdownOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-2 z-50 w-72 bg-white border border-[#e5e7eb] rounded-2xl shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">
+                    演示主题 Theme
+                  </div>
+                  {themes.map((t) => {
+                    const isSelected = t.id === selectedThemeId;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectTheme(t.id);
+                          setIsThemeDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer flex items-start justify-between gap-2 ${
+                          isSelected
+                            ? "bg-[#f3f4f6] text-[#111827]"
+                            : "text-[#374151] hover:bg-[#f9fafb]"
+                        }`}
+                      >
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="flex items-center gap-2 font-semibold text-[#111827]">
+                            <span className="flex items-center gap-0.5">
+                              <span
+                                className="w-3 h-3 rounded-sm border border-black/15"
+                                style={{ backgroundColor: t.swatches.cover_bg }}
+                              />
+                              <span
+                                className="w-3 h-3 rounded-sm border border-black/15"
+                                style={{ backgroundColor: t.swatches.bg }}
+                              />
+                              <span
+                                className="w-2 h-3 rounded-sm"
+                                style={{ backgroundColor: t.swatches.accent }}
+                              />
+                            </span>
+                            <span>{t.name}</span>
+                          </div>
+                          <p className="text-[11px] text-[#6b7280] leading-snug">
+                            {t.description}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <Check className="w-3.5 h-3.5 text-[#4f46e5] shrink-0 mt-0.5" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Controlled Auto-Fit Toggle */}
+        {outline && (
+          <button
+            type="button"
+            onClick={onToggleAutoFit}
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+              autoFit
+                ? "bg-[#ecfdf5] border-[#a7f3d0] text-[#059669]"
+                : "bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-[#f9fafb]"
+            }`}
+            title="开启后正文轻度超框时自动按 18pt → 16pt → 14pt 缩字，触底仍溢出则阻断"
+          >
+            <Type className="w-3.5 h-3.5" />
+            <span>自动缩字 {autoFit ? "开" : "关"}</span>
+          </button>
+        )}
+
         {/* Outline Version Switcher */}
         {(project?.outlines?.length ?? 0) > 0 && (
           <div className="relative">
@@ -155,7 +242,7 @@ export function WorkspaceHeader({
                 {version || project?.outlines?.[0]?.outline_version || "大纲版本"}
               </span>
               {currentOutlineMeta && (
-                <span className="text-[#6b7280] font-sans">
+                <span className="text-[#6b7280] font-sans hidden sm:inline">
                   ({currentOutlineMeta.item_count}页 ·{" "}
                   {currentOutlineMeta.is_confirmed ? "已确认" : "草稿"})
                 </span>
@@ -173,7 +260,7 @@ export function WorkspaceHeader({
                   className="fixed inset-0 z-40"
                   onClick={() => setIsVersionDropdownOpen(false)}
                 />
-                <div className="absolute left-0 top-full mt-2 z-50 w-72 bg-white border border-[#e5e7eb] rounded-2xl shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 top-full mt-2 z-50 w-72 bg-white border border-[#e5e7eb] rounded-2xl shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-3 py-1.5 text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">
                     历史大纲版本
                   </div>
@@ -318,14 +405,16 @@ export function WorkspaceHeader({
                   ? "bg-[#111827] hover:bg-black text-white shadow-xs"
                   : "border border-[#eaecf0] bg-white hover:bg-[#f9fafb] text-[#374151] shadow-2xs"
               }`}
-              title="按当前大纲重新编译并生成 PPTX"
+              title="按当前大纲与主题重新编译并生成 PPTX"
             >
-              <RefreshCw className={`w-3 h-3 ${isGenerating ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`w-3 h-3 ${isGenerating ? "animate-spin" : ""}`}
+              />
               <span>
                 {isGenerating
                   ? "正在生成..."
                   : outlineOutOfSyncWithPpt
-                  ? "确认并重新生成"
+                  ? "按新设置重新生成"
                   : "重新生成"}
               </span>
             </button>

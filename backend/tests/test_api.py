@@ -584,3 +584,91 @@ def test_index_page_served(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "Draftboard" in r.text
+
+
+# ── Step 2: Themes, Image Assets, Two-Column, Speaker Notes & Auto-Fit ──────
+
+
+def test_list_themes(client):
+    r = client.get("/api/themes")
+    assert r.status_code == 200
+    ids = {t["id"] for t in r.json()["themes"]}
+    assert {"business_slate", "dark_tech", "warm_editorial", "default"} <= ids
+
+
+def test_step2_rich_layouts_theme_notes_and_image_pipeline(client):
+    from PIL import Image
+
+    pid = _create(client, "rich-deck")
+    _upload_txt(client, pid)
+
+    # Upload a real PNG image
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 400), color=(16, 185, 129)).save(buf, format="PNG")
+    r = client.post(
+        f"/api/projects/{pid}/materials",
+        files={"file": ("diagram.png", buf.getvalue(), "image/png")},
+    )
+    assert r.status_code == 200
+    assert r.json()["asset_id"] == "diagram"
+
+    # Asset endpoint serves the uploaded image
+    img_res = client.get(f"/api/projects/{pid}/assets/diagram")
+    assert img_res.status_code == 200
+    assert img_res.headers["content-type"] == "image/png"
+
+    version = _run_outline(client, pid)
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+
+    # Edit outline to include two_column, text_image, and speaker_notes
+    payload = _edit_items(outline)
+    payload["items"][0]["layout"] = "cover"
+    payload["items"][0]["speaker_notes"] = "封面演讲备注：欢迎各位。"
+    payload["items"][1]["layout"] = "two_column"
+    payload["items"][1]["summary"] = "左栏：现有方案痛点"
+    payload["items"][1]["column_right"] = "右栏：Draftboard 确定性方案"
+    payload["items"].append(
+        {
+            "outline_item_id": "img-slide",
+            "title": "架构示意图",
+            "summary": "右侧为系统架构图，支持原生可编辑。",
+            "layout": "text_image",
+            "image_asset_id": "diagram",
+            "speaker_notes": "请重点看右侧流程图。",
+        }
+    )
+
+    r = client.put(f"/api/projects/{pid}/outlines/{version}", json=payload)
+    assert r.status_code == 200
+    saved = r.json()
+    assert len(saved["items"]) == 3
+    assert saved["items"][1]["column_right"] == "右栏：Draftboard 确定性方案"
+    assert saved["items"][2]["image_asset_id"] == "diagram"
+
+    client.post(f"/api/projects/{pid}/outlines/{version}/confirm")
+    r = client.post(
+        f"/api/projects/{pid}/generate",
+        json={
+            "outline_version": version,
+            "template_id": "business_slate",
+            "auto_fit": True,
+        },
+    )
+    assert r.status_code == 202
+    task = _wait_task(client, pid, r.json()["task_id"], timeout=60.0)
+    assert task["status"] == "succeeded", task["error"]
+
+    proj = client.get(f"/api/projects/{pid}").json()
+    assert proj["latest_template_id"] == "business_slate"
+    assert proj["latest_auto_fit"] is True
+
+    prs = Presentation(io.BytesIO(client.get(f"/api/projects/{pid}/download").content))
+    assert len(prs.slides) == 3
+    assert prs.slides[0].notes_slide.notes_text_frame.text == "封面演讲备注：欢迎各位。"
+    # Slide 2 has both columns
+    s2_text = "\n".join(sh.text_frame.text for sh in prs.slides[1].shapes if sh.has_text_frame)
+    assert "左栏：现有方案痛点" in s2_text
+    assert "右栏：Draftboard 确定性方案" in s2_text
+    # Slide 3 embeds the uploaded image as a native picture shape
+    assert any(sh.shape_type == 13 for sh in prs.slides[2].shapes)
+    assert prs.slides[2].notes_slide.notes_text_frame.text == "请重点看右侧流程图。"

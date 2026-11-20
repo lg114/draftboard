@@ -26,7 +26,9 @@ from draftboard.models import (
     SlideLayout,
     validate_outline,
 )
+from draftboard.pptx_export import _resolve_image_path
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
+from draftboard.themes import THEMES, list_themes
 
 load_dotenv()
 
@@ -85,12 +87,17 @@ def _export_reports(project_id: str) -> list[dict]:
     return sorted(reports, key=lambda r: r["_mtime"])
 
 
-def _latest_artifact_outline_version(project_id: str) -> Optional[str]:
+def _latest_artifact_meta(project_id: str) -> dict:
     artifact_files = list((_root() / project_id / "artifacts").glob("*/r*.json"))
     if not artifact_files:
-        return None
+        return {}
     latest = max(artifact_files, key=lambda p: p.stat().st_mtime)
-    return load_json(latest).get("outline_version")
+    data = load_json(latest)
+    return {
+        "outline_version": data.get("outline_version"),
+        "template_id": data.get("template_id"),
+        "auto_fit": data.get("auto_fit"),
+    }
 
 
 def _latest_success_report(project_id: str) -> Optional[dict]:
@@ -239,12 +246,18 @@ def list_projects():
     }
 
 
+@app.get("/api/themes")
+def get_themes():
+    return {"themes": list_themes()}
+
+
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: str):
     _require_project(project_id)
     summary = _project_summary(project_id)
     reports = _export_reports(project_id)
     latest_success = _latest_success_report(project_id)
+    art_meta = _latest_artifact_meta(project_id)
     return {
         "project_id": project_id,
         "name": summary["name"],
@@ -254,7 +267,9 @@ def get_project(project_id: str):
         "materials_count": summary["materials_count"],
         "insufficient_evidence_count": summary["insufficient_evidence_count"],
         "outlines": _outline_summaries(project_id),
-        "generated_outline_version": _latest_artifact_outline_version(project_id),
+        "generated_outline_version": art_meta.get("outline_version"),
+        "latest_template_id": art_meta.get("template_id"),
+        "latest_auto_fit": art_meta.get("auto_fit"),
         "latest_report": reports[-1] if reports else None,
         "download_available": latest_success is not None,
         "tasks": [t.model_dump() for t in tasks.list_tasks(_root(), project_id)],
@@ -286,6 +301,17 @@ async def upload_material(project_id: str, file: UploadFile):
 def read_materials(project_id: str):
     _require_project(project_id)
     return _raw(tools_module.read_materials)(project_id=project_id).model_dump()
+
+
+@app.get("/api/projects/{project_id}/assets/{asset_ref}")
+def get_image_asset(project_id: str, asset_ref: str):
+    _require_project(project_id)
+    assets_dir = _root() / project_id / "assets"
+    path = _resolve_image_path(asset_ref, assets_dir)
+    if path is None:
+        raise HTTPException(404, f"图片素材 '{asset_ref}' 不存在")
+    media_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+    return FileResponse(path, media_type=media_type)
 
 
 # ── Outlines ─────────────────────────────────────────────────────────────────
@@ -328,6 +354,9 @@ class OutlineItemEdit(BaseModel):
     summary: str
     layout: Optional[SlideLayout] = None
     source_ids: Optional[list[str]] = None
+    column_right: Optional[str] = None
+    image_asset_id: Optional[str] = None
+    speaker_notes: Optional[str] = None
 
 
 class OutlineEditRequest(BaseModel):
@@ -336,7 +365,7 @@ class OutlineEditRequest(BaseModel):
 
 @app.put("/api/projects/{project_id}/outlines/{version}")
 def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
-    """Edit titles, summaries, layouts, and page structure (add/delete/reorder).
+    """Edit titles, summaries, layouts, notes, and page structure (add/delete/reorder).
 
     Editing a confirmed outline never mutates it: a new draft version is
     derived instead, so what was confirmed stays exactly what entered the
@@ -364,6 +393,12 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
             item.summary = edit.summary
             if "layout" in edit.model_fields_set:
                 item.layout = edit.layout
+            if "column_right" in edit.model_fields_set:
+                item.column_right = edit.column_right
+            if "image_asset_id" in edit.model_fields_set:
+                item.image_asset_id = edit.image_asset_id
+            if "speaker_notes" in edit.model_fields_set:
+                item.speaker_notes = edit.speaker_notes
             if "source_ids" in edit.model_fields_set and edit.source_ids is not None:
                 item.source_ids = edit.source_ids
                 if not item.source_ids:
@@ -383,6 +418,9 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
                         else EvidenceStatus.UNSUPPORTED
                     ),
                     layout=edit.layout,
+                    column_right=edit.column_right,
+                    image_asset_id=edit.image_asset_id,
+                    speaker_notes=edit.speaker_notes,
                 )
             )
 
@@ -413,11 +451,15 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
 
 class GenerateRequest(BaseModel):
     outline_version: str
+    template_id: str = "default"
+    auto_fit: bool = False
 
 
 @app.post("/api/projects/{project_id}/generate", status_code=202)
 def generate(project_id: str, req: GenerateRequest):
     _require_project(project_id)
+    if req.template_id not in THEMES:
+        raise HTTPException(400, f"未知主题 '{req.template_id}'")
     storage = _storage(project_id)
     outline = storage.load_outline(req.outline_version)
     if not outline.is_confirmed:
@@ -429,7 +471,13 @@ def generate(project_id: str, req: GenerateRequest):
         _root(),
         project_id,
         "generate",
-        tasks.generate_work(_root(), project_id, req.outline_version),
+        tasks.generate_work(
+            _root(),
+            project_id,
+            req.outline_version,
+            template_id=req.template_id,
+            auto_fit=req.auto_fit,
+        ),
     )
     return record.model_dump()
 

@@ -187,6 +187,7 @@ def generate_slides(
     approved_outline_version: str,
     template_id: str = "default",
     idempotency_key: str = "",
+    auto_fit: bool = False,
 ) -> Artifact:
     """Generate a slide artifact from an approved outline.
 
@@ -198,9 +199,11 @@ def generate_slides(
         project_id: Target project identifier.
         approved_outline_version: Outline version that has been confirmed by
             the user.
-        template_id: Slide template to apply (default: "default").
+        template_id: Slide template/theme to apply (default: "default").
         idempotency_key: Unique string; identical keys return the cached
             artifact without re-generating slides.
+        auto_fit: When True, allow exporter to step font size down to floor
+            (body >= 14pt, cover title >= 28pt) before blocking on overflow.
 
     Returns:
         The generated (or cached) Artifact.
@@ -260,6 +263,40 @@ def generate_slides(
                         source_id=source_id,
                     )
                 )
+        elif layout == SlideLayout.TWO_COLUMN:
+            elements.append(
+                SlideElement(
+                    element_id=f"{slide_id}-column-left",
+                    type="column_left",
+                    content=item.summary,
+                    source_id=source_id,
+                )
+            )
+            elements.append(
+                SlideElement(
+                    element_id=f"{slide_id}-column-right",
+                    type="column_right",
+                    content=item.column_right or "",
+                    source_id=source_id,
+                )
+            )
+        elif layout == SlideLayout.TEXT_IMAGE:
+            elements.append(
+                SlideElement(
+                    element_id=f"{slide_id}-text",
+                    type="text",
+                    content=item.summary,
+                    source_id=source_id,
+                )
+            )
+            elements.append(
+                SlideElement(
+                    element_id=f"{slide_id}-image",
+                    type="image",
+                    content=item.image_asset_id or "",
+                    source_id=source_id,
+                )
+            )
         else:
             role = {
                 SlideLayout.COVER: "subtitle",
@@ -274,7 +311,14 @@ def generate_slides(
                     source_id=source_id,
                 )
             )
-        slides.append(Slide(slide_id=slide_id, layout=layout, elements=elements))
+        slides.append(
+            Slide(
+                slide_id=slide_id,
+                layout=layout,
+                elements=elements,
+                speaker_notes=item.speaker_notes,
+            )
+        )
 
     artifact_id = f"art-{uuid.uuid4().hex[:8]}"
     artifact = Artifact(
@@ -284,6 +328,7 @@ def generate_slides(
         slides=slides,
         outline_version=approved_outline_version,
         template_id=template_id,
+        auto_fit=auto_fit,
     )
     ir_errors = validate_ir(artifact)
     if ir_errors:
@@ -523,7 +568,7 @@ def export_deck_impl(
     pptx_path = exports_dir / f"{artifact_id}-r{revision}.pptx"
 
     try:
-        export_pptx(artifact, pptx_path)
+        export_pptx(artifact, pptx_path, assets_dir=storage.root / "assets")
     except (ValueError, FileNotFoundError) as e:
         result = ExportResult(
             success=False,

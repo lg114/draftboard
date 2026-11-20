@@ -345,3 +345,139 @@ def test_sample_passes_with_real_fonts(sample_artifact, tmp_path):
     out = tmp_path / "real.pptx"
     export_pptx(sample_artifact, out, fonts=load_fonts())
     assert len(Presentation(str(out)).slides) == 5
+
+
+# ── Step 2: Themes, Images, Speaker Notes & Controlled Auto-Fit ──────────────
+
+
+@pytest.mark.parametrize("theme_id", ["business_slate", "dark_tech", "warm_editorial"])
+def test_named_themes_apply_chrome_and_preserve_content(
+    sample_artifact, tmp_path, font_pair, theme_id
+):
+    from draftboard.themes import get_theme
+
+    sample_artifact.template_id = theme_id
+    sample_artifact.slides[0].speaker_notes = "开场白：介绍 Draftboard 的核心定位。"
+    out = tmp_path / f"{theme_id}.pptx"
+    export_pptx(sample_artifact, out, fonts=font_pair)
+
+    prs = Presentation(str(out))
+    theme = get_theme(theme_id)
+    assert len(prs.slides) == 5
+
+    # Cover slide has themed dark/hero background and bold title
+    cover = prs.slides[0]
+    assert cover.background.fill.fore_color.rgb == theme.cover_bg_rgb
+    assert cover.notes_slide.notes_text_frame.text == "开场白：介绍 Draftboard 的核心定位。"
+    cover_title = _find_box(cover, BOX_COVER_TITLE)
+    assert cover_title.text_frame.paragraphs[0].runs[0].font.bold is True
+
+    # Content slide has themed background, page number, and no textbox overlap
+    content_slide = prs.slides[1]
+    assert content_slide.background.fill.fore_color.rgb == theme.bg_rgb
+    texts = _shape_texts(content_slide)
+    assert any("2 / 5" in t for t in texts)
+    boxes = [s for s in content_slide.shapes if s.has_text_frame]
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            ox = a.left < b.left + b.width and b.left < a.left + a.width
+            oy = a.top < b.top + b.height and b.top < a.top + a.height
+            assert not (ox and oy)
+
+
+def test_text_image_layout_embeds_native_picture(tmp_path, font_pair):
+    from PIL import Image
+    from draftboard.models import Slide, SlideElement
+    from draftboard.pptx_export import BOX_TEXT_IMAGE_LEFT, BOX_TEXT_IMAGE_RIGHT
+
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    img_file = assets_dir / "arch.png"
+    Image.new("RGB", (800, 400), color=(37, 99, 235)).save(img_file)
+
+    artifact = Artifact(
+        artifact_id="art-img",
+        project_id="proj-img",
+        artifact_revision=1,
+        outline_version="v-1",
+        template_id="business_slate",
+        slides=[
+            Slide(
+                slide_id="slide-001",
+                layout=SlideLayout.TEXT_IMAGE,
+                speaker_notes="结合右侧架构图讲解数据流。",
+                elements=[
+                    SlideElement(element_id="e1", type="title", content="系统架构总览"),
+                    SlideElement(
+                        element_id="e2",
+                        type="text",
+                        content="左侧为要点说明，右侧展示真实上传的架构图片。",
+                    ),
+                    SlideElement(element_id="e3", type="image", content="arch"),
+                ],
+            )
+        ],
+    )
+    out = tmp_path / "with_image.pptx"
+    export_pptx(artifact, out, fonts=font_pair, assets_dir=assets_dir)
+
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    pics = [s for s in slide.shapes if s.shape_type == 13]
+    assert len(pics) == 1
+    pic = pics[0]
+    bx, by, bw, bh = BOX_TEXT_IMAGE_RIGHT
+    # Aspect ratio 2:1 fitted inside 400x360 -> width=400pt, height=200pt, vertically centered
+    assert pic.width == Pt(400)
+    assert pic.height == Pt(200)
+    assert pic.left >= Pt(bx) and pic.left + pic.width <= Pt(bx + bw)
+    assert pic.top >= Pt(by) and pic.top + pic.height <= Pt(by + bh)
+    # Left text box is at BOX_TEXT_IMAGE_LEFT
+    _find_box(slide, BOX_TEXT_IMAGE_LEFT)
+    assert slide.notes_slide.notes_text_frame.text == "结合右侧架构图讲解数据流。"
+
+
+def test_missing_image_asset_blocks_export(tmp_path, font_pair):
+    from draftboard.models import Slide, SlideElement
+
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    artifact = Artifact(
+        artifact_id="art-missing-img",
+        project_id="proj-img",
+        artifact_revision=1,
+        outline_version="v-1",
+        slides=[
+            Slide(
+                slide_id="slide-001",
+                layout=SlideLayout.TEXT_IMAGE,
+                elements=[
+                    SlideElement(element_id="e1", type="title", content="缺图测试"),
+                    SlideElement(element_id="e2", type="text", content="说明文字。"),
+                    SlideElement(element_id="e3", type="image", content="not_found"),
+                ],
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="MISSING_IMAGE"):
+        export_pptx(artifact, tmp_path / "fail.pptx", fonts=font_pair, assets_dir=assets_dir)
+
+
+def test_auto_fit_steps_down_and_respects_floor(sample_artifact, tmp_path, font_pair):
+    # Moderate overflow at 18pt (~750 CJK chars overflows 18pt, fits comfortably at 14pt)
+    sample_artifact.slides[1].elements[1].content = "测" * 750
+
+    with pytest.raises(ValueError, match="OVERFLOW"):
+        export_pptx(sample_artifact, tmp_path / "strict.pptx", fonts=font_pair, auto_fit=False)
+
+    out = tmp_path / "autofit.pptx"
+    export_pptx(sample_artifact, out, fonts=font_pair, auto_fit=True)
+    prs = Presentation(str(out))
+    body = _find_box(prs.slides[1], BOX_BODY)
+    used_size = body.text_frame.paragraphs[0].runs[0].font.size
+    assert used_size in (Pt(16), Pt(14))
+
+    # Extreme overflow (~2000 CJK chars) still blocks at 14pt floor
+    sample_artifact.slides[1].elements[1].content = "测" * 2000
+    with pytest.raises(ValueError, match="min 14pt"):
+        export_pptx(sample_artifact, tmp_path / "too_big.pptx", fonts=font_pair, auto_fit=True)

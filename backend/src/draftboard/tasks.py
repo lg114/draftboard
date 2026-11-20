@@ -198,16 +198,23 @@ def outline_work(root: pathlib.Path, project_id: str) -> Callable[[TaskContext],
 
 
 def generate_work(
-    root: pathlib.Path, project_id: str, outline_version: str
+    root: pathlib.Path,
+    project_id: str,
+    outline_version: str,
+    template_id: str = "default",
+    auto_fit: bool = False,
 ) -> Callable[[TaskContext], dict]:
     import draftboard.tools as tools_module
 
     def work(ctx: TaskContext) -> dict:
+        key_suffix = f"{outline_version}-{template_id}-af{int(auto_fit)}"
         ctx.set_step("从已确认大纲生成幻灯片")
         artifact = _raw(tools_module.generate_slides)(
             project_id=project_id,
             approved_outline_version=outline_version,
-            idempotency_key=f"api-gen-{outline_version}",
+            template_id=template_id,
+            idempotency_key=f"api-gen-{key_suffix}",
+            auto_fit=auto_fit,
         )
         ctx.set_step("校验幻灯片结构")
         report = _raw(tools_module.validate_artifact)(
@@ -219,7 +226,7 @@ def generate_work(
             project_id=project_id,
             artifact_id=artifact.artifact_id,
             revision=artifact.artifact_revision,
-            idempotency_key=f"api-export-{outline_version}",
+            idempotency_key=f"api-export-{key_suffix}",
         )
         result = {
             "outline_version": outline_version,

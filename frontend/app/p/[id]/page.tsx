@@ -14,9 +14,13 @@ import {
   Project,
   SourceFragment,
   Task,
+  ThemeOption,
 } from "../../../lib/api";
 import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
-import { OutlineEditor } from "../../../components/workspace/OutlineEditor";
+import {
+  EditableOutlineField,
+  OutlineEditor,
+} from "../../../components/workspace/OutlineEditor";
 import { SlidePreviewPanel } from "../../../components/workspace/SlidePreviewPanel";
 import { StatusBanners } from "../../../components/workspace/StatusBanners";
 import {
@@ -32,6 +36,9 @@ function buildOutlineEditPayload(outline: Outline) {
       summary: item.summary,
       layout: item.layout ?? null,
       source_ids: item.source_ids,
+      column_right: item.column_right ?? null,
+      image_asset_id: item.image_asset_id ?? null,
+      speaker_notes: item.speaker_notes ?? null,
     })),
   };
 }
@@ -43,6 +50,11 @@ export default function ProjectWorkspacePage() {
   const [project, setProject] = useState<Project | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [sourceFragments, setSourceFragments] = useState<SourceFragment[]>([]);
+  const [themes, setThemes] = useState<ThemeOption[]>([]);
+  const [selectedThemeId, setSelectedThemeId] = useState("business_slate");
+  const [autoFit, setAutoFit] = useState(true);
+  const themeInitializedRef = useRef(false);
+
   const [outline, setOutline] = useState<Outline | null>(null);
   const [savedOutline, setSavedOutline] = useState<Outline | null>(null);
   const [version, setVersion] = useState("");
@@ -73,6 +85,12 @@ export default function ProjectWorkspacePage() {
     setMsg(text);
     setTimeout(() => setMsg(""), durationMs);
   };
+
+  useEffect(() => {
+    api<{ themes: ThemeOption[] }>("/api/themes")
+      .then((res) => setThemes(res.themes || []))
+      .catch(() => {});
+  }, []);
 
   const loadPreview = useCallback(async () => {
     try {
@@ -114,6 +132,16 @@ export default function ProjectWorkspacePage() {
     try {
       const data = await api<Project>(`/api/projects/${pid}`);
       setProject(data);
+      if (!themeInitializedRef.current) {
+        if (data.latest_template_id) {
+          setSelectedThemeId(data.latest_template_id);
+        }
+        if (typeof data.latest_auto_fit === "boolean") {
+          setAutoFit(data.latest_auto_fit);
+        }
+        themeInitializedRef.current = true;
+      }
+
       const mats = await api<MaterialsResponse>(`/api/projects/${pid}/materials`);
       setMaterials(mats.materials || []);
       setSourceFragments(mats.source_fragments || []);
@@ -210,6 +238,11 @@ export default function ProjectWorkspacePage() {
     return JSON.stringify(outline.items) !== JSON.stringify(savedOutline.items);
   }, [outline, savedOutline]);
 
+  const activeTheme = useMemo(
+    () => themes.find((t) => t.id === selectedThemeId) || themes[0] || null,
+    [themes, selectedThemeId]
+  );
+
   const humanizedError = useMemo(() => {
     if (!rawError) return null;
     if (
@@ -230,7 +263,13 @@ export default function ProjectWorkspacePage() {
     ) {
       return {
         title: "演示文稿生成遇到排版问题",
-        desc: "检测到字形度量溢出或超长不可断行文本，请查看右侧「版面检查」中的具体页码并精简文案后重试。",
+        desc: "检测到字形度量溢出或超长不可断行文本，请查看右侧「版面检查」中的具体页码并精简文案（或开启顶部「自动缩字」）后重试。",
+      };
+    }
+    if (rawError.includes("MISSING_IMAGE")) {
+      return {
+        title: "图文页缺少有效配图",
+        desc: "检测到「左文右图」页面引用的图片素材不存在，请在左侧卡片中重新选择已上传的 PNG/JPG 图片。",
       };
     }
     if (rawError.includes("LibreOffice") || rawError.includes("渲染预览")) {
@@ -357,7 +396,11 @@ export default function ProjectWorkspacePage() {
       });
       const task = await api<Task>(
         `/api/projects/${pid}/generate`,
-        jsonOptions("POST", { outline_version: targetVersion })
+        jsonOptions("POST", {
+          outline_version: targetVersion,
+          template_id: selectedThemeId,
+          auto_fit: autoFit,
+        })
       );
       startPolling(task.task_id);
     } catch (e) {
@@ -388,7 +431,7 @@ export default function ProjectWorkspacePage() {
 
   function updateItem(
     index: number,
-    field: "title" | "summary" | "layout",
+    field: EditableOutlineField,
     val: string
   ) {
     if (!outline) return;
@@ -419,6 +462,9 @@ export default function ProjectWorkspacePage() {
         source_ids: [],
         evidence_status: "unsupported",
         layout: "content",
+        column_right: null,
+        image_asset_id: null,
+        speaker_notes: null,
       },
     ];
     setOutline({ ...outline, items });
@@ -453,6 +499,11 @@ export default function ProjectWorkspacePage() {
         isGenerating={isGenerating}
         currentStage={currentStage}
         showMaterialsDrawer={showMaterialsDrawer}
+        themes={themes}
+        selectedThemeId={selectedThemeId}
+        autoFit={autoFit}
+        onSelectTheme={setSelectedThemeId}
+        onToggleAutoFit={() => setAutoFit((v) => !v)}
         onToggleMaterialsDrawer={() =>
           setShowMaterialsDrawer(!showMaterialsDrawer)
         }
@@ -489,8 +540,9 @@ export default function ProjectWorkspacePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         <OutlineEditor
+          pid={pid}
           currentStage={currentStage}
-          materialsCount={materials.length}
+          materials={materials}
           outline={outline}
           selectedIndex={selectedIndex}
           isGenerating={isGenerating}
@@ -515,6 +567,9 @@ export default function ProjectWorkspacePage() {
           report={report}
           issues={issues}
           sourceFragments={sourceFragments}
+          activeTheme={activeTheme}
+          selectedThemeId={selectedThemeId}
+          autoFit={autoFit}
           renderingPreview={renderingPreview}
           onSelectIndex={setSelectedIndex}
           onRenderPreviewsNow={() => void renderPreviewsNow()}

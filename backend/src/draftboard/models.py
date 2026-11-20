@@ -24,6 +24,7 @@ class SlideLayout(str, Enum):
     CONTENT = "content"
     BULLETS = "bullets"
     TWO_COLUMN = "two_column"
+    TEXT_IMAGE = "text_image"
     CLOSING = "closing"
 
 
@@ -53,8 +54,20 @@ class OutlineItem(BaseModel):
         description=(
             "Requested slide layout; None lets the program apply its default "
             "rule (first item cover, last closing, others content). "
-            "two_column is not derivable from an outline summary."
+            "two_column requires column_right; text_image requires image_asset_id."
         ),
+    )
+    column_right: Optional[str] = Field(
+        None,
+        description="Right-column content when layout is two_column",
+    )
+    image_asset_id: Optional[str] = Field(
+        None,
+        description="Uploaded image asset ID (or filename) when layout is text_image",
+    )
+    speaker_notes: Optional[str] = Field(
+        None,
+        description="Optional presenter talking points exported to PPTX notes",
     )
 
 
@@ -63,6 +76,8 @@ OUTLINE_LAYOUTS = {
     SlideLayout.COVER,
     SlideLayout.CONTENT,
     SlideLayout.BULLETS,
+    SlideLayout.TWO_COLUMN,
+    SlideLayout.TEXT_IMAGE,
     SlideLayout.CLOSING,
 }
 
@@ -105,6 +120,20 @@ def validate_outline(
                 f"Outline item '{iid}': layout '{item.layout.value}' cannot be "
                 "generated from an outline; author the IR directly instead."
             )
+        if item.layout == SlideLayout.TWO_COLUMN and not (
+            item.column_right and item.column_right.strip()
+        ):
+            errors.append(
+                f"Outline item '{iid}': layout 'two_column' requires non-empty "
+                "column_right content."
+            )
+        if item.layout == SlideLayout.TEXT_IMAGE and not (
+            item.image_asset_id and item.image_asset_id.strip()
+        ):
+            errors.append(
+                f"Outline item '{iid}': layout 'text_image' requires an "
+                "image_asset_id from uploaded project images."
+            )
     return errors
 
 
@@ -137,6 +166,7 @@ LAYOUT_ROLES: dict[SlideLayout, set[str]] = {
     SlideLayout.CONTENT: {"text", "image", "shape"},
     SlideLayout.BULLETS: {"bullet"},
     SlideLayout.TWO_COLUMN: {"column_left", "column_right"},
+    SlideLayout.TEXT_IMAGE: {"text", "bullet", "image"},
     SlideLayout.CLOSING: {"conclusion"},
 }
 
@@ -161,6 +191,9 @@ class Slide(BaseModel):
         SlideLayout.CONTENT, description="Fixed layout template for this slide"
     )
     elements: list[SlideElement] = Field(description="Elements composing this slide")
+    speaker_notes: Optional[str] = Field(
+        None, description="Optional presenter notes written to the PPTX notes slide"
+    )
 
 
 class Artifact(BaseModel):
@@ -171,7 +204,11 @@ class Artifact(BaseModel):
     outline_version: str = Field(
         description="Outline version this artifact was generated from"
     )
-    template_id: str = Field("default", description="Slide template identifier")
+    template_id: str = Field("default", description="Slide template/theme identifier")
+    auto_fit: bool = Field(
+        False,
+        description="When True, step font size down to floor before failing on overflow",
+    )
     schema_version: str = Field("1.0", description="Artifact schema version")
 
 
@@ -223,6 +260,18 @@ def validate_ir(artifact: Artifact) -> list[str]:
             for role in ("column_left", "column_right"):
                 if role not in present:
                     errors.append(f"Slide '{sid}' (two_column) is missing {role}.")
+        elif slide.layout == SlideLayout.TEXT_IMAGE:
+            if "image" not in present:
+                errors.append(f"Slide '{sid}' (text_image) is missing image.")
+            if not (present & {"text", "bullet"}):
+                errors.append(
+                    f"Slide '{sid}' (text_image) is missing text or bullet content."
+                )
+            for el in slide.elements:
+                if el.type == "image" and not el.content.strip():
+                    errors.append(
+                        f"Slide '{sid}' image element '{el.element_id}' has empty content."
+                    )
         else:
             required = {
                 SlideLayout.COVER: set(),

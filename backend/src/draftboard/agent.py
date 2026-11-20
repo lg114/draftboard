@@ -26,6 +26,7 @@ Rules:
 - Never fabricate line numbers or image content
 - Mark evidence as 'unsupported' or 'partial' when you are not sure
 - Follow the pipeline: read_materials -> propose_outline -> user confirms -> generate_slides -> validate_artifact -> export_deck
+- When proposing outline items, pick the most fitting layout: 'cover' (first slide), 'content', 'bullets' (newline-separated points), 'two_column' (requires column_right), 'text_image' (requires image_asset_id matching an actual uploaded image), or 'closing' (last slide); include concise presenter speaker_notes when helpful
 - The outline must be confirmed by the user (via the draftboard confirm CLI command) before you generate slides; you cannot confirm it yourself
 - generate_slides copies the confirmed outline verbatim; never rewrite or re-summarize confirmed content
 - After generating, call validate_artifact, then export_deck
