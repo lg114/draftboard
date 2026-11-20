@@ -67,12 +67,21 @@ OUTLINE_LAYOUTS = {
 }
 
 
-def validate_outline(items: list[OutlineItem], known_source_ids: set[str]) -> list[str]:
+def validate_outline(
+    items: list[OutlineItem],
+    known_source_ids: set[str],
+    *,
+    allow_empty_sources_for_unsupported: bool = False,
+) -> list[str]:
     """Program-side outline validation; returns error messages (empty = valid)."""
     errors: list[str] = []
+    if not items:
+        return ["Outline must contain at least one item."]
     seen: set[str] = set()
     for item in items:
         iid = item.outline_item_id
+        if not iid.strip():
+            errors.append("Outline item has an empty outline_item_id.")
         if iid in seen:
             errors.append(f"Duplicate outline_item_id '{iid}'.")
         seen.add(iid)
@@ -81,7 +90,11 @@ def validate_outline(items: list[OutlineItem], known_source_ids: set[str]) -> li
         if not item.summary.strip():
             errors.append(f"Outline item '{iid}' has an empty summary.")
         if not item.source_ids:
-            errors.append(f"Outline item '{iid}' cites no source_ids.")
+            if not (
+                allow_empty_sources_for_unsupported
+                and item.evidence_status == EvidenceStatus.UNSUPPORTED
+            ):
+                errors.append(f"Outline item '{iid}' cites no source_ids.")
         for sid in item.source_ids:
             if sid not in known_source_ids:
                 errors.append(

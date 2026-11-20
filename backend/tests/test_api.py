@@ -449,22 +449,90 @@ def test_edit_validation_rejects_and_saves_nothing(client):
     # Empty title
     r = client.put(url, json=_edit_items(outline, titles=["", "x"]))
     assert r.status_code == 400
-    # Missing item (deletion not allowed)
-    r = client.put(url, json={"items": _edit_items(outline)["items"][:1]})
+    # Empty items list (must keep at least one slide)
+    r = client.put(url, json={"items": []})
     assert r.status_code == 400
     # Duplicate item IDs
     dup = _edit_items(outline)
     dup["items"][1]["outline_item_id"] = dup["items"][0]["outline_item_id"]
     r = client.put(url, json=dup)
     assert r.status_code == 400
-    # Unknown item ID (addition not allowed)
-    unknown = _edit_items(outline)
-    unknown["items"][0]["outline_item_id"] = "no-such-item"
-    r = client.put(url, json=unknown)
+    # Blank item ID
+    blank_id = _edit_items(outline)
+    blank_id["items"][0]["outline_item_id"] = "   "
+    r = client.put(url, json=blank_id)
+    assert r.status_code == 400
+    # Unsupported outline layout (two_column cannot be generated from outline)
+    bad_layout = _edit_items(outline)
+    bad_layout["items"][0]["layout"] = "two_column"
+    r = client.put(url, json=bad_layout)
+    assert r.status_code == 400
+    # Unknown source_id on added item
+    bad_source = _edit_items(outline)
+    bad_source["items"].append(
+        {
+            "outline_item_id": "new-1",
+            "title": "新页",
+            "summary": "自定义说明",
+            "source_ids": ["nonexistent-L1"],
+        }
+    )
+    r = client.put(url, json=bad_source)
     assert r.status_code == 400
 
     unchanged = client.get(url).json()
     assert unchanged == outline
+
+
+def test_edit_add_delete_and_update_layout(client):
+    pid = _create(client)
+    _upload_txt(client, pid)
+    version = _run_outline(client, pid)
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    url = f"/api/projects/{pid}/outlines/{version}"
+
+    # Add a user-authored slide (no source_ids -> marked unsupported) and change layout
+    payload = _edit_items(outline)
+    payload["items"][0]["layout"] = "cover"
+    payload["items"][1]["layout"] = "bullets"
+    payload["items"][1]["summary"] = "要点一\n要点二"
+    payload["items"].append(
+        {
+            "outline_item_id": "manual-slide-1",
+            "title": "补充说明",
+            "summary": "人工新增的一页内容",
+            "layout": "closing",
+        }
+    )
+    r = client.put(url, json=payload)
+    assert r.status_code == 200
+    saved = r.json()
+    assert len(saved["items"]) == 3
+    assert [i["layout"] for i in saved["items"]] == ["cover", "bullets", "closing"]
+    added = saved["items"][2]
+    assert added["outline_item_id"] == "manual-slide-1"
+    assert added["source_ids"] == []
+    assert added["evidence_status"] == "unsupported"
+
+    # Project summary accurately counts unsupported items
+    proj = client.get(f"/api/projects/{pid}").json()
+    assert proj["insufficient_evidence_count"] == 1
+
+    # Delete the middle item and verify confirm + generate succeeds
+    remaining = {"items": [saved["items"][0], saved["items"][2]]}
+    r = client.put(url, json=remaining)
+    assert r.status_code == 200
+    assert [i["outline_item_id"] for i in r.json()["items"]] == [
+        outline["items"][0]["outline_item_id"],
+        "manual-slide-1",
+    ]
+
+    client.post(f"/api/projects/{pid}/outlines/{version}/confirm")
+    r = client.post(f"/api/projects/{pid}/generate", json={"outline_version": version})
+    assert r.status_code == 202
+    task = _wait_task(client, pid, r.json()["task_id"])
+    assert task["status"] == "succeeded", task["error"]
+    assert task["result"]["export"]["slide_count"] == 2
 
 
 def test_edit_confirm_regenerate_download_loop(client):

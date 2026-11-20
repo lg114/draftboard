@@ -1,10 +1,27 @@
+export type EvidenceStatus = "supported" | "partial" | "unsupported";
+
+export type OutlineLayout = "cover" | "content" | "bullets" | "closing";
+
 export interface OutlineItem {
   outline_item_id: string;
   title: string;
   summary: string;
   source_ids: string[];
-  evidence_status: string;
-  layout: string | null;
+  evidence_status: EvidenceStatus | string;
+  layout: OutlineLayout | string | null;
+}
+
+export interface SourceFragment {
+  source_id: string;
+  asset_id: string;
+  location: string;
+  content_preview: string | null;
+}
+
+export interface MaterialsResponse {
+  project_id: string;
+  materials: Material[];
+  source_fragments: SourceFragment[];
 }
 
 export interface Outline {

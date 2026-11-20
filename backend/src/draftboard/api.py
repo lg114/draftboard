@@ -19,7 +19,13 @@ from pydantic import BaseModel
 
 import draftboard.tasks as tasks
 import draftboard.tools as tools_module
-from draftboard.models import Outline, validate_outline
+from draftboard.models import (
+    EvidenceStatus,
+    Outline,
+    OutlineItem,
+    SlideLayout,
+    validate_outline,
+)
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
 
 load_dotenv()
@@ -156,7 +162,10 @@ def _project_summary(pid: str) -> dict:
         try:
             outline_data = load_json(p_dir / "outlines" / f"{latest_outline_meta['outline_version']}.json")
             for it in outline_data.get("items", []):
-                if it.get("evidence_status") == "insufficient" or not it.get("source_ids"):
+                if (
+                    it.get("evidence_status") in ("unsupported", "insufficient")
+                    or not it.get("source_ids")
+                ):
                     insufficient_evidence_count += 1
         except Exception:
             pass
@@ -317,6 +326,8 @@ class OutlineItemEdit(BaseModel):
     outline_item_id: str
     title: str
     summary: str
+    layout: Optional[SlideLayout] = None
+    source_ids: Optional[list[str]] = None
 
 
 class OutlineEditRequest(BaseModel):
@@ -325,7 +336,7 @@ class OutlineEditRequest(BaseModel):
 
 @app.put("/api/projects/{project_id}/outlines/{version}")
 def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
-    """Edit titles/summaries and page order of an outline.
+    """Edit titles, summaries, layouts, and page structure (add/delete/reorder).
 
     Editing a confirmed outline never mutates it: a new draft version is
     derived instead, so what was confirmed stays exactly what entered the
@@ -334,19 +345,52 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
     _require_project(project_id)
     storage = _storage(project_id)
     outline = storage.load_outline(version)
+    if not req.items:
+        raise HTTPException(400, "大纲至少保留一页")
+
     existing = {item.outline_item_id: item for item in outline.items}
-    ids = [e.outline_item_id for e in req.items]
-    if len(ids) != len(set(ids)) or set(ids) != set(existing):
-        raise HTTPException(
-            400, "编辑必须恰好覆盖原有全部条目：不能新增、删除或重复条目"
-        )
-    new_items = []
+    ids = [e.outline_item_id.strip() for e in req.items]
+    if any(not iid for iid in ids):
+        raise HTTPException(400, "大纲条目 ID 不能为空")
+    if len(ids) != len(set(ids)):
+        raise HTTPException(400, "大纲条目 ID 不能重复")
+
+    new_items: list[OutlineItem] = []
     for edit in req.items:
-        item = existing[edit.outline_item_id].model_copy(deep=True)
-        item.title = edit.title
-        item.summary = edit.summary
-        new_items.append(item)
-    errors = validate_outline(new_items, storage.load_source_ids())
+        iid = edit.outline_item_id.strip()
+        if iid in existing:
+            item = existing[iid].model_copy(deep=True)
+            item.title = edit.title
+            item.summary = edit.summary
+            if "layout" in edit.model_fields_set:
+                item.layout = edit.layout
+            if "source_ids" in edit.model_fields_set and edit.source_ids is not None:
+                item.source_ids = edit.source_ids
+                if not item.source_ids:
+                    item.evidence_status = EvidenceStatus.UNSUPPORTED
+            new_items.append(item)
+        else:
+            source_ids = edit.source_ids or []
+            new_items.append(
+                OutlineItem(
+                    outline_item_id=iid,
+                    title=edit.title,
+                    summary=edit.summary,
+                    source_ids=source_ids,
+                    evidence_status=(
+                        EvidenceStatus.SUPPORTED
+                        if source_ids
+                        else EvidenceStatus.UNSUPPORTED
+                    ),
+                    layout=edit.layout,
+                )
+            )
+
+    errors = validate_outline(
+        new_items,
+        storage.load_source_ids(),
+        allow_empty_sources_for_unsupported=True,
+    )
     if errors:
         raise ValueError("Invalid outline:\n" + "\n".join(errors))
 
@@ -377,7 +421,10 @@ def generate(project_id: str, req: GenerateRequest):
     storage = _storage(project_id)
     outline = storage.load_outline(req.outline_version)
     if not outline.is_confirmed:
-        outline = storage.confirm_outline(req.outline_version)
+        raise HTTPException(
+            400,
+            f"大纲 '{req.outline_version}' 尚未确认，请先确认大纲后再生成 PPT",
+        )
     record = tasks.submit(
         _root(),
         project_id,

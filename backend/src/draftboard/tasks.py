@@ -191,7 +191,7 @@ def outline_work(root: pathlib.Path, project_id: str) -> Callable[[TaskContext],
         outline_via_agent(project_id)
         version = _latest_outline_version(root, project_id)
         if version is None:
-            raise RuntimeError("未成功提取到大纲，请检查素材内容格式或稍后重试。")
+            raise RuntimeError("Agent 没有保存任何大纲，请检查素材内容格式或稍后重试。")
         return {"outline_version": version}
 
     return work
