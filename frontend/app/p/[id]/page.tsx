@@ -266,6 +266,24 @@ export default function ProjectWorkspacePage() {
         desc: "检测到字形度量溢出或超长不可断行文本，请查看右侧「版面检查」中的具体页码并精简文案（或开启顶部「自动缩字」）后重试。",
       };
     }
+    if (rawError.includes("requires non-empty column_right")) {
+      return {
+        title: "双栏对比页缺少右栏内容",
+        desc: "你为某一页选择了「双栏对比」版式，请先填写该页的「右栏内容」后再保存或生成。",
+      };
+    }
+    if (rawError.includes("requires an image_asset_id")) {
+      return {
+        title: "左文右图页未选择配图",
+        desc: "你为某一页选择了「左文右图」版式，请先上传图片素材并在该页选择一张配图。",
+      };
+    }
+    if (rawError.includes("empty title") || rawError.includes("empty summary")) {
+      return {
+        title: "大纲内容不完整",
+        desc: "每一页幻灯片都必须填写非空的标题和正文说明，请检查后重试。",
+      };
+    }
     if (rawError.includes("MISSING_IMAGE")) {
       return {
         title: "图文页缺少有效配图",
@@ -365,8 +383,8 @@ export default function ProjectWorkspacePage() {
           : "大纲已成功保存",
         3000
       );
-      await refresh();
-      await showOutline(updated.outline_version);
+      const proj = await api<Project>(`/api/projects/${pid}`);
+      setProject(proj);
     } catch (e) {
       setRawError((e as Error).message);
       setStatusKind("error");
@@ -379,6 +397,7 @@ export default function ProjectWorkspacePage() {
     setStatusKind("");
     setIsGenerating(true);
     setStatus("正在确认大纲并编译 PowerPoint 演示文稿...");
+    let derivedNewDraft = false;
     try {
       let targetVersion = version;
       if (isStale) {
@@ -386,6 +405,7 @@ export default function ProjectWorkspacePage() {
           `/api/projects/${pid}/outlines/${version}`,
           jsonOptions("PUT", buildOutlineEditPayload(outline))
         );
+        derivedNewDraft = saved.outline_version !== version;
         setOutline(saved);
         setSavedOutline(JSON.parse(JSON.stringify(saved)));
         targetVersion = saved.outline_version;
@@ -407,6 +427,11 @@ export default function ProjectWorkspacePage() {
       setIsGenerating(false);
       setRawError((e as Error).message);
       setStatusKind("error");
+      if (derivedNewDraft) {
+        api<Project>(`/api/projects/${pid}`)
+          .then(setProject)
+          .catch(() => {});
+      }
     }
   }
 
@@ -429,53 +454,72 @@ export default function ProjectWorkspacePage() {
 
   // ── Outline Editing Helpers ───────────────────────────────────────────────
 
+  function patchItem(
+    index: number,
+    patch: Partial<Record<EditableOutlineField, string>>
+  ) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      items[index] = { ...items[index], ...patch };
+      return { ...prev, items };
+    });
+  }
+
   function updateItem(
     index: number,
     field: EditableOutlineField,
     val: string
   ) {
-    if (!outline) return;
-    const items = [...outline.items];
-    items[index] = { ...items[index], [field]: val };
-    setOutline({ ...outline, items });
+    patchItem(index, { [field]: val });
   }
 
   function moveItem(index: number, delta: number) {
-    if (!outline) return;
-    const target = index + delta;
-    if (target < 0 || target >= outline.items.length) return;
-    const items = [...outline.items];
-    const [moved] = items.splice(index, 1);
-    items.splice(target, 0, moved);
-    setOutline({ ...outline, items });
-    setSelectedIndex(target);
+    setOutline((prev) => {
+      if (!prev) return prev;
+      const target = index + delta;
+      if (target < 0 || target >= prev.items.length) return prev;
+      const items = [...prev.items];
+      const [moved] = items.splice(index, 1);
+      items.splice(target, 0, moved);
+      return { ...prev, items };
+    });
+    setSelectedIndex((prevIdx) => {
+      if (!outline) return prevIdx;
+      const target = index + delta;
+      return target >= 0 && target < outline.items.length ? target : prevIdx;
+    });
   }
 
   function addItem() {
-    if (!outline) return;
-    const items = [
-      ...outline.items,
-      {
-        outline_item_id: `slide-${Date.now().toString(36)}`,
-        title: "新幻灯片标题",
-        summary: "输入该页的要点说明与陈述...",
-        source_ids: [],
-        evidence_status: "unsupported",
-        layout: "content",
-        column_right: null,
-        image_asset_id: null,
-        speaker_notes: null,
-      },
-    ];
-    setOutline({ ...outline, items });
-    setSelectedIndex(items.length - 1);
+    setOutline((prev) => {
+      if (!prev) return prev;
+      const items = [
+        ...prev.items,
+        {
+          outline_item_id: `slide-${Date.now().toString(36)}`,
+          title: "新幻灯片标题",
+          summary: "输入该页的要点说明与陈述...",
+          source_ids: [],
+          evidence_status: "unsupported",
+          layout: "content",
+          column_right: null,
+          image_asset_id: null,
+          speaker_notes: null,
+        },
+      ];
+      setSelectedIndex(items.length - 1);
+      return { ...prev, items };
+    });
   }
 
   function deleteItem(index: number) {
-    if (!outline || outline.items.length <= 1) return;
-    const items = outline.items.filter((_, i) => i !== index);
-    setOutline({ ...outline, items });
-    setSelectedIndex(Math.max(0, Math.min(index, items.length - 1)));
+    setOutline((prev) => {
+      if (!prev || prev.items.length <= 1) return prev;
+      const items = prev.items.filter((_, i) => i !== index);
+      setSelectedIndex(Math.max(0, Math.min(index, items.length - 1)));
+      return { ...prev, items };
+    });
   }
 
   return (
@@ -551,6 +595,7 @@ export default function ProjectWorkspacePage() {
           onDropFiles={(files) => void uploadFiles(files)}
           onGenerateOutline={() => void genOutline()}
           onUpdateItem={updateItem}
+          onPatchItem={patchItem}
           onMoveItem={moveItem}
           onAddItem={addItem}
           onDeleteItem={deleteItem}

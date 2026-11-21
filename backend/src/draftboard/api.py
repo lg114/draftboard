@@ -88,16 +88,23 @@ def _export_reports(project_id: str) -> list[dict]:
 
 
 def _latest_artifact_meta(project_id: str) -> dict:
-    artifact_files = list((_root() / project_id / "artifacts").glob("*/r*.json"))
-    if not artifact_files:
-        return {}
-    latest = max(artifact_files, key=lambda p: p.stat().st_mtime)
-    data = load_json(latest)
-    return {
-        "outline_version": data.get("outline_version"),
-        "template_id": data.get("template_id"),
-        "auto_fit": data.get("auto_fit"),
-    }
+    success_report = _latest_success_report(project_id)
+    if success_report:
+        art_path = (
+            _root()
+            / project_id
+            / "artifacts"
+            / success_report["artifact_id"]
+            / f"r{success_report['artifact_revision']}.json"
+        )
+        if art_path.exists():
+            data = load_json(art_path)
+            return {
+                "outline_version": data.get("outline_version"),
+                "template_id": data.get("template_id"),
+                "auto_fit": data.get("auto_fit"),
+            }
+    return {}
 
 
 def _latest_success_report(project_id: str) -> Optional[dict]:
@@ -534,10 +541,14 @@ def _preview_dir(project_id: str, report: dict) -> pathlib.Path:
 
 
 def _preview_payload(project_id: str, report: dict, pages: list[pathlib.Path]) -> dict:
+    cache_tag = f"{report['artifact_id']}-r{report['artifact_revision']}"
     return {
         "artifact_id": report["artifact_id"],
         "artifact_revision": report["artifact_revision"],
-        "pages": [f"/api/projects/{project_id}/preview/{p.name}" for p in pages],
+        "pages": [
+            f"/api/projects/{project_id}/preview/{p.name}?v={cache_tag}"
+            for p in pages
+        ],
     }
 
 
@@ -579,7 +590,11 @@ def preview_image(project_id: str, name: str):
     path = _preview_dir(project_id, report) / name
     if not path.exists():
         raise HTTPException(404, "预览图片不存在")
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(
+        path,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ── Minimal closed-loop page ─────────────────────────────────────────────────

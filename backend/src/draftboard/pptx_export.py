@@ -184,12 +184,19 @@ def _add_line(
     color_rgb: RGBColor,
     width_pt: float = 1.5,
 ) -> None:
-    """Add a pure connector line (has_text_frame is False)."""
+    """Add a crisp, shadow-free connector line (has_text_frame is False)."""
     line = pptx_slide.shapes.add_connector(
         MSO_CONNECTOR.STRAIGHT, Pt(x1_pt), Pt(y1_pt), Pt(x2_pt), Pt(y2_pt)
     )
     line.line.color.rgb = color_rgb
     line.line.width = Pt(width_pt)
+    line.shadow.inherit = False
+    # Strip default theme effectRef shadow on connector style if present
+    style_el = line._element.find(qn("p:style"))
+    if style_el is not None:
+        effect_ref = style_el.find(qn("a:effectRef"))
+        if effect_ref is not None:
+            effect_ref.set("idx", "0")
 
 
 def _apply_theme_chrome(
@@ -213,7 +220,7 @@ def _apply_theme_chrome(
         if layout == SlideLayout.COVER:
             _add_line(pptx_slide, 444, 166, 516, 166, theme.accent_rgb, width_pt=3.5)
         elif layout == SlideLayout.CLOSING:
-            _add_line(pptx_slide, 444, 156, 516, 156, theme.accent_rgb, width_pt=3.0)
+            _add_line(pptx_slide, 444, 108, 516, 108, theme.accent_rgb, width_pt=3.0)
         else:
             # Subtle divider under title + left accent highlight
             _add_line(pptx_slide, 48, 106, 912, 106, theme.divider_rgb, width_pt=1.0)

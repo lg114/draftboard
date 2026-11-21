@@ -357,6 +357,8 @@ def test_preview_rendered_from_same_generation(client):
     image = client.get(preview["pages"][0])
     assert image.status_code == 200
     assert image.headers["content-type"] == "image/png"
+    assert image.headers.get("cache-control") == "no-store"
+    assert "?v=" in preview["pages"][0]
     assert image.content[:8] == b"\x89PNG\r\n\x1a\n"
 
     # On-demand re-render serves the same artifact/revision.

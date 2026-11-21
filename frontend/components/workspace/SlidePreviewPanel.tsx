@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   Image as ImageIcon,
@@ -64,6 +64,18 @@ export function SlidePreviewPanel({
 }: SlidePreviewPanelProps) {
   const [showQADetails, setShowQADetails] = useState(false);
   const [preferDraftMode, setPreferDraftMode] = useState<boolean | null>(null);
+
+  // Reset manual preview-mode override when underlying preview or outline state changes
+  useEffect(() => {
+    setPreferDraftMode(null);
+  }, [
+    preview?.artifact_id,
+    preview?.artifact_revision,
+    version,
+    selectedThemeId,
+    autoFit,
+    isStale,
+  ]);
 
   const currentItem = outline?.items[selectedIndex];
   const totalSlides = outline?.items.length ?? 0;

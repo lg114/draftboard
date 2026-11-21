@@ -79,6 +79,10 @@ interface OutlineEditorProps {
     field: EditableOutlineField,
     value: string
   ) => void;
+  onPatchItem: (
+    index: number,
+    patch: Partial<Record<EditableOutlineField, string>>
+  ) => void;
   onMoveItem: (index: number, delta: number) => void;
   onAddItem: () => void;
   onDeleteItem: (index: number) => void;
@@ -96,6 +100,7 @@ export function OutlineEditor({
   onDropFiles,
   onGenerateOutline,
   onUpdateItem,
+  onPatchItem,
   onMoveItem,
   onAddItem,
   onDeleteItem,
@@ -285,18 +290,18 @@ export function OutlineEditor({
                                   key={opt.value}
                                   type="button"
                                   onClick={() => {
-                                    onUpdateItem(idx, "layout", opt.value);
+                                    const patch: Partial<
+                                      Record<EditableOutlineField, string>
+                                    > = { layout: opt.value };
                                     if (
                                       opt.value === "text_image" &&
                                       !item.image_asset_id &&
                                       imageAssets.length > 0
                                     ) {
-                                      onUpdateItem(
-                                        idx,
-                                        "image_asset_id",
-                                        imageAssets[0].asset_id
-                                      );
+                                      patch.image_asset_id =
+                                        imageAssets[0].asset_id;
                                     }
+                                    onPatchItem(idx, patch);
                                     setActiveLayoutDropdownIdx(null);
                                   }}
                                   className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
