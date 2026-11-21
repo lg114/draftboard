@@ -152,7 +152,7 @@ export function SlideNavigator({
   const total = outline.items.length;
 
   return (
-    <aside className="w-[172px] xl:w-[216px] shrink-0 bg-[#f5f5f7] border-r border-black/[0.07] flex flex-col h-full">
+    <aside className="w-[172px] xl:w-[216px] shrink-0 bg-[#f5f5f7] border-r border-black/[0.07] flex flex-col min-h-0">
       <div className="flex-1 px-3 py-3.5 space-y-3 overflow-y-auto clean-scroll">
         {outline.items.map((item, idx) => {
           const active = idx === selectedIndex;

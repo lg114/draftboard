@@ -543,7 +543,7 @@ export default function ProjectWorkspacePage() {
   const currentItem = outline?.items[selectedIndex];
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f5f5f7] text-[#1d1d1f]">
+    <div className="h-screen overflow-hidden flex flex-col bg-[#f5f5f7] text-[#1d1d1f]">
       <input
         ref={fileInputRef}
         type="file"
@@ -635,7 +635,7 @@ export default function ProjectWorkspacePage() {
 
       {/* Main Content: Either Empty Onboarding OR 3-Column Keynote Studio */}
       {outline && outline.items.length > 0 && currentItem ? (
-        <section className="flex-1 flex h-[calc(100vh-52px)] overflow-hidden">
+        <section className="flex-1 min-h-0 flex items-stretch overflow-hidden">
           {leftOpen && (
             <SlideNavigator
               pid={pid}

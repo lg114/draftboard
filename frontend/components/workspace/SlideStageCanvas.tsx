@@ -171,10 +171,10 @@ export function SlideStageCanvas({
     issues.length > 0 || Boolean(report && !report.success);
 
   return (
-    <main className="flex-1 bg-[#ececef] flex flex-col items-center justify-center px-5 lg:px-8 py-5 min-w-0 overflow-hidden h-full">
+    <main className="flex-1 bg-[#ececef] flex flex-col items-center justify-center px-5 lg:px-8 py-5 min-w-0 min-h-0 overflow-y-auto clean-scroll">
       <div
         ref={colRef}
-        className="w-full max-w-[920px] flex flex-col items-center gap-4"
+        className="w-full max-w-[min(920px,max(360px,calc((100vh-196px)*16/9)))] flex flex-col items-center gap-4 my-auto"
       >
         {/* Clean 1-line Quiet Status Above Stage */}
         <div className="w-full flex items-center justify-between px-1 text-[12.5px] gap-4">

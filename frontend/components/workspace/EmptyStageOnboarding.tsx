@@ -23,7 +23,7 @@ export function EmptyStageOnboarding({
 
   if (materials.length === 0) {
     return (
-      <section className="flex-1 bg-[#ececef] flex items-center justify-center p-6 sm:p-10 min-h-[calc(100vh-52px)]">
+      <section className="flex-1 min-h-0 overflow-y-auto bg-[#ececef] flex items-center justify-center p-6 sm:p-10">
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -65,7 +65,7 @@ export function EmptyStageOnboarding({
   }
 
   return (
-    <section className="flex-1 bg-[#ececef] flex items-center justify-center p-6 sm:p-10 min-h-[calc(100vh-52px)]">
+    <section className="flex-1 min-h-0 overflow-y-auto bg-[#ececef] flex items-center justify-center p-6 sm:p-10">
       <div className="w-full max-w-[760px] aspect-[16/9] rounded-[18px] bg-white slide-shadow flex flex-col items-center justify-center text-center p-8 sm:p-12 space-y-6">
         <div className="w-14 h-14 rounded-2xl bg-[#34c759]/12 flex items-center justify-center text-[#248a3d]">
           <Sparkles className="w-6 h-6" />

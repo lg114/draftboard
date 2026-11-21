@@ -99,7 +99,7 @@ export function SlideInspector({
     "text-[14.5px] text-[#1d1d1f] placeholder-[#a1a1a6] bg-[#f5f5f7] focus:bg-white rounded-xl px-3.5 py-2.5 border border-transparent focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 outline-none leading-relaxed transition-all";
 
   return (
-    <aside className="w-[304px] xl:w-[360px] shrink-0 bg-white border-l border-black/[0.07] flex flex-col h-full overflow-y-auto clean-scroll">
+    <aside className="w-[304px] xl:w-[360px] shrink-0 bg-white border-l border-black/[0.07] flex flex-col min-h-0 overflow-y-auto clean-scroll">
       {/* Sticky Inspector Header */}
       <div className="px-5 py-3.5 border-b border-black/[0.06] flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
         <div className="flex items-center gap-2 whitespace-nowrap">
