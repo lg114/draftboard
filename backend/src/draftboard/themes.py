@@ -1,11 +1,12 @@
 """
 Presentation theme definitions for Draftboard's deterministic PPTX exporter.
 
-The 'default' theme preserves the exact minimalist Phase-1 geometry and
-zero extra decorative elements expected by the frozen regression fixtures.
-Named presentation themes ('business_slate', 'dark_tech', 'warm_editorial')
-add curated color hierarchies, cover/closing contrast, accent lines, and
-page numbers while keeping all content boxes native and editable.
+Curated Apple Keynote / Swiss Editorial themes:
+  - keynote_light  : Pure light canvas, graphite typography, restrained blue accent
+  - keynote_dark   : Keynote obsidian dark canvas, crisp white/silver hierarchy
+  - nordic_pine    : Deep pine cover, ivory content slides, sage accent
+  - gallery_sand   : Warm linen paper canvas, charcoal cover, terracotta accent
+  - default        : Minimalist unstyled white baseline (preserves Phase-1 fixtures)
 """
 
 from dataclasses import dataclass
@@ -31,9 +32,11 @@ class ThemeSpec:
     accent_hex: str
     muted_hex: str
     divider_hex: str
+    surface_hex: str
     bold_title: bool = True
     decorative: bool = True
     show_page_number: bool = True
+    left_aligned_cover: bool = True
 
     @property
     def bg_rgb(self) -> RGBColor:
@@ -71,6 +74,10 @@ class ThemeSpec:
     def divider_rgb(self) -> RGBColor:
         return _rgb(self.divider_hex)
 
+    @property
+    def surface_rgb(self) -> RGBColor:
+        return _rgb(self.surface_hex)
+
     def to_public_dict(self) -> dict:
         return {
             "id": self.id,
@@ -85,57 +92,77 @@ class ThemeSpec:
                 "cover_body": self.cover_body_hex,
                 "accent": self.accent_hex,
                 "muted": self.muted_hex,
+                "divider": self.divider_hex,
+                "surface": self.surface_hex,
             },
         }
 
 
 THEMES: dict[str, ThemeSpec] = {
-    "business_slate": ThemeSpec(
-        id="business_slate",
-        name="商务澄蓝",
-        description="深邃靛蓝封面搭配清爽浅灰正文页，适合项目汇报、方案评审与业务复盘。",
-        bg_hex="#F8FAFC",
-        cover_bg_hex="#0F172A",
-        title_hex="#0F172A",
-        cover_title_hex="#F8FAFC",
-        body_hex="#334155",
-        cover_body_hex="#CBD5E1",
-        accent_hex="#2563EB",
-        muted_hex="#94A3B8",
-        divider_hex="#E2E8F0",
+    "keynote_light": ThemeSpec(
+        id="keynote_light",
+        name="苹果白",
+        description="纯净画布 · 极简黑字",
+        bg_hex="#FBFBFD",
+        cover_bg_hex="#F5F5F7",
+        title_hex="#1D1D1F",
+        cover_title_hex="#1D1D1F",
+        body_hex="#424245",
+        cover_body_hex="#6E6E73",
+        accent_hex="#0071E3",
+        muted_hex="#86868B",
+        divider_hex="#E5E5EA",
+        surface_hex="#FFFFFF",
     ),
-    "dark_tech": ThemeSpec(
-        id="dark_tech",
-        name="深蓝科技",
-        description="全域暗色科技底色配高对比青蓝强调线，适合技术架构分享与产品发布。",
-        bg_hex="#0B1120",
-        cover_bg_hex="#020617",
-        title_hex="#F8FAFC",
+    "keynote_dark": ThemeSpec(
+        id="keynote_dark",
+        name="深空钛黑",
+        description="发布会暗黑 · 银灰层次",
+        bg_hex="#111113",
+        cover_bg_hex="#000000",
+        title_hex="#F5F5F7",
         cover_title_hex="#FFFFFF",
-        body_hex="#CBD5E1",
-        cover_body_hex="#94A3B8",
-        accent_hex="#38BDF8",
-        muted_hex="#64748B",
-        divider_hex="#1E293B",
+        body_hex="#A1A1A6",
+        cover_body_hex="#86868B",
+        accent_hex="#2997FF",
+        muted_hex="#6E6E73",
+        divider_hex="#262629",
+        surface_hex="#1C1C1F",
     ),
-    "warm_editorial": ThemeSpec(
-        id="warm_editorial",
-        name="暖纸编辑",
-        description="炭黑开篇与温润米白阅读纸感，搭配琥珀金点缀，适合研究汇报与教学课件。",
-        bg_hex="#FAF8F5",
-        cover_bg_hex="#1C1917",
-        title_hex="#1C1917",
-        cover_title_hex="#FAF8F5",
-        body_hex="#44403C",
-        cover_body_hex="#D6D3D1",
-        accent_hex="#D97706",
-        muted_hex="#A8A29E",
-        divider_hex="#E7E5E4",
+    "nordic_pine": ThemeSpec(
+        id="nordic_pine",
+        name="松柏森绿",
+        description="深松封面 · 象牙正文",
+        bg_hex="#FAFBF9",
+        cover_bg_hex="#0F2922",
+        title_hex="#10241E",
+        cover_title_hex="#F4F7F5",
+        body_hex="#3D4F49",
+        cover_body_hex="#9FB8AF",
+        accent_hex="#2E7D63",
+        muted_hex="#7E948C",
+        divider_hex="#E3EAE6",
+        surface_hex="#F2F6F4",
+    ),
+    "gallery_sand": ThemeSpec(
+        id="gallery_sand",
+        name="美术馆暖石",
+        description="亚麻纸感 · 陶土点缀",
+        bg_hex="#F4F1EA",
+        cover_bg_hex="#23221F",
+        title_hex="#1F1E1B",
+        cover_title_hex="#F4F1EA",
+        body_hex="#4F4B45",
+        cover_body_hex="#B8B2A6",
+        accent_hex="#B4533C",
+        muted_hex="#948E84",
+        divider_hex="#E3DDD2",
+        surface_hex="#ECE7DD",
     ),
     "default": ThemeSpec(
         id="default",
         name="极简白纸",
-        description="无额外装饰元素的纯白底极简排版，便于导入企业自有母版二次加工。",
+        description="纯净白底 · 零装饰",
         bg_hex="#FFFFFF",
         cover_bg_hex="#FFFFFF",
         title_hex="#262626",
@@ -145,20 +172,42 @@ THEMES: dict[str, ThemeSpec] = {
         accent_hex="#262626",
         muted_hex="#737373",
         divider_hex="#E5E5E5",
+        surface_hex="#FFFFFF",
         bold_title=False,
         decorative=False,
         show_page_number=False,
+        left_aligned_cover=False,
     ),
 }
 
-DEFAULT_PRESENTATION_THEME = "business_slate"
+# Backwards-compatible aliases for earlier theme IDs saved in existing projects
+THEME_ALIASES: dict[str, str] = {
+    "business_slate": "keynote_light",
+    "dark_tech": "keynote_dark",
+    "warm_editorial": "gallery_sand",
+}
+
+DEFAULT_PRESENTATION_THEME = "keynote_light"
+
+
+def is_valid_theme(template_id: str | None) -> bool:
+    if not template_id:
+        return False
+    return template_id in THEMES or template_id in THEME_ALIASES
+
+
+def resolve_theme_id(template_id: str | None) -> str:
+    if not template_id:
+        return "default"
+    canonical = THEME_ALIASES.get(template_id, template_id)
+    return canonical if canonical in THEMES else "default"
 
 
 def get_theme(template_id: str | None) -> ThemeSpec:
-    if not template_id:
-        return THEMES["default"]
-    return THEMES.get(template_id, THEMES["default"])
+    return THEMES[resolve_theme_id(template_id)]
 
 
 def list_themes() -> list[dict]:
-    return [theme.to_public_dict() for theme in THEMES.values()]
+    """Return the 4 curated presentation themes for the studio picker."""
+    curated = ("keynote_light", "keynote_dark", "nordic_pine", "gallery_sand")
+    return [THEMES[tid].to_public_dict() for tid in curated]

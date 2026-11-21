@@ -5,28 +5,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   ExportReport,
+  FALLBACK_THEMES,
   Issue,
   jsonOptions,
   Material,
   MaterialsResponse,
   Outline,
+  OutlineLayout,
   Preview,
   Project,
   SourceFragment,
   Task,
   ThemeOption,
 } from "../../../lib/api";
-import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
+import { EmptyStageOnboarding } from "../../../components/workspace/EmptyStageOnboarding";
 import {
   EditableOutlineField,
-  OutlineEditor,
-} from "../../../components/workspace/OutlineEditor";
-import { SlidePreviewPanel } from "../../../components/workspace/SlidePreviewPanel";
-import { StatusBanners } from "../../../components/workspace/StatusBanners";
-import {
-  WorkspaceHeader,
+  extractIssueSlideIndices,
   WorkspaceStage,
-} from "../../../components/workspace/WorkspaceHeader";
+} from "../../../components/workspace/layoutUtils";
+import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
+import { SlideInspector } from "../../../components/workspace/SlideInspector";
+import { SlideNavigator } from "../../../components/workspace/SlideNavigator";
+import { SlideStageCanvas } from "../../../components/workspace/SlideStageCanvas";
+import { WorkspaceHeader } from "../../../components/workspace/WorkspaceHeader";
 
 function buildOutlineEditPayload(outline: Outline) {
   return {
@@ -50,8 +52,8 @@ export default function ProjectWorkspacePage() {
   const [project, setProject] = useState<Project | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [sourceFragments, setSourceFragments] = useState<SourceFragment[]>([]);
-  const [themes, setThemes] = useState<ThemeOption[]>([]);
-  const [selectedThemeId, setSelectedThemeId] = useState("business_slate");
+  const [themes, setThemes] = useState<ThemeOption[]>(FALLBACK_THEMES);
+  const [selectedThemeId, setSelectedThemeId] = useState("keynote_light");
   const [autoFit, setAutoFit] = useState(true);
   const themeInitializedRef = useRef(false);
 
@@ -59,19 +61,21 @@ export default function ProjectWorkspacePage() {
   const [savedOutline, setSavedOutline] = useState<Outline | null>(null);
   const [version, setVersion] = useState("");
   const [status, setStatus] = useState("");
-  const [statusKind, setStatusKind] = useState<"" | "error" | "ok">("");
   const [rawError, setRawError] = useState<string | null>(null);
+  const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [msg, setMsg] = useState("");
+  const [toast, setToast] = useState("");
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [report, setReport] = useState<ExportReport | null>(null);
-  const [renderingPreview, setRenderingPreview] = useState(false);
   const [showMaterialsDrawer, setShowMaterialsDrawer] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const stopPolling = () => {
@@ -81,14 +85,17 @@ export default function ProjectWorkspacePage() {
     }
   };
 
-  const flashMsg = (text: string, durationMs = 3000) => {
-    setMsg(text);
-    setTimeout(() => setMsg(""), durationMs);
-  };
+  const flashToast = useCallback((text: string, durationMs = 2800) => {
+    setToast(text);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(""), durationMs);
+  }, []);
 
   useEffect(() => {
     api<{ themes: ThemeOption[] }>("/api/themes")
-      .then((res) => setThemes(res.themes || []))
+      .then((res) => {
+        if (res.themes?.length) setThemes(res.themes);
+      })
       .catch(() => {});
   }, []);
 
@@ -122,7 +129,6 @@ export default function ProjectWorkspacePage() {
         );
       } catch (e) {
         setRawError((e as Error).message);
-        setStatusKind("error");
       }
     },
     [pid]
@@ -158,30 +164,35 @@ export default function ProjectWorkspacePage() {
       return data;
     } catch (e) {
       setRawError((e as Error).message);
-      setStatusKind("error");
       return null;
     }
   }, [pid, showOutline, loadPreview]);
 
-  const reportTask = useCallback((task: Task) => {
-    if (task.status === "failed") {
-      setStatusKind("error");
-      setRawError(
-        task.error || `任务 ${task.task_id} 失败 (${task.step || "未知步骤"})`
-      );
-      setIssues(
-        task.result?.export?.issues ?? task.result?.validation?.issues ?? []
-      );
-    } else if (task.status === "succeeded") {
-      setStatusKind("ok");
-      setStatus(`已成功完成：${task.step || "处理完毕"}`);
-      setRawError(null);
-      setIssues([]);
-    } else {
-      setStatusKind("");
-      setStatus(`正在执行：${task.step || "处理中..."}`);
-    }
-  }, []);
+  const reportTask = useCallback(
+    (task: Task) => {
+      if (task.status === "failed") {
+        setRawError(
+          task.error || `任务 ${task.task_id} 失败 (${task.step || "未知步骤"})`
+        );
+        setIssues(
+          task.result?.export?.issues ?? task.result?.validation?.issues ?? []
+        );
+        setStatus("");
+      } else if (task.status === "succeeded") {
+        setRawError(null);
+        setIssues([]);
+        setStatus("");
+        flashToast(
+          task.kind === "outline"
+            ? "大纲提炼完成"
+            : "PPTX 已编译完成，可随时下载或全屏放映"
+        );
+      } else {
+        setStatus(task.step || "正在处理…");
+      }
+    },
+    [flashToast]
+  );
 
   const startPolling = useCallback(
     (taskId: string) => {
@@ -196,7 +207,7 @@ export default function ProjectWorkspacePage() {
           setIsGenerating(false);
           return;
         }
-        setStatus(`正在执行：${task.step || "处理中..."}`);
+        setStatus(task.step || "正在处理…");
         if (task.status === "succeeded" || task.status === "failed") {
           stopPolling();
           setIsGenerating(false);
@@ -230,7 +241,10 @@ export default function ProjectWorkspacePage() {
         if (active) startPolling(active.task_id);
       }
     })();
-    return () => stopPolling();
+    return () => {
+      stopPolling();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, [pid, refresh, startPolling]);
 
   const isStale = useMemo(() => {
@@ -239,9 +253,26 @@ export default function ProjectWorkspacePage() {
   }, [outline, savedOutline]);
 
   const activeTheme = useMemo(
-    () => themes.find((t) => t.id === selectedThemeId) || themes[0] || null,
+    () =>
+      themes.find((t) => t.id === selectedThemeId) ||
+      themes[0] ||
+      FALLBACK_THEMES[0],
     [themes, selectedThemeId]
   );
+
+  const issueSlideIndices = useMemo(
+    () => extractIssueSlideIndices(issues),
+    [issues]
+  );
+
+  const currentSlideIssues = useMemo(() => {
+    const targetTag = `slide-${String(selectedIndex + 1).padStart(3, "0")}`;
+    return issues.filter(
+      (iss) =>
+        iss.slide_id === targetTag ||
+        iss.message.toLowerCase().includes(targetTag)
+    );
+  }, [issues, selectedIndex]);
 
   const humanizedError = useMemo(() => {
     if (!rawError) return null;
@@ -250,56 +281,31 @@ export default function ProjectWorkspacePage() {
       rawError.includes("暂无可用素材") ||
       rawError.includes("未检测到有效素材")
     ) {
-      return {
-        title: "大纲提炼未完成",
-        desc: "项目中未检测到有效素材或模型未能提炼出大纲。请确认已上传 Markdown/TXT 笔记或图片后再试。",
-      };
+      return "大纲提炼未完成：请确认已上传有效的 Markdown/TXT 笔记或图片材料。";
+    }
+    if (rawError.includes("requires non-empty column_right")) {
+      return "双栏对比页缺少右栏内容，请先填写后再保存或导出。";
+    }
+    if (rawError.includes("requires an image_asset_id")) {
+      return "左文右图页尚未选择配图，请先在右侧选择已上传的图片。";
+    }
+    if (rawError.includes("empty title") || rawError.includes("empty summary")) {
+      return "每一页都必须包含非空的标题和正文说明。";
+    }
+    if (rawError.includes("MISSING_IMAGE")) {
+      return "图文页引用的图片素材不存在，请重新选择配图。";
     }
     if (
       rawError.includes("排版检查未通过") ||
-      rawError.includes("排版未通过") ||
       rawError.includes("OVERFLOW") ||
       rawError.includes("溢出")
     ) {
-      return {
-        title: "演示文稿生成遇到排版问题",
-        desc: "检测到字形度量溢出或超长不可断行文本，请查看右侧「版面检查」中的具体页码并精简文案（或开启顶部「自动缩字」）后重试。",
-      };
+      return "部分页面文字超出安全版面，请精简文字或开启「自动缩字」后重试。";
     }
-    if (rawError.includes("requires non-empty column_right")) {
-      return {
-        title: "双栏对比页缺少右栏内容",
-        desc: "你为某一页选择了「双栏对比」版式，请先填写该页的「右栏内容」后再保存或生成。",
-      };
+    if (rawError.includes("LibreOffice")) {
+      return "LibreOffice 渲染失败，已生成的 PPTX 文件仍可直接下载。";
     }
-    if (rawError.includes("requires an image_asset_id")) {
-      return {
-        title: "左文右图页未选择配图",
-        desc: "你为某一页选择了「左文右图」版式，请先上传图片素材并在该页选择一张配图。",
-      };
-    }
-    if (rawError.includes("empty title") || rawError.includes("empty summary")) {
-      return {
-        title: "大纲内容不完整",
-        desc: "每一页幻灯片都必须填写非空的标题和正文说明，请检查后重试。",
-      };
-    }
-    if (rawError.includes("MISSING_IMAGE")) {
-      return {
-        title: "图文页缺少有效配图",
-        desc: "检测到「左文右图」页面引用的图片素材不存在，请在左侧卡片中重新选择已上传的 PNG/JPG 图片。",
-      };
-    }
-    if (rawError.includes("LibreOffice") || rawError.includes("渲染预览")) {
-      return {
-        title: "真实排版图渲染遇到问题",
-        desc: "调用本地 LibreOffice 引擎失败。已生成的 PPTX 文件不受影响，可直接点击右上角「下载 PPTX」查看。",
-      };
-    }
-    return {
-      title: "操作未完成",
-      desc: rawError,
-    };
+    return rawError;
   }, [rawError]);
 
   const currentStage: WorkspaceStage = useMemo(() => {
@@ -314,8 +320,7 @@ export default function ProjectWorkspacePage() {
   async function uploadFiles(files?: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     setRawError(null);
-    setStatusKind("");
-    setStatus("正在上传材料...");
+    setStatus("正在上传素材…");
     try {
       for (const file of Array.from(files)) {
         const fd = new FormData();
@@ -332,12 +337,11 @@ export default function ProjectWorkspacePage() {
           throw new Error(`${file.name}: ${detail}`);
         }
       }
-      flashMsg(`成功上传 ${files.length} 份材料并更新事实切片索引`, 3500);
+      flashToast(`已上传 ${files.length} 份素材`);
       await refresh();
       setStatus("");
     } catch (e) {
       setRawError((e as Error).message);
-      setStatusKind("error");
       setStatus("");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -346,14 +350,12 @@ export default function ProjectWorkspacePage() {
 
   async function genOutline() {
     if (materials.length === 0) {
-      setRawError("项目中暂无可用素材，请先上传 Markdown 笔记或图片材料后再提炼大纲。");
-      setStatusKind("error");
+      setRawError("请先上传 Markdown 笔记或图片后再提炼大纲。");
       return;
     }
     setRawError(null);
-    setStatusKind("");
     setIsGenerating(true);
-    setStatus("正在解析材料并提炼演示大纲...");
+    setStatus("正在解析材料并提炼大纲…");
     try {
       const task = await api<Task>(`/api/projects/${pid}/outline/generate`, {
         method: "POST",
@@ -361,12 +363,12 @@ export default function ProjectWorkspacePage() {
       startPolling(task.task_id);
     } catch (e) {
       setIsGenerating(false);
+      setStatus("");
       setRawError((e as Error).message);
-      setStatusKind("error");
     }
   }
 
-  async function saveOutline() {
+  const saveOutline = useCallback(async () => {
     if (!outline) return;
     setRawError(null);
     try {
@@ -377,26 +379,23 @@ export default function ProjectWorkspacePage() {
       setOutline(updated);
       setSavedOutline(JSON.parse(JSON.stringify(updated)));
       setVersion(updated.outline_version);
-      flashMsg(
+      flashToast(
         updated.outline_version !== outline.outline_version
-          ? `已派生新草稿版本 ${updated.outline_version}（原确认版本已保留）`
-          : "大纲已成功保存",
-        3000
+          ? `已派生新草稿 ${updated.outline_version}`
+          : "已保存修改"
       );
       const proj = await api<Project>(`/api/projects/${pid}`);
       setProject(proj);
     } catch (e) {
       setRawError((e as Error).message);
-      setStatusKind("error");
     }
-  }
+  }, [outline, pid, flashToast]);
 
   async function confirmGenerate() {
     if (!version || !outline) return;
     setRawError(null);
-    setStatusKind("");
     setIsGenerating(true);
-    setStatus("正在确认大纲并编译 PowerPoint 演示文稿...");
+    setStatus("正在确认大纲并编译 PPTX…");
     let derivedNewDraft = false;
     try {
       let targetVersion = version;
@@ -425,8 +424,8 @@ export default function ProjectWorkspacePage() {
       startPolling(task.task_id);
     } catch (e) {
       setIsGenerating(false);
+      setStatus("");
       setRawError((e as Error).message);
-      setStatusKind("error");
       if (derivedNewDraft) {
         api<Project>(`/api/projects/${pid}`)
           .then(setProject)
@@ -435,24 +434,7 @@ export default function ProjectWorkspacePage() {
     }
   }
 
-  async function renderPreviewsNow() {
-    setRenderingPreview(true);
-    setRawError(null);
-    try {
-      const res = await api<Preview>(`/api/projects/${pid}/preview/render`, {
-        method: "POST",
-      });
-      setPreview(res);
-      flashMsg(`已生成 ${res.pages?.length || 0} 页高保真排版预览截图`);
-    } catch (e) {
-      setRawError((e as Error).message);
-      setStatusKind("error");
-    } finally {
-      setRenderingPreview(false);
-    }
-  }
-
-  // ── Outline Editing Helpers ───────────────────────────────────────────────
+  // ── Outline Editing Helpers (Functional Updates) ──────────────────────────
 
   function patchItem(
     index: number,
@@ -466,12 +448,17 @@ export default function ProjectWorkspacePage() {
     });
   }
 
-  function updateItem(
-    index: number,
-    field: EditableOutlineField,
-    val: string
-  ) {
-    patchItem(index, { [field]: val });
+  function handleSelectLayout(nextLayout: OutlineLayout) {
+    const item = outline?.items[selectedIndex];
+    if (!item) return;
+    const patch: Partial<Record<EditableOutlineField, string>> = {
+      layout: nextLayout,
+    };
+    if (nextLayout === "text_image" && !item.image_asset_id) {
+      const firstImage = materials.find((m) => m.asset_type === "image");
+      if (firstImage) patch.image_asset_id = firstImage.asset_id;
+    }
+    patchItem(selectedIndex, patch);
   }
 
   function moveItem(index: number, delta: number) {
@@ -499,7 +486,7 @@ export default function ProjectWorkspacePage() {
         {
           outline_item_id: `slide-${Date.now().toString(36)}`,
           title: "新幻灯片标题",
-          summary: "输入该页的要点说明与陈述...",
+          summary: "输入本页的核心陈述内容…",
           source_ids: [],
           evidence_status: "unsupported",
           layout: "content",
@@ -522,8 +509,41 @@ export default function ProjectWorkspacePage() {
     });
   }
 
+  function focusInspectorField(fieldId: string) {
+    if (!rightOpen) setRightOpen(true);
+    setTimeout(() => {
+      document.getElementById(fieldId)?.focus();
+    }, 25);
+  }
+
+  // Keyboard shortcuts: ↑ / ↓ switch slide, Ctrl/⌘ + S save outline
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (isStale) void saveOutline();
+        return;
+      }
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || !outline?.items.length) {
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.min(outline.items.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [outline, isStale, saveOutline]);
+
+  const currentItem = outline?.items[selectedIndex];
+
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+    <div className="min-h-screen flex flex-col bg-[#f5f5f7] text-[#1d1d1f]">
       <input
         ref={fileInputRef}
         type="file"
@@ -542,15 +562,14 @@ export default function ProjectWorkspacePage() {
         isStale={isStale}
         isGenerating={isGenerating}
         currentStage={currentStage}
-        showMaterialsDrawer={showMaterialsDrawer}
-        themes={themes}
         selectedThemeId={selectedThemeId}
         autoFit={autoFit}
-        onSelectTheme={setSelectedThemeId}
-        onToggleAutoFit={() => setAutoFit((v) => !v)}
-        onToggleMaterialsDrawer={() =>
-          setShowMaterialsDrawer(!showMaterialsDrawer)
-        }
+        showMaterialsDrawer={showMaterialsDrawer}
+        leftOpen={leftOpen}
+        rightOpen={rightOpen}
+        onToggleLeft={() => setLeftOpen((v) => !v)}
+        onToggleRight={() => setRightOpen((v) => !v)}
+        onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
         onSelectVersion={(v) => void showOutline(v)}
         onSaveOutline={() => void saveOutline()}
         onUploadClick={() => fileInputRef.current?.click()}
@@ -565,61 +584,121 @@ export default function ProjectWorkspacePage() {
           isGenerating={isGenerating}
           onUploadClick={() => fileInputRef.current?.click()}
           onGenerateOutline={() => void genOutline()}
+          onClose={() => setShowMaterialsDrawer(false)}
         />
       )}
 
-      <StatusBanners
-        humanizedError={humanizedError}
-        rawError={rawError}
-        canRetryOutline={materials.length > 0 && !isGenerating}
-        status={status}
-        statusKind={statusKind}
-        msg={msg}
-        onRetryOutline={() => void genOutline()}
-        onDismissError={() => {
-          setRawError(null);
-          setStatusKind("");
-        }}
-      />
+      {/* Calm Floating Toast */}
+      {toast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-[#1d1d1f] whitespace-nowrap">
+          {toast}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        <OutlineEditor
-          pid={pid}
-          currentStage={currentStage}
+      {/* Quiet Inline Error Strip (Apple-restrained, dismissible, expandable tech log) */}
+      {humanizedError && (
+        <div className="border-b border-[#ff3b30]/20 bg-[#fff5f5] px-5 py-2.5 text-[13px] text-[#9b1c1c] shrink-0">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-[#ff3b30] shrink-0" />
+              <span className="font-medium truncate">{humanizedError}</span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 text-[12.5px]">
+              {rawError && rawError !== humanizedError && (
+                <button
+                  type="button"
+                  onClick={() => setShowErrorDetail((v) => !v)}
+                  className="text-[#9b1c1c]/80 hover:text-[#9b1c1c] underline cursor-pointer"
+                >
+                  {showErrorDetail ? "收起详情" : "详情"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setRawError(null);
+                  setShowErrorDetail(false);
+                }}
+                className="text-[#9b1c1c]/70 hover:text-[#9b1c1c] cursor-pointer"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+          {showErrorDetail && rawError && (
+            <pre className="max-w-6xl mx-auto mt-2 p-2.5 rounded-xl bg-white/80 text-[11.5px] font-mono text-[#7f1d1d] whitespace-pre-wrap overflow-x-auto">
+              {rawError}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Main Content: Either Empty Onboarding OR 3-Column Keynote Studio */}
+      {outline && outline.items.length > 0 && currentItem ? (
+        <section className="flex-1 flex h-[calc(100vh-52px)] overflow-hidden">
+          {leftOpen && (
+            <SlideNavigator
+              pid={pid}
+              outline={outline}
+              selectedIndex={selectedIndex}
+              activeTheme={activeTheme}
+              issueSlideIndices={issueSlideIndices}
+              onSelectIndex={setSelectedIndex}
+              onMoveItem={moveItem}
+              onDeleteItem={deleteItem}
+              onAddItem={addItem}
+            />
+          )}
+
+          <SlideStageCanvas
+            pid={pid}
+            project={project}
+            outline={outline}
+            version={version}
+            isStale={isStale}
+            selectedIndex={selectedIndex}
+            preview={preview}
+            report={report}
+            issues={issues}
+            issueSlideIndices={issueSlideIndices}
+            themes={themes}
+            activeTheme={activeTheme}
+            selectedThemeId={selectedThemeId}
+            autoFit={autoFit}
+            statusText={status}
+            isGenerating={isGenerating}
+            onSelectIndex={setSelectedIndex}
+            onSelectTheme={setSelectedThemeId}
+            onSelectLayout={handleSelectLayout}
+            onToggleAutoFit={() => setAutoFit((v) => !v)}
+            onFocusField={focusInspectorField}
+          />
+
+          {rightOpen && (
+            <SlideInspector
+              pid={pid}
+              item={currentItem}
+              slideIndex={selectedIndex}
+              totalSlides={outline.items.length}
+              materials={materials}
+              sourceFragments={sourceFragments}
+              slideIssues={currentSlideIssues}
+              onUpdateField={(field, val) =>
+                patchItem(selectedIndex, { [field]: val })
+              }
+              onUploadClick={() => fileInputRef.current?.click()}
+            />
+          )}
+        </section>
+      ) : (
+        <EmptyStageOnboarding
           materials={materials}
-          outline={outline}
-          selectedIndex={selectedIndex}
           isGenerating={isGenerating}
-          onSelectIndex={setSelectedIndex}
           onUploadClick={() => fileInputRef.current?.click()}
           onDropFiles={(files) => void uploadFiles(files)}
           onGenerateOutline={() => void genOutline()}
-          onUpdateItem={updateItem}
-          onPatchItem={patchItem}
-          onMoveItem={moveItem}
-          onAddItem={addItem}
-          onDeleteItem={deleteItem}
         />
-
-        <SlidePreviewPanel
-          pid={pid}
-          project={project}
-          outline={outline}
-          version={version}
-          isStale={isStale}
-          selectedIndex={selectedIndex}
-          preview={preview}
-          report={report}
-          issues={issues}
-          sourceFragments={sourceFragments}
-          activeTheme={activeTheme}
-          selectedThemeId={selectedThemeId}
-          autoFit={autoFit}
-          renderingPreview={renderingPreview}
-          onSelectIndex={setSelectedIndex}
-          onRenderPreviewsNow={() => void renderPreviewsNow()}
-        />
-      </div>
-    </main>
+      )}
+    </div>
   );
 }

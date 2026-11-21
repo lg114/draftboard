@@ -350,7 +350,9 @@ def test_sample_passes_with_real_fonts(sample_artifact, tmp_path):
 # ── Step 2: Themes, Images, Speaker Notes & Controlled Auto-Fit ──────────────
 
 
-@pytest.mark.parametrize("theme_id", ["business_slate", "dark_tech", "warm_editorial"])
+@pytest.mark.parametrize(
+    "theme_id", ["keynote_light", "keynote_dark", "nordic_pine", "gallery_sand"]
+)
 def test_named_themes_apply_chrome_and_preserve_content(
     sample_artifact, tmp_path, font_pair, theme_id
 ):
@@ -365,18 +367,18 @@ def test_named_themes_apply_chrome_and_preserve_content(
     theme = get_theme(theme_id)
     assert len(prs.slides) == 5
 
-    # Cover slide has themed dark/hero background and bold title
+    # Cover slide has themed background and bold title
     cover = prs.slides[0]
     assert cover.background.fill.fore_color.rgb == theme.cover_bg_rgb
     assert cover.notes_slide.notes_text_frame.text == "开场白：介绍 Draftboard 的核心定位。"
     cover_title = _find_box(cover, BOX_COVER_TITLE)
     assert cover_title.text_frame.paragraphs[0].runs[0].font.bold is True
 
-    # Content slide has themed background, page number, and no textbox overlap
+    # Content slide has themed background, formatted page number, and no textbox overlap
     content_slide = prs.slides[1]
     assert content_slide.background.fill.fore_color.rgb == theme.bg_rgb
     texts = _shape_texts(content_slide)
-    assert any("2 / 5" in t for t in texts)
+    assert any("02 / 05" in t for t in texts)
     boxes = [s for s in content_slide.shapes if s.has_text_frame]
     for i, a in enumerate(boxes):
         for b in boxes[i + 1:]:

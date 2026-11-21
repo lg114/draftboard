@@ -595,7 +595,7 @@ def test_list_themes(client):
     r = client.get("/api/themes")
     assert r.status_code == 200
     ids = {t["id"] for t in r.json()["themes"]}
-    assert {"business_slate", "dark_tech", "warm_editorial", "default"} <= ids
+    assert ids == {"keynote_light", "keynote_dark", "nordic_pine", "gallery_sand"}
 
 
 def test_step2_rich_layouts_theme_notes_and_image_pipeline(client):
@@ -652,7 +652,7 @@ def test_step2_rich_layouts_theme_notes_and_image_pipeline(client):
         f"/api/projects/{pid}/generate",
         json={
             "outline_version": version,
-            "template_id": "business_slate",
+            "template_id": "nordic_pine",
             "auto_fit": True,
         },
     )
@@ -661,7 +661,7 @@ def test_step2_rich_layouts_theme_notes_and_image_pipeline(client):
     assert task["status"] == "succeeded", task["error"]
 
     proj = client.get(f"/api/projects/{pid}").json()
-    assert proj["latest_template_id"] == "business_slate"
+    assert proj["latest_template_id"] == "nordic_pine"
     assert proj["latest_auto_fit"] is True
 
     prs = Presentation(io.BytesIO(client.get(f"/api/projects/{pid}/download").content))

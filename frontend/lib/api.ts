@@ -29,6 +29,8 @@ export interface ThemeSwatches {
   cover_body: string;
   accent: string;
   muted: string;
+  divider: string;
+  surface: string;
 }
 
 export interface ThemeOption {
@@ -37,6 +39,77 @@ export interface ThemeOption {
   description: string;
   swatches: ThemeSwatches;
 }
+
+export const FALLBACK_THEMES: ThemeOption[] = [
+  {
+    id: "keynote_light",
+    name: "苹果白",
+    description: "纯净画布 · 极简黑字",
+    swatches: {
+      bg: "#FBFBFD",
+      cover_bg: "#F5F5F7",
+      title: "#1D1D1F",
+      cover_title: "#1D1D1F",
+      body: "#424245",
+      cover_body: "#6E6E73",
+      accent: "#0071E3",
+      muted: "#86868B",
+      divider: "#E5E5EA",
+      surface: "#FFFFFF",
+    },
+  },
+  {
+    id: "keynote_dark",
+    name: "深空钛黑",
+    description: "发布会暗黑 · 银灰层次",
+    swatches: {
+      bg: "#111113",
+      cover_bg: "#000000",
+      title: "#F5F5F7",
+      cover_title: "#FFFFFF",
+      body: "#A1A1A6",
+      cover_body: "#86868B",
+      accent: "#2997FF",
+      muted: "#6E6E73",
+      divider: "#262629",
+      surface: "#1C1C1F",
+    },
+  },
+  {
+    id: "nordic_pine",
+    name: "松柏森绿",
+    description: "深松封面 · 象牙正文",
+    swatches: {
+      bg: "#FAFBF9",
+      cover_bg: "#0F2922",
+      title: "#10241E",
+      cover_title: "#F4F7F5",
+      body: "#3D4F49",
+      cover_body: "#9FB8AF",
+      accent: "#2E7D63",
+      muted: "#7E948C",
+      divider: "#E3EAE6",
+      surface: "#F2F6F4",
+    },
+  },
+  {
+    id: "gallery_sand",
+    name: "美术馆暖石",
+    description: "亚麻纸感 · 陶土点缀",
+    swatches: {
+      bg: "#F4F1EA",
+      cover_bg: "#23221F",
+      title: "#1F1E1B",
+      cover_title: "#F4F1EA",
+      body: "#4F4B45",
+      cover_body: "#B8B2A6",
+      accent: "#B4533C",
+      muted: "#948E84",
+      divider: "#E3DDD2",
+      surface: "#ECE7DD",
+    },
+  },
+];
 
 export interface SourceFragment {
   source_id: string;

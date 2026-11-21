@@ -167,10 +167,15 @@ def _fill_paragraph(
         _set_ea_font(run)
 
 
-def _add_bullet_char(paragraph) -> None:
+def _add_bullet_char(paragraph, accent_hex: str | None = None) -> None:
     pPr = paragraph._p.get_or_add_pPr()
     pPr.set("marL", str(int(Pt(BULLET_INDENT_PT))))
     pPr.set("indent", str(-int(Pt(BULLET_INDENT_PT))))
+    if accent_hex:
+        bu_clr = pPr.makeelement(qn("a:buClr"), {})
+        srgb = pPr.makeelement(qn("a:srgbClr"), {"val": accent_hex.lstrip("#").upper()})
+        bu_clr.append(srgb)
+        pPr.append(bu_clr)
     bu_char = pPr.makeelement(qn("a:buChar"), {"char": "•"})
     pPr.append(bu_char)
 
@@ -206,7 +211,7 @@ def _apply_theme_chrome(
     slide_index: int,
     total_slides: int,
 ) -> None:
-    """Apply background color, decorative lines, and optional page number."""
+    """Apply restrained Apple Keynote / editorial background, hairlines, and page numbers."""
     is_hero = layout in (SlideLayout.COVER, SlideLayout.CLOSING)
 
     if theme.id != "default":
@@ -215,16 +220,15 @@ def _apply_theme_chrome(
         bg_fill.fore_color.rgb = theme.cover_bg_rgb if is_hero else theme.bg_rgb
 
     if theme.decorative:
-        # Top thin accent bar across the entire canvas
-        _add_line(pptx_slide, 0, 1.5, CANVAS_W_PT, 1.5, theme.accent_rgb, width_pt=3.0)
         if layout == SlideLayout.COVER:
-            _add_line(pptx_slide, 444, 166, 516, 166, theme.accent_rgb, width_pt=3.5)
+            # Subtle short accent mark anchored cleanly at bottom-left
+            _add_line(pptx_slide, 48, 464, 96, 464, theme.accent_rgb, width_pt=3.0)
         elif layout == SlideLayout.CLOSING:
-            _add_line(pptx_slide, 444, 108, 516, 108, theme.accent_rgb, width_pt=3.0)
+            # Centered minimal accent rule below closing title
+            _add_line(pptx_slide, 456, 108, 504, 108, theme.accent_rgb, width_pt=2.5)
         else:
-            # Subtle divider under title + left accent highlight
+            # Whisper-thin full-width hairline below content title
             _add_line(pptx_slide, 48, 106, 912, 106, theme.divider_rgb, width_pt=1.0)
-            _add_line(pptx_slide, 48, 106, 112, 106, theme.accent_rgb, width_pt=2.5)
             if layout == SlideLayout.TWO_COLUMN:
                 _add_line(pptx_slide, 480, 128, 480, 472, theme.divider_rgb, width_pt=1.0)
 
@@ -241,7 +245,7 @@ def _apply_theme_chrome(
         p = tf.paragraphs[0]
         p.alignment = PP_ALIGN.RIGHT
         run = p.add_run()
-        run.text = f"{slide_index + 1} / {total_slides}"
+        run.text = f"{slide_index + 1:02d} / {total_slides:02d}"
         run.font.size = Pt(10)
         run.font.name = FONT_LATIN
         run.font.color.rgb = theme.muted_rgb
@@ -265,7 +269,10 @@ def _add_textbox(
 ) -> None:
     x, y, w, h = _box_for(layout, role)
     size_pt, line_pt, space_after_pt = style
-    centered = layout in (SlideLayout.COVER, SlideLayout.CLOSING)
+    if layout == SlideLayout.COVER:
+        centered = not theme.left_aligned_cover
+    else:
+        centered = layout == SlideLayout.CLOSING
     color_rgb = _text_color_for(layout, role, theme)
     is_bold = role == "title" and theme.bold_title
 
@@ -285,7 +292,10 @@ def _add_textbox(
         paragraph.space_after = Pt(space_after_pt)
         _fill_paragraph(paragraph, text, size_pt, line_pt, color_rgb, bold=is_bold)
         if role == "bullet":
-            _add_bullet_char(paragraph)
+            _add_bullet_char(
+                paragraph,
+                accent_hex=theme.accent_hex if theme.decorative else None,
+            )
 
 
 def _add_picture_contain(

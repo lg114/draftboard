@@ -28,7 +28,7 @@ from draftboard.models import (
 )
 from draftboard.pptx_export import _resolve_image_path
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
-from draftboard.themes import THEMES, list_themes
+from draftboard.themes import is_valid_theme, list_themes, resolve_theme_id
 
 load_dotenv()
 
@@ -465,8 +465,9 @@ class GenerateRequest(BaseModel):
 @app.post("/api/projects/{project_id}/generate", status_code=202)
 def generate(project_id: str, req: GenerateRequest):
     _require_project(project_id)
-    if req.template_id not in THEMES:
+    if not is_valid_theme(req.template_id):
         raise HTTPException(400, f"未知主题 '{req.template_id}'")
+    resolved_theme = resolve_theme_id(req.template_id)
     storage = _storage(project_id)
     outline = storage.load_outline(req.outline_version)
     if not outline.is_confirmed:
@@ -482,7 +483,7 @@ def generate(project_id: str, req: GenerateRequest):
             _root(),
             project_id,
             req.outline_version,
-            template_id=req.template_id,
+            template_id=resolved_theme,
             auto_fit=req.auto_fit,
         ),
     )
