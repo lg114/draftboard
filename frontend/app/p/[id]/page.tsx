@@ -348,6 +348,22 @@ export default function ProjectWorkspacePage() {
     }
   }
 
+  async function uploadPastedNote(rawTitle: string, content: string) {
+    const cleaned = content.trim();
+    if (!cleaned) return;
+    const baseName =
+      rawTitle
+        .trim()
+        .replace(/[\\/:*?"<>|\s]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 32) ||
+      `笔记_${materials.filter((m) => m.asset_type !== "image").length + 1}`;
+    const file = new File([cleaned], `${baseName}.md`, {
+      type: "text/markdown;charset=utf-8",
+    });
+    await uploadFiles([file]);
+  }
+
   async function genOutline() {
     if (materials.length === 0) {
       setRawError("请先上传 Markdown 笔记或图片后再提炼大纲。");
@@ -459,6 +475,121 @@ export default function ProjectWorkspacePage() {
       if (firstImage) patch.image_asset_id = firstImage.asset_id;
     }
     patchItem(selectedIndex, patch);
+  }
+
+  function toggleSourceId(index: number, sourceId: string) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const item = items[index];
+      const exists = item.source_ids.includes(sourceId);
+      const nextIds = exists
+        ? item.source_ids.filter((id) => id !== sourceId)
+        : [...item.source_ids, sourceId];
+      items[index] = {
+        ...item,
+        source_ids: nextIds,
+        evidence_status:
+          nextIds.length > 0
+            ? item.evidence_status === "unsupported"
+              ? "supported"
+              : item.evidence_status
+            : "unsupported",
+      };
+      return { ...prev, items };
+    });
+  }
+
+  function applyImageToSlide(
+    index: number,
+    imageAssetId: string,
+    sourceId?: string
+  ) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const item = items[index];
+      const nextIds =
+        sourceId && !item.source_ids.includes(sourceId)
+          ? [...item.source_ids, sourceId]
+          : item.source_ids;
+      items[index] = {
+        ...item,
+        layout: "text_image",
+        image_asset_id: imageAssetId,
+        source_ids: nextIds,
+        evidence_status:
+          nextIds.length > 0 && item.evidence_status === "unsupported"
+            ? "supported"
+            : item.evidence_status,
+      };
+      return { ...prev, items };
+    });
+    flashToast("已切换为图文并茂版式并应用配图");
+  }
+
+  function insertExcerptToSlide(
+    index: number,
+    sourceId: string,
+    text: string
+  ) {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const item = items[index];
+      const nextIds = item.source_ids.includes(sourceId)
+        ? item.source_ids
+        : [...item.source_ids, sourceId];
+      const currentSummary = item.summary.trim();
+      const isPlaceholder =
+        !currentSummary || currentSummary === "输入本页的核心陈述内容…";
+      items[index] = {
+        ...item,
+        summary: isPlaceholder ? cleaned : `${currentSummary}\n${cleaned}`,
+        source_ids: nextIds,
+        evidence_status:
+          item.evidence_status === "unsupported"
+            ? "supported"
+            : item.evidence_status,
+      };
+      return { ...prev, items };
+    });
+    flashToast("已填入当前幻灯片并关联素材出处");
+  }
+
+  function splitTwoColumn(index: number) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const item = items[index];
+      const raw = item.summary.trim();
+      if (!raw) return prev;
+      let lines = raw
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (lines.length < 2) {
+        lines = raw
+          .split(/(?<=[。；;！!？?])/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (lines.length < 2) return prev;
+      const mid = Math.ceil(lines.length / 2);
+      const leftText = lines.slice(0, mid).join("\n");
+      const rightText = lines.slice(mid).join("\n");
+      const existingRight = (item.column_right || "").trim();
+      items[index] = {
+        ...item,
+        summary: leftText,
+        column_right: existingRight
+          ? `${existingRight}\n${rightText}`
+          : rightText,
+      };
+      return { ...prev, items };
+    });
   }
 
   function moveItem(index: number, delta: number) {
@@ -579,10 +710,21 @@ export default function ProjectWorkspacePage() {
 
       {showMaterialsDrawer && (
         <MaterialsDrawer
+          pid={pid}
           materials={materials}
-          fragmentsCount={sourceFragments.length}
+          sourceFragments={sourceFragments}
+          currentSlide={currentItem}
+          currentSlideIndex={selectedIndex}
           isGenerating={isGenerating}
           onUploadClick={() => fileInputRef.current?.click()}
+          onPasteNote={uploadPastedNote}
+          onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
+          onInsertExcerptToSlide={(sid, text) =>
+            insertExcerptToSlide(selectedIndex, sid, text)
+          }
+          onApplyImageToSlide={(imgId, sid) =>
+            applyImageToSlide(selectedIndex, imgId, sid)
+          }
           onGenerateOutline={() => void genOutline()}
           onClose={() => setShowMaterialsDrawer(false)}
         />
@@ -686,6 +828,11 @@ export default function ProjectWorkspacePage() {
               onUpdateField={(field, val) =>
                 patchItem(selectedIndex, { [field]: val })
               }
+              onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
+              onApplyImageToSlide={(imgId, sid) =>
+                applyImageToSlide(selectedIndex, imgId, sid)
+              }
+              onSplitTwoColumn={() => splitTwoColumn(selectedIndex)}
               onUploadClick={() => fileInputRef.current?.click()}
             />
           )}
@@ -696,6 +843,7 @@ export default function ProjectWorkspacePage() {
           isGenerating={isGenerating}
           onUploadClick={() => fileInputRef.current?.click()}
           onDropFiles={(files) => void uploadFiles(files)}
+          onPasteNote={uploadPastedNote}
           onGenerateOutline={() => void genOutline()}
         />
       )}

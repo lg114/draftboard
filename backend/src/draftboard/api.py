@@ -410,6 +410,8 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
                 item.source_ids = edit.source_ids
                 if not item.source_ids:
                     item.evidence_status = EvidenceStatus.UNSUPPORTED
+                elif item.evidence_status == EvidenceStatus.UNSUPPORTED:
+                    item.evidence_status = EvidenceStatus.SUPPORTED
             new_items.append(item)
         else:
             source_ids = edit.source_ids or []

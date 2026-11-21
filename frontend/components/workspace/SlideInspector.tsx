@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Plus } from "lucide-react";
+import {
+  Check,
+  Columns2,
+  FileText,
+  Image as ImageIcon,
+  Link2,
+  Plus,
+  X,
+} from "lucide-react";
 import type {
   Issue,
   Material,
@@ -23,7 +31,40 @@ interface SlideInspectorProps {
   sourceFragments: SourceFragment[];
   slideIssues: Issue[];
   onUpdateField: (field: EditableOutlineField, value: string) => void;
+  onToggleSourceId: (sourceId: string) => void;
+  onApplyImageToSlide: (imageAssetId: string, sourceId?: string) => void;
+  onSplitTwoColumn: () => void;
   onUploadClick: () => void;
+}
+
+export function formatAssetLabel(assetId: string): string {
+  if (assetId.length <= 20) return assetId;
+  return `${assetId.slice(0, 10)}…${assetId.slice(-6)}`;
+}
+
+export function extractFragmentText(
+  frag: SourceFragment,
+  materials: Material[]
+): string {
+  const mat = materials.find(
+    (m) => m.asset_id === frag.asset_id && m.asset_type !== "image"
+  );
+  if (mat && mat.content) {
+    const match = /^L(\d+)-L(\d+)$/.exec(frag.location);
+    if (match) {
+      const start = Math.max(0, parseInt(match[1], 10) - 1);
+      const end = parseInt(match[2], 10);
+      const slice = mat.content
+        .split(/\r?\n/)
+        .slice(start, end)
+        .join("\n")
+        .trim();
+      if (slice) return slice;
+    }
+    const trimmed = mat.content.trim();
+    if (trimmed) return trimmed.slice(0, 360);
+  }
+  return frag.content_preview || "";
 }
 
 function AutoGrowTextarea({
@@ -72,9 +113,13 @@ export function SlideInspector({
   sourceFragments,
   slideIssues,
   onUpdateField,
+  onToggleSourceId,
+  onApplyImageToSlide,
+  onSplitTwoColumn,
   onUploadClick,
 }: SlideInspectorProps) {
   const [notesOpen, setNotesOpen] = useState(Boolean(item.speaker_notes));
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
 
   useEffect(() => {
     if (item.speaker_notes) setNotesOpen(true);
@@ -82,10 +127,14 @@ export function SlideInspector({
 
   const layout = inferEffectiveLayout(item.layout, slideIndex, totalSlides);
   const imageAssets = materials.filter((m) => m.asset_type === "image");
+  const imageAssetIds = new Set(imageAssets.map((m) => m.asset_id));
 
   const matchedFragments = item.source_ids
     .map((sid) => sourceFragments.find((f) => f.source_id === sid))
     .filter((f): f is SourceFragment => Boolean(f));
+
+  const isImageFragment = (frag: SourceFragment) =>
+    frag.source_id.endsWith("-img") || imageAssetIds.has(frag.asset_id);
 
   const missingTitle = !item.title.trim();
   const missingSummary = !item.summary.trim();
@@ -95,8 +144,27 @@ export function SlideInspector({
     layout === "text_image" &&
     !(item.image_asset_id && item.image_asset_id.trim());
 
+  const canSplitSummary =
+    item.summary.trim().split(/\r?\n|[。；;]/).filter((s) => s.trim()).length >=
+    2;
+
   const inputBase =
     "text-[14.5px] text-[#1d1d1f] placeholder-[#a1a1a6] bg-[#f5f5f7] focus:bg-white rounded-xl px-3.5 py-2.5 border border-transparent focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 outline-none leading-relaxed transition-all";
+
+  function fillFromExcerpt(targetField: "summary" | "column_right", text: string) {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    const current =
+      targetField === "column_right"
+        ? (item.column_right || "").trim()
+        : item.summary.trim();
+    const isDefaultPlaceholder =
+      current === "输入本页的核心陈述内容…" || current === "";
+    const nextValue = isDefaultPlaceholder
+      ? cleaned
+      : `${current}\n${cleaned}`;
+    onUpdateField(targetField, nextValue);
+  }
 
   return (
     <aside className="w-[304px] xl:w-[360px] shrink-0 bg-white border-l border-black/[0.07] flex flex-col min-h-0 overflow-y-auto clean-scroll">
@@ -112,27 +180,32 @@ export function SlideInspector({
           </span>
         </div>
 
-        {item.evidence_status === "supported" ? (
+        {item.evidence_status === "supported" && item.source_ids.length > 0 ? (
           <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#248a3d] bg-[#34c759]/12 px-2.5 py-0.5 rounded-full whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-[#34c759]" />
             依据充分
           </span>
-        ) : item.evidence_status === "partial" ? (
+        ) : item.evidence_status === "partial" && item.source_ids.length > 0 ? (
           <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#b25000] bg-[#ff9500]/14 px-2.5 py-0.5 rounded-full whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-[#ff9500]" />
             部分依据
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#b25000] bg-[#ff9500]/14 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+          <button
+            type="button"
+            onClick={() => setSourcePickerOpen(true)}
+            title="点击为本页关联原始素材出处"
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#b25000] bg-[#ff9500]/14 hover:bg-[#ff9500]/22 px-2.5 py-0.5 rounded-full whitespace-nowrap cursor-pointer transition-colors"
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-[#ff9500]" />
-            待补充出处
-          </span>
+            待补出处 · 点击关联
+          </button>
         )}
       </div>
 
       {/* Natural Top-to-Bottom Editorial Flow */}
       <div className="p-5 space-y-5 flex-1">
-        {/* In-place Slide QA Issues (if any belong to this slide) */}
+        {/* In-place Slide QA Issues */}
         {slideIssues.length > 0 && (
           <div className="p-3.5 rounded-2xl bg-[#fff2f2] border border-[#ff3b30]/20 space-y-1">
             <div className="text-[12.5px] font-semibold text-[#d70015]">
@@ -194,12 +267,24 @@ export function SlideInspector({
               />
             </div>
             <div className="space-y-1.5">
-              <label
-                htmlFor="input-col-right"
-                className="block text-[12.5px] font-medium text-[#6e6e73]"
-              >
-                右栏内容
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor="input-col-right"
+                  className="block text-[12.5px] font-medium text-[#6e6e73]"
+                >
+                  右栏内容
+                </label>
+                {canSplitSummary && (
+                  <button
+                    type="button"
+                    onClick={onSplitTwoColumn}
+                    className="inline-flex items-center gap-1 text-[11.5px] font-medium text-[#0071e3] hover:underline cursor-pointer"
+                  >
+                    <Columns2 className="w-3 h-3" />
+                    <span>从左栏拆分后半段</span>
+                  </button>
+                )}
+              </div>
               <AutoGrowTextarea
                 id="input-col-right"
                 value={item.column_right || ""}
@@ -211,9 +296,20 @@ export function SlideInspector({
                 }`}
               />
               {missingColRight && (
-                <p className="text-[12px] text-[#b25000]">
-                  双栏对比版式需要填写右栏内容后才能保存
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                  <p className="text-[12px] text-[#b25000]">
+                    双栏对比版式需填写右栏内容后才能保存
+                  </p>
+                  {canSplitSummary && (
+                    <button
+                      type="button"
+                      onClick={onSplitTwoColumn}
+                      className="px-2.5 py-1 rounded-full bg-[#0071e3]/10 hover:bg-[#0071e3]/16 text-[#0071e3] text-[11.5px] font-medium transition-colors cursor-pointer"
+                    >
+                      一键拆入右栏
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -252,7 +348,7 @@ export function SlideInspector({
               </div>
 
               {imageAssets.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {imageAssets.map((img, i) => {
                     const selected = item.image_asset_id === img.asset_id;
                     return (
@@ -262,13 +358,14 @@ export function SlideInspector({
                         onClick={() =>
                           onUpdateField("image_asset_id", img.asset_id)
                         }
+                        title={img.asset_id}
                         className={`group rounded-xl overflow-hidden bg-[#f5f5f7] p-1.5 text-left transition-all cursor-pointer ${
                           selected
                             ? "ring-2 ring-[#0071e3] bg-[#0071e3]/[0.06]"
                             : "ring-1 ring-black/[0.08] hover:ring-black/20"
                         }`}
                       >
-                        <div className="aspect-[4/3] rounded-lg bg-white overflow-hidden flex items-center justify-center mb-1">
+                        <div className="aspect-[16/10] rounded-lg bg-white overflow-hidden flex items-center justify-center mb-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={`/api/projects/${pid}/assets/${encodeURIComponent(
@@ -279,7 +376,7 @@ export function SlideInspector({
                           />
                         </div>
                         <div className="text-[11px] text-[#1d1d1f] truncate px-0.5 font-medium">
-                          {img.asset_id}
+                          {formatAssetLabel(img.asset_id)}
                         </div>
                       </button>
                     );
@@ -366,52 +463,280 @@ export function SlideInspector({
           )}
         </div>
 
-        {/* Always-Visible Companion Source Provenance */}
+        {/* Always-Visible Companion Source Provenance & Manual Source Binding */}
         <div className="pt-4 border-t border-black/[0.06] space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12.5px] font-medium text-[#6e6e73] whitespace-nowrap">
               材料出处对照
+              {matchedFragments.length > 0 && (
+                <span className="ml-1.5 text-[11.5px] font-normal text-[#86868b]">
+                  ({matchedFragments.length})
+                </span>
+              )}
             </span>
-            <span className="text-[11.5px] text-[#86868b] font-mono truncate">
-              {item.source_ids.length > 0
-                ? item.source_ids.join(", ")
-                : "无绑定切片"}
-            </span>
+
+            <button
+              type="button"
+              onClick={() => setSourcePickerOpen((v) => !v)}
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-[#0071e3] hover:underline cursor-pointer whitespace-nowrap"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>{sourcePickerOpen ? "收起素材列表" : "+ 关联素材"}</span>
+            </button>
           </div>
 
-          {matchedFragments.length > 0 ? (
-            <div className="space-y-2">
-              {matchedFragments.map((frag) => (
-                <div
-                  key={frag.source_id}
-                  className="p-3.5 rounded-2xl bg-[#f5f5f7] space-y-1"
+          {/* Inline Source Binding Picker */}
+          {sourcePickerOpen && (
+            <div className="p-3 rounded-2xl bg-[#f5f5f7] border border-black/[0.07] space-y-2">
+              <div className="flex items-center justify-between text-[11.5px] text-[#6e6e73]">
+                <span>勾选本页引用的原始素材切片：</span>
+                <button
+                  type="button"
+                  onClick={() => setSourcePickerOpen(false)}
+                  className="text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
                 >
-                  <div className="flex items-center justify-between gap-2 text-[11.5px]">
-                    <span className="font-mono font-semibold text-[#1d1d1f]">
-                      {frag.source_id}
-                    </span>
-                    <span className="text-[#86868b] truncate">
-                      {frag.asset_id} · {frag.location}
-                    </span>
-                  </div>
-                  <p className="text-[13px] text-[#424245] leading-relaxed">
-                    {frag.content_preview || "[图片素材占位，无文本摘录]"}
-                  </p>
+                  完成
+                </button>
+              </div>
+
+              {sourceFragments.length > 0 ? (
+                <div className="space-y-1.5 max-h-[210px] overflow-y-auto clean-scroll pr-0.5">
+                  {sourceFragments.map((frag) => {
+                    const bound = item.source_ids.includes(frag.source_id);
+                    const isImg = isImageFragment(frag);
+                    const excerpt = isImg
+                      ? ""
+                      : extractFragmentText(frag, materials);
+
+                    return (
+                      <button
+                        key={frag.source_id}
+                        type="button"
+                        onClick={() => onToggleSourceId(frag.source_id)}
+                        className={`w-full text-left p-2 rounded-xl transition-all flex items-start gap-2.5 cursor-pointer ${
+                          bound
+                            ? "bg-white ring-1.5 ring-[#0071e3] shadow-2xs"
+                            : "bg-white/70 hover:bg-white ring-1 ring-black/[0.06]"
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-md flex items-center justify-center shrink-0 transition-colors ${
+                            bound
+                              ? "bg-[#0071e3] text-white"
+                              : "border border-black/20 bg-white"
+                          }`}
+                        >
+                          {bound && <Check className="w-3 h-3 stroke-[2.5]" />}
+                        </div>
+
+                        {isImg ? (
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-10 h-7 rounded bg-[#f5f5f7] overflow-hidden shrink-0 flex items-center justify-center border border-black/[0.06]">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={`/api/projects/${pid}/assets/${encodeURIComponent(
+                                  frag.asset_id
+                                )}`}
+                                alt={frag.asset_id}
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div
+                                className="text-[12px] font-medium text-[#1d1d1f] truncate"
+                                title={frag.asset_id}
+                              >
+                                {formatAssetLabel(frag.asset_id)}
+                              </div>
+                              <div className="text-[11px] text-[#86868b]">
+                                图片素材
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center justify-between gap-1 text-[11.5px]">
+                              <span
+                                className="font-medium text-[#1d1d1f] truncate"
+                                title={frag.asset_id}
+                              >
+                                {formatAssetLabel(frag.asset_id)}
+                              </span>
+                              <span className="text-[10.5px] text-[#86868b] shrink-0">
+                                {frag.location}
+                              </span>
+                            </div>
+                            <p className="text-[11.5px] text-[#6e6e73] line-clamp-2 leading-snug">
+                              {excerpt || "文本切片"}
+                            </p>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
+              ) : (
+                <div className="text-[12px] text-[#86868b] py-2 text-center">
+                  项目暂无素材切片，请先上传文件或粘贴笔记。
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bound Provenance Cards */}
+          {matchedFragments.length > 0 ? (
+            <div className="space-y-2.5">
+              {matchedFragments.map((frag) => {
+                const isImg = isImageFragment(frag);
+                const excerpt = isImg
+                  ? ""
+                  : extractFragmentText(frag, materials);
+                const isCurrentSlideImage =
+                  layout === "text_image" &&
+                  item.image_asset_id === frag.asset_id;
+
+                if (isImg) {
+                  return (
+                    <div
+                      key={frag.source_id}
+                      className="p-3 rounded-2xl bg-[#f5f5f7] space-y-2.5 group"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <ImageIcon className="w-3.5 h-3.5 text-[#0071e3] shrink-0" />
+                          <span
+                            className="text-[12px] font-semibold text-[#1d1d1f] truncate"
+                            title={frag.asset_id}
+                          >
+                            {formatAssetLabel(frag.asset_id)}
+                          </span>
+                          <span className="text-[11px] text-[#86868b] bg-black/[0.05] px-1.5 py-0.2 rounded-md shrink-0">
+                            图片素材
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onToggleSourceId(frag.source_id)}
+                          title="解除该素材与本页的关联"
+                          className="text-[#86868b] hover:text-[#d70015] p-0.5 rounded opacity-70 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="aspect-[16/9] w-full rounded-xl bg-white border border-black/[0.06] overflow-hidden flex items-center justify-center p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/projects/${pid}/assets/${encodeURIComponent(
+                            frag.asset_id
+                          )}`}
+                          alt={frag.asset_id}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        {isCurrentSlideImage ? (
+                          <span className="text-[11.5px] font-medium text-[#248a3d] flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>已设为本页配图</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onApplyImageToSlide(frag.asset_id, frag.source_id)
+                            }
+                            className="text-[12px] font-medium text-[#0071e3] hover:underline cursor-pointer"
+                          >
+                            设为本页配图（切为图文页）
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={frag.source_id}
+                    className="p-3.5 rounded-2xl bg-[#f5f5f7] space-y-2 group"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[11.5px]">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <FileText className="w-3.5 h-3.5 text-[#6e6e73] shrink-0" />
+                        <span
+                          className="font-semibold text-[#1d1d1f] truncate"
+                          title={frag.asset_id}
+                        >
+                          {formatAssetLabel(frag.asset_id)}
+                        </span>
+                        <span className="text-[#86868b] shrink-0">
+                          · {frag.location.replace(/^L/, "第 ")} 行
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onToggleSourceId(frag.source_id)}
+                        title="解除该素材与本页的关联"
+                        className="text-[#86868b] hover:text-[#d70015] p-0.5 rounded opacity-70 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="text-[12.5px] text-[#424245] leading-relaxed whitespace-pre-wrap max-h-[140px] overflow-y-auto clean-scroll">
+                      {excerpt || "（该文本切片为空）"}
+                    </p>
+
+                    {excerpt && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-black/[0.05] text-[11.5px]">
+                        <button
+                          type="button"
+                          onClick={() => fillFromExcerpt("summary", excerpt)}
+                          className="text-[#0071e3] hover:underline font-medium cursor-pointer"
+                        >
+                          {layout === "two_column" ? "填入左栏" : "填入正文"}
+                        </button>
+                        {layout === "two_column" && (
+                          <>
+                            <span className="text-[#d2d2d7]">·</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                fillFromExcerpt("column_right", excerpt)
+                              }
+                              className="text-[#0071e3] hover:underline font-medium cursor-pointer"
+                            >
+                              填入右栏
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <div className="p-3.5 rounded-2xl bg-[#fff8ee] border border-[#ff9500]/20 space-y-1">
+            <div className="p-3.5 rounded-2xl bg-[#fff8ee] border border-[#ff9500]/20 space-y-2">
               <div className="text-[12.5px] font-semibold text-[#b25000]">
                 {item.source_ids.length > 0
-                  ? "未检索到片段摘录"
-                  : "人工补充内容 · 待核验"}
+                  ? "未检索到对应素材切片"
+                  : "本页尚未关联原始素材"}
               </div>
-              <p className="text-[12.5px] text-[#6e6e73] leading-relaxed">
-                {item.source_ids.length > 0
-                  ? "已记录出处编号，但当前素材切片索引暂无预览文本。"
-                  : "该页未关联原始素材切片，正式导出前请确认事实与数字准确。"}
+              <p className="text-[12px] text-[#6e6e73] leading-relaxed">
+                关联原始素材切片或配图后，既可随时对照原文，也能标记本页为「依据充分」。
               </p>
+              {sourceFragments.length > 0 && !sourcePickerOpen && (
+                <button
+                  type="button"
+                  onClick={() => setSourcePickerOpen(true)}
+                  className="px-3 py-1 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-medium transition-colors cursor-pointer"
+                >
+                  选择关联素材
+                </button>
+              )}
             </div>
           )}
         </div>

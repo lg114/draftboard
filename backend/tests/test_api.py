@@ -520,6 +520,14 @@ def test_edit_add_delete_and_update_layout(client):
     proj = client.get(f"/api/projects/{pid}").json()
     assert proj["insufficient_evidence_count"] == 1
 
+    # Manually binding a valid source_id upgrades evidence_status to supported
+    known_sid = outline["items"][0]["source_ids"][0]
+    saved["items"][2]["source_ids"] = [known_sid]
+    r_bind = client.put(url, json={"items": saved["items"]})
+    assert r_bind.status_code == 200
+    assert r_bind.json()["items"][2]["evidence_status"] == "supported"
+    assert client.get(f"/api/projects/{pid}").json()["insufficient_evidence_count"] == 0
+
     # Delete the middle item and verify confirm + generate succeeds
     remaining = {"items": [saved["items"][0], saved["items"][2]]}
     r = client.put(url, json=remaining)
