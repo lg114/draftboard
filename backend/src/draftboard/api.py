@@ -180,7 +180,10 @@ def _project_summary(pid: str) -> dict:
     art_meta = _latest_artifact_meta(pid)
 
     raw_theme = meta.get("theme_id") or art_meta.get("template_id") or "keynote_light"
-    theme_id = resolve_theme_id(raw_theme) if is_valid_theme(raw_theme) else "keynote_light"
+    if raw_theme == "default" or not is_valid_theme(raw_theme):
+        theme_id = "keynote_light"
+    else:
+        theme_id = resolve_theme_id(raw_theme)
 
     assets_dir = p_dir / "assets"
     asset_files = (

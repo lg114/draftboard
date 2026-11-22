@@ -10,7 +10,7 @@ import {
   Download,
   RefreshCw,
 } from "lucide-react";
-import { api, ExportReport, Preview } from "../../../../lib/api";
+import { api, ExportReport, Preview, Project } from "../../../../lib/api";
 
 export default function PreviewPage() {
   const params = useParams<{ id: string }>();
@@ -22,6 +22,7 @@ export default function PreviewPage() {
       : params.id;
   }, [pathname, params.id]);
 
+  const [projectName, setProjectName] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [report, setReport] = useState<ExportReport | null>(null);
   const [selected, setSelected] = useState(0);
@@ -29,6 +30,12 @@ export default function PreviewPage() {
   const [rendering, setRendering] = useState(false);
 
   const load = useCallback(async () => {
+    try {
+      const proj = await api<Project>(`/api/projects/${pid}`);
+      setProjectName(proj.name || pid);
+    } catch {
+      setProjectName(pid);
+    }
     try {
       const p = await api<Preview>(`/api/projects/${pid}/preview`);
       setPreview(p);
@@ -80,20 +87,20 @@ export default function PreviewPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#ececef] text-[#1d1d1f]">
-      {/* Apple Translucent Cinema Top Bar */}
-      <header className="h-[52px] apple-glass border-b border-black/[0.07] px-5 flex items-center justify-between gap-3 sticky top-0 z-30">
+    <div className="min-h-screen flex flex-col bg-[#dcdce1] text-[#1d1d1f]">
+      {/* Monochrome Translucent Cinema Top Bar */}
+      <header className="h-[52px] apple-glass border-b border-black/[0.08] px-5 flex items-center justify-between gap-3 sticky top-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href={`/p/${pid}`}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6e6e73] hover:text-[#1d1d1f] transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#52525b] hover:text-[#1d1d1f] transition-colors whitespace-nowrap"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>返回工作台</span>
           </Link>
-          <span className="text-[#d2d2d7]">/</span>
+          <span className="text-black/20">/</span>
           <span className="text-[14.5px] font-semibold text-[#1d1d1f] truncate">
-            {pid} · Office 真机预览
+            {projectName || pid} · 放映预览
           </span>
         </div>
 
@@ -122,7 +129,7 @@ export default function PreviewPage() {
           <a
             href={`/api/projects/${pid}/download`}
             download
-            className="px-4 py-1.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-[0_1px_2px_rgba(0,113,227,0.22)]"
+            className="px-4 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             <span>下载 PPTX</span>
@@ -209,14 +216,14 @@ export default function PreviewPage() {
                 type="button"
                 onClick={renderNow}
                 disabled={rendering}
-                className="px-5 py-2.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13.5px] font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13.5px] font-medium transition-colors disabled:opacity-45 cursor-pointer"
               >
                 {rendering ? "正在渲染…" : "生成 Office 渲染图"}
               </button>
             ) : (
               <Link
                 href={`/p/${pid}`}
-                className="inline-block px-5 py-2.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13.5px] font-medium transition-colors"
+                className="inline-block px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13.5px] font-medium transition-colors"
               >
                 返回工作台
               </Link>

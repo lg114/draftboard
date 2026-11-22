@@ -134,13 +134,17 @@ function SlideCardPreview({
     const titleCol = isHero ? sw.cover_title : sw.title;
     const bodyCol = isHero ? sw.cover_body : sw.body;
 
-    if (isHero) {
+    if (layout === "cover") {
       return (
         <div
           className="w-full h-full px-6 py-5 flex flex-col justify-between select-none"
           style={{ backgroundColor: bg }}
         >
           <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
+            <div
+              className="w-8 h-[2.5px] rounded-full shrink-0 mb-0.5"
+              style={{ backgroundColor: sw.accent }}
+            />
             <div
               className="text-[17px] font-bold tracking-[-0.02em] leading-[1.28] line-clamp-2"
               style={{ color: titleCol }}
@@ -157,12 +161,65 @@ function SlideCardPreview({
             )}
           </div>
           <div
-            className="w-7 h-[2px] rounded-full shrink-0"
-            style={{ backgroundColor: sw.accent }}
+            className="w-full h-px shrink-0"
+            style={{ backgroundColor: sw.divider }}
           />
         </div>
       );
     }
+
+    if (layout === "closing") {
+      return (
+        <div
+          className="w-full h-full px-6 py-5 flex flex-col items-center justify-between text-center select-none"
+          style={{ backgroundColor: bg }}
+        >
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 min-h-0">
+            <div
+              className="w-7 h-[2px] rounded-full shrink-0"
+              style={{ backgroundColor: sw.accent }}
+            />
+            <div
+              className="text-[16px] font-bold tracking-[-0.02em] leading-[1.3] line-clamp-2"
+              style={{ color: titleCol }}
+            >
+              {slide.title || "谢谢聆听"}
+            </div>
+            {slide.summary && (
+              <div
+                className="text-[12px] leading-[1.45] line-clamp-2"
+                style={{ color: bodyCol }}
+              >
+                {slide.summary}
+              </div>
+            )}
+          </div>
+          <div
+            className="w-2/3 h-px shrink-0"
+            style={{ backgroundColor: sw.divider }}
+          />
+        </div>
+      );
+    }
+
+    const headerBar = (
+      <div className="relative pb-2">
+        <div
+          className="text-[13.5px] font-semibold tracking-[-0.015em] truncate"
+          style={{ color: titleCol }}
+        >
+          {slide.title || "未命名页面"}
+        </div>
+        <div
+          className="absolute left-0 right-0 bottom-0 h-px"
+          style={{ backgroundColor: sw.divider }}
+        />
+        <div
+          className="absolute left-0 bottom-0 w-7 h-[2px] rounded-full"
+          style={{ backgroundColor: sw.accent }}
+        />
+      </div>
+    );
 
     if (layout === "two_column") {
       return (
@@ -170,12 +227,7 @@ function SlideCardPreview({
           className="w-full h-full px-5 py-4 flex flex-col gap-2.5 select-none"
           style={{ backgroundColor: bg }}
         >
-          <div
-            className="text-[13.5px] font-semibold tracking-[-0.015em] truncate pb-2 border-b"
-            style={{ color: titleCol, borderColor: sw.divider }}
-          >
-            {slide.title || "未命名页面"}
-          </div>
+          {headerBar}
           <div className="grid grid-cols-2 gap-3 flex-1 min-h-0 overflow-hidden">
             <div
               className="text-[11px] leading-[1.5] line-clamp-4 pr-2 border-r"
@@ -200,21 +252,16 @@ function SlideCardPreview({
           className="w-full h-full px-5 py-4 flex flex-col gap-2.5 select-none"
           style={{ backgroundColor: bg }}
         >
-          <div
-            className="text-[13.5px] font-semibold tracking-[-0.015em] truncate pb-2 border-b"
-            style={{ color: titleCol, borderColor: sw.divider }}
-          >
-            {slide.title || "未命名页面"}
-          </div>
+          {headerBar}
           <div className="grid grid-cols-12 gap-3 flex-1 min-h-0 items-center overflow-hidden">
             <div
-              className="col-span-7 text-[11px] leading-[1.5] line-clamp-4"
+              className="col-span-6 text-[11px] leading-[1.5] line-clamp-4"
               style={{ color: bodyCol }}
             >
               {slide.summary || "正文内容"}
             </div>
             <div
-              className="col-span-5 h-full rounded-lg overflow-hidden flex items-center justify-center border"
+              className="col-span-6 h-full rounded-lg overflow-hidden flex items-center justify-center border"
               style={{ backgroundColor: sw.surface, borderColor: sw.divider }}
             >
               {slide.image_asset_id ? (
@@ -241,12 +288,7 @@ function SlideCardPreview({
         className="w-full h-full px-5 py-4 flex flex-col gap-2.5 select-none"
         style={{ backgroundColor: bg }}
       >
-        <div
-          className="text-[13.5px] font-semibold tracking-[-0.015em] truncate pb-2 border-b"
-          style={{ color: titleCol, borderColor: sw.divider }}
-        >
-          {slide.title || "未命名页面"}
-        </div>
+        {headerBar}
         {bullets.length > 1 ? (
           <ul className="space-y-1.5 flex-1 min-h-0 overflow-hidden">
             {bullets.map((line, i) => (
@@ -625,6 +667,7 @@ export default function ProjectsPage() {
 
         {/* 16:9 Document Library Grid */}
         {projects.length > 0 ? (
+          filteredProjects.length > 0 ? (
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
             {filteredProjects.map((p) => {
               const theme =
@@ -638,12 +681,12 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={p.project_id}
-                  className="group bg-white rounded-[16px] border border-black/[0.08] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.07)] hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
+                  className="group bg-white rounded-[16px] border border-black/[0.1] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
                 >
                   {/* Top: Pure 16:9 Slide Content Preview */}
                   <Link
                     href={`/p/${p.project_id}`}
-                    className="block aspect-[16/9] overflow-hidden border-b border-black/[0.06] relative"
+                    className="block aspect-[16/9] overflow-hidden border-b border-black/[0.08] relative"
                   >
                     <SlideCardPreview project={p} theme={theme} />
                   </Link>
@@ -795,6 +838,20 @@ export default function ProjectsPage() {
               );
             })}
           </section>
+          ) : (
+            <section className="bg-white rounded-2xl border border-black/[0.08] p-10 text-center space-y-3">
+              <div className="text-[14.5px] font-medium text-[#1d1d1f]">
+                未找到包含「{search}」的文稿
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="px-4 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13px] font-medium transition-colors cursor-pointer"
+              >
+                清除搜索
+              </button>
+            </section>
+          )
         ) : loaded ? (
           /* Clean Monochrome Empty Library State */
           <section className="bg-white rounded-[20px] p-10 sm:p-14 border border-black/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] max-w-xl mx-auto text-center space-y-6">

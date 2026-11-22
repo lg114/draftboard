@@ -168,7 +168,7 @@ export default function ProjectWorkspacePage() {
       setProject(data);
       if (!themeInitializedRef.current) {
         const initialTheme = data.theme_id || data.latest_template_id;
-        if (initialTheme) {
+        if (initialTheme && initialTheme !== "default") {
           setSelectedThemeId(initialTheme);
         }
         if (typeof data.latest_auto_fit === "boolean") {
