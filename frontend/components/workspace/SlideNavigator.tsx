@@ -34,19 +34,58 @@ function ThumbSkeleton({
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
 
-  if (isHero) {
+  if (layout === "cover") {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-1.5 gap-1">
+      <div className="flex-1 flex flex-col justify-between px-1 py-0.5 min-h-0">
         <div
-          className="text-[8px] font-semibold leading-tight line-clamp-2"
+          className="w-5 h-[2px] rounded-full mt-1"
+          style={{ backgroundColor: sw.accent }}
+        />
+        <div className="space-y-0.5 my-auto">
+          <div
+            className="text-[9.5px] font-bold leading-tight line-clamp-2 tracking-tight"
+            style={{ color: titleCol }}
+          >
+            {item.title || "未命名"}
+          </div>
+          {item.summary && (
+            <div
+              className="text-[6.5px] leading-snug line-clamp-1 opacity-80"
+              style={{ color: bodyCol }}
+            >
+              {item.summary}
+            </div>
+          )}
+        </div>
+        <div
+          className="w-full h-px opacity-70"
+          style={{ backgroundColor: sw.divider }}
+        />
+      </div>
+    );
+  }
+
+  if (layout === "closing") {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-1.5 gap-1 min-h-0">
+        <div
+          className="w-5 h-[2px] rounded-full"
+          style={{ backgroundColor: sw.accent }}
+        />
+        <div
+          className="text-[9px] font-bold leading-tight line-clamp-2"
           style={{ color: titleCol }}
         >
           {item.title || "未命名"}
         </div>
-        <div
-          className="w-4 h-[1.5px] rounded-full opacity-80"
-          style={{ backgroundColor: sw.accent }}
-        />
+        {item.summary && (
+          <div
+            className="text-[6.5px] leading-snug line-clamp-1 opacity-80"
+            style={{ color: bodyCol }}
+          >
+            {item.summary}
+          </div>
+        )}
       </div>
     );
   }
@@ -55,20 +94,20 @@ function ThumbSkeleton({
     return (
       <>
         <div
-          className="text-[7.5px] font-semibold truncate pb-0.5 border-b"
+          className="text-[8px] font-bold truncate pb-1 border-b relative"
           style={{ color: titleCol, borderColor: sw.divider }}
         >
           {item.title || "未命名"}
         </div>
-        <div className="grid grid-cols-2 gap-1 flex-1 pt-1 overflow-hidden">
+        <div className="grid grid-cols-2 gap-1.5 flex-1 pt-1 min-h-0 overflow-hidden">
           <div
-            className="text-[5.5px] leading-tight line-clamp-3 opacity-80 pr-1 border-r"
+            className="text-[6.5px] leading-snug line-clamp-4 pr-1 border-r"
             style={{ color: bodyCol, borderColor: sw.divider }}
           >
             {item.summary}
           </div>
           <div
-            className="text-[5.5px] leading-tight line-clamp-3 opacity-80"
+            className="text-[6.5px] leading-snug line-clamp-4"
             style={{ color: bodyCol }}
           >
             {item.column_right || "右栏"}
@@ -82,21 +121,21 @@ function ThumbSkeleton({
     return (
       <>
         <div
-          className="text-[7.5px] font-semibold truncate pb-0.5 border-b"
+          className="text-[8px] font-bold truncate pb-1 border-b"
           style={{ color: titleCol, borderColor: sw.divider }}
         >
           {item.title || "未命名"}
         </div>
-        <div className="grid grid-cols-12 gap-1 flex-1 pt-1 items-center overflow-hidden">
+        <div className="grid grid-cols-12 gap-1.5 flex-1 pt-1 min-h-0 items-stretch overflow-hidden">
           <div
-            className="col-span-7 text-[5.5px] leading-tight line-clamp-3 opacity-80"
+            className="col-span-6 text-[6.5px] leading-snug line-clamp-4"
             style={{ color: bodyCol }}
           >
             {item.summary}
           </div>
           <div
-            className="col-span-5 h-full rounded-[3px] overflow-hidden flex items-center justify-center"
-            style={{ backgroundColor: sw.surface }}
+            className="col-span-6 h-full rounded-[4px] overflow-hidden flex items-center justify-center border"
+            style={{ backgroundColor: sw.surface, borderColor: sw.divider }}
           >
             {item.image_asset_id ? (
               /* eslint-disable-next-line @next/next/no-img-element */
@@ -105,11 +144,11 @@ function ThumbSkeleton({
                   item.image_asset_id
                 )}`}
                 alt=""
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
               />
             ) : (
               <div
-                className="w-3 h-3 rounded-sm opacity-40"
+                className="w-4 h-4 rounded-sm opacity-35"
                 style={{ backgroundColor: sw.accent }}
               />
             )}
@@ -122,13 +161,13 @@ function ThumbSkeleton({
   return (
     <>
       <div
-        className="text-[7.5px] font-semibold truncate pb-0.5 border-b"
+        className="text-[8px] font-bold truncate pb-1 border-b"
         style={{ color: titleCol, borderColor: sw.divider }}
       >
         {item.title || "未命名"}
       </div>
       <div
-        className="text-[5.5px] leading-tight line-clamp-3 opacity-80 pt-1"
+        className="text-[6.5px] leading-snug line-clamp-4 pt-1 flex-1 overflow-hidden"
         style={{ color: bodyCol }}
       >
         {item.summary}
@@ -152,7 +191,7 @@ export function SlideNavigator({
   const total = outline.items.length;
 
   return (
-    <aside className="w-[172px] xl:w-[216px] shrink-0 bg-[#f5f5f7] border-r border-black/[0.07] flex flex-col min-h-0">
+    <aside className="w-[180px] xl:w-[224px] shrink-0 bg-[#f5f5f7] border-r border-black/[0.08] flex flex-col min-h-0">
       <div className="flex-1 px-3 py-3.5 space-y-3 overflow-y-auto clean-scroll">
         {outline.items.map((item, idx) => {
           const active = idx === selectedIndex;
@@ -171,8 +210,8 @@ export function SlideNavigator({
               <span
                 className={`w-4 text-right pt-1 text-[11.5px] tabular-nums shrink-0 ${
                   active
-                    ? "text-[#0071e3] font-semibold"
-                    : "text-[#86868b] font-medium"
+                    ? "text-[#1d1d1f] font-bold"
+                    : "text-[#71717a] font-medium"
                 }`}
               >
                 {idx + 1}
@@ -214,7 +253,7 @@ export function SlideNavigator({
                     disabled={idx === 0}
                     onClick={() => onMoveItem(idx, -1)}
                     title="上移"
-                    className="px-1 py-0.5 text-[#1d1d1f] hover:text-[#0071e3] disabled:opacity-25 cursor-pointer text-[10px] leading-none"
+                    className="px-1 py-0.5 text-[#1d1d1f] hover:bg-black/[0.06] rounded disabled:opacity-25 cursor-pointer text-[10px] leading-none"
                   >
                     ↑
                   </button>
@@ -223,7 +262,7 @@ export function SlideNavigator({
                     disabled={idx === total - 1}
                     onClick={() => onMoveItem(idx, 1)}
                     title="下移"
-                    className="px-1 py-0.5 text-[#1d1d1f] hover:text-[#0071e3] disabled:opacity-25 cursor-pointer text-[10px] leading-none"
+                    className="px-1 py-0.5 text-[#1d1d1f] hover:bg-black/[0.06] rounded disabled:opacity-25 cursor-pointer text-[10px] leading-none"
                   >
                     ↓
                   </button>
@@ -232,7 +271,7 @@ export function SlideNavigator({
                       type="button"
                       onClick={() => onDeleteItem(idx)}
                       title="删除此页"
-                      className="px-1 py-0.5 text-[#1d1d1f] hover:text-[#ff3b30] cursor-pointer text-[10px] leading-none"
+                      className="px-1 py-0.5 text-[#1d1d1f] hover:text-[#d70015] hover:bg-black/[0.06] rounded cursor-pointer text-[10px] leading-none"
                     >
                       ×
                     </button>
@@ -248,7 +287,7 @@ export function SlideNavigator({
         <button
           type="button"
           onClick={onAddItem}
-          className="w-full py-1.5 rounded-[10px] bg-white hover:bg-black/[0.02] text-[12.5px] font-medium text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.06)] transition-all cursor-pointer whitespace-nowrap"
+          className="w-full py-1.5 rounded-[10px] bg-white hover:bg-black/[0.02] text-[12.5px] font-medium text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.08)] transition-all cursor-pointer whitespace-nowrap"
         >
           + 新建幻灯片
         </button>

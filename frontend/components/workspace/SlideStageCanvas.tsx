@@ -37,59 +37,130 @@ interface SlideStageCanvasProps {
   onFocusField: (fieldId: string) => void;
 }
 
+/**
+ * True 16:9 (22x14) block-based miniature layout pictograms so users can
+ * recognize each layout at a glance without reading the label.
+ */
 function LayoutIcon({ layout }: { layout: OutlineLayout }) {
   switch (layout) {
     case "cover":
       return (
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <line x1="4" y1="7" x2="11" y2="7" />
-          <line x1="4" y1="9.5" x2="8.5" y2="9.5" />
+        <svg className="w-[22px] h-[14px] shrink-0" viewBox="0 0 22 14" fill="none">
+          <rect
+            x="0.75"
+            y="0.75"
+            width="20.5"
+            height="12.5"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeOpacity="0.45"
+          />
+          <rect x="3" y="3.5" width="4.5" height="1.4" rx="0.7" fill="currentColor" />
+          <rect x="3" y="6.2" width="12.5" height="2.4" rx="0.8" fill="currentColor" />
+          <rect x="3" y="9.8" width="8.5" height="1.2" rx="0.6" fill="currentColor" fillOpacity="0.45" />
         </svg>
       );
     case "bullets":
       return (
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <circle cx="4.2" cy="6.2" r="0.7" fill="currentColor" />
-          <line x1="6.2" y1="6.2" x2="12" y2="6.2" />
-          <circle cx="4.2" cy="9.8" r="0.7" fill="currentColor" />
-          <line x1="6.2" y1="9.8" x2="11" y2="9.8" />
+        <svg className="w-[22px] h-[14px] shrink-0" viewBox="0 0 22 14" fill="none">
+          <rect
+            x="0.75"
+            y="0.75"
+            width="20.5"
+            height="12.5"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeOpacity="0.45"
+          />
+          <rect x="3" y="2.8" width="9" height="1.6" rx="0.6" fill="currentColor" />
+          <circle cx="3.8" cy="6.5" r="0.9" fill="currentColor" />
+          <rect x="5.8" y="5.9" width="12" height="1.2" rx="0.6" fill="currentColor" fillOpacity="0.6" />
+          <circle cx="3.8" cy="9" r="0.9" fill="currentColor" />
+          <rect x="5.8" y="8.4" width="10" height="1.2" rx="0.6" fill="currentColor" fillOpacity="0.6" />
+          <circle cx="3.8" cy="11.3" r="0.9" fill="currentColor" />
+          <rect x="5.8" y="10.7" width="11" height="1.2" rx="0.6" fill="currentColor" fillOpacity="0.6" />
         </svg>
       );
     case "two_column":
       return (
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <line x1="8" y1="5.2" x2="8" y2="11.5" />
-          <line x1="3.8" y1="6.5" x2="6.4" y2="6.5" />
-          <line x1="9.6" y1="6.5" x2="12.2" y2="6.5" />
+        <svg className="w-[22px] h-[14px] shrink-0" viewBox="0 0 22 14" fill="none">
+          <rect
+            x="0.75"
+            y="0.75"
+            width="20.5"
+            height="12.5"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeOpacity="0.45"
+          />
+          <rect x="3" y="2.6" width="9" height="1.5" rx="0.6" fill="currentColor" />
+          <rect x="3" y="5.4" width="7.2" height="6.2" rx="1" fill="currentColor" fillOpacity="0.22" />
+          <rect x="11.8" y="5.4" width="7.2" height="6.2" rx="1" fill="currentColor" fillOpacity="0.22" />
+          <line x1="11" y1="5.4" x2="11" y2="11.6" stroke="currentColor" strokeWidth="0.9" strokeOpacity="0.5" />
         </svg>
       );
     case "text_image":
       return (
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <line x1="3.8" y1="6.5" x2="7.2" y2="6.5" />
-          <line x1="3.8" y1="9" x2="6.8" y2="9" />
-          <rect x="8.8" y="5.5" width="3.7" height="5" rx="0.8" />
+        <svg className="w-[22px] h-[14px] shrink-0" viewBox="0 0 22 14" fill="none">
+          <rect
+            x="0.75"
+            y="0.75"
+            width="20.5"
+            height="12.5"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeOpacity="0.45"
+          />
+          <rect x="3" y="2.6" width="8.5" height="1.5" rx="0.6" fill="currentColor" />
+          <rect x="3" y="5.8" width="6.2" height="1.1" rx="0.5" fill="currentColor" fillOpacity="0.55" />
+          <rect x="3" y="8" width="5.4" height="1.1" rx="0.5" fill="currentColor" fillOpacity="0.55" />
+          <rect x="3" y="10.2" width="4.4" height="1.1" rx="0.5" fill="currentColor" fillOpacity="0.4" />
+          <rect x="11" y="5.1" width="8.2" height="6.6" rx="1.1" fill="currentColor" fillOpacity="0.24" />
+          <path
+            d="M12.2 10.6L14.2 8.4L15.6 9.8L16.8 8.7L18.2 10.6H12.2Z"
+            fill="currentColor"
+            fillOpacity="0.85"
+          />
         </svg>
       );
     case "closing":
       return (
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <line x1="5" y1="5.8" x2="11" y2="5.8" />
-          <line x1="4" y1="9.5" x2="12" y2="9.5" />
+        <svg className="w-[22px] h-[14px] shrink-0" viewBox="0 0 22 14" fill="none">
+          <rect
+            x="0.75"
+            y="0.75"
+            width="20.5"
+            height="12.5"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeOpacity="0.45"
+          />
+          <rect x="8.8" y="3.5" width="4.4" height="1.2" rx="0.6" fill="currentColor" />
+          <rect x="5.5" y="6" width="11" height="2.2" rx="0.8" fill="currentColor" />
+          <rect x="6.8" y="9.4" width="8.4" height="1.2" rx="0.6" fill="currentColor" fillOpacity="0.45" />
         </svg>
       );
     default:
+      // content
       return (
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <line x1="4" y1="5.5" x2="9.5" y2="5.5" />
-          <line x1="4" y1="8.5" x2="12" y2="8.5" />
-          <line x1="4" y1="10.8" x2="10.5" y2="10.8" />
+        <svg className="w-[22px] h-[14px] shrink-0" viewBox="0 0 22 14" fill="none">
+          <rect
+            x="0.75"
+            y="0.75"
+            width="20.5"
+            height="12.5"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeOpacity="0.45"
+          />
+          <rect x="3" y="2.8" width="9.5" height="1.6" rx="0.6" fill="currentColor" />
+          <rect x="3" y="5.8" width="16" height="5.6" rx="1" fill="currentColor" fillOpacity="0.2" />
         </svg>
       );
   }
@@ -131,7 +202,7 @@ export function SlideStageCanvas({
         if (w > 0) setScale(w / 960);
       }
       if (colRef.current) {
-        setCompactDock(colRef.current.clientWidth < 600);
+        setCompactDock(colRef.current.clientWidth < 640);
       }
     };
     update();
@@ -171,7 +242,7 @@ export function SlideStageCanvas({
     issues.length > 0 || Boolean(report && !report.success);
 
   return (
-    <main className="flex-1 bg-[#ececef] flex flex-col items-center justify-center px-5 lg:px-8 py-5 min-w-0 min-h-0 overflow-y-auto clean-scroll">
+    <main className="flex-1 bg-[#dcdce1] flex flex-col items-center justify-center px-5 lg:px-8 py-5 min-w-0 min-h-0 overflow-y-auto clean-scroll">
       <div
         ref={colRef}
         className="w-full max-w-[min(920px,max(360px,calc((100vh-196px)*16/9)))] flex flex-col items-center gap-4 my-auto"
@@ -180,8 +251,8 @@ export function SlideStageCanvas({
         <div className="w-full flex items-center justify-between px-1 text-[12.5px] gap-4">
           <div className="flex items-center gap-2 min-w-0">
             {isGenerating ? (
-              <span className="inline-flex items-center gap-2 text-[#0071e3] font-medium truncate">
-                <span className="w-2 h-2 rounded-full bg-[#0071e3] animate-pulse shrink-0" />
+              <span className="inline-flex items-center gap-2 text-[#1d1d1f] font-medium truncate">
+                <span className="w-2 h-2 rounded-full bg-[#1d1d1f] animate-pulse shrink-0" />
                 <span className="truncate">{statusText || "正在处理…"}</span>
               </span>
             ) : hasLayoutIssues ? (
@@ -192,9 +263,9 @@ export function SlideStageCanvas({
                     onSelectIndex(firstIssueSlide);
                   }
                 }}
-                className="inline-flex items-center gap-2 text-[#d70015] hover:underline font-medium cursor-pointer truncate"
+                className="inline-flex items-center gap-2 text-[#c02620] hover:underline font-medium cursor-pointer truncate"
               >
-                <span className="w-2 h-2 rounded-full bg-[#ff3b30] shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-[#d70015] shrink-0" />
                 <span className="truncate">
                   {firstIssueSlide !== undefined
                     ? `第 ${firstIssueSlide + 1} 页存在排版溢出或校验异常 · 点击定位 ›`
@@ -202,19 +273,19 @@ export function SlideStageCanvas({
                 </span>
               </button>
             ) : showRenderedImage ? (
-              <span className="inline-flex items-center gap-2 text-[#248a3d] whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-[#34c759] shrink-0" />
+              <span className="inline-flex items-center gap-2 text-[#27272a] font-medium whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-[#248a3d] shrink-0" />
                 <span>已与 PPTX 同步</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-2 text-[#6e6e73] whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-[#34c759] shrink-0" />
+              <span className="inline-flex items-center gap-2 text-[#52525b] whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-[#248a3d] shrink-0" />
                 <span>排版安全</span>
               </span>
             )}
           </div>
 
-          <span className="text-[#86868b] tabular-nums whitespace-nowrap shrink-0">
+          <span className="text-[#52525b] font-medium tabular-nums whitespace-nowrap shrink-0">
             {selectedIndex + 1} / {total}
           </span>
         </div>
@@ -247,18 +318,30 @@ export function SlideStageCanvas({
             >
               {layout === "cover" ? (
                 <>
+                  {/* Editorial top-left accent bar */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 48,
+                      top: 144,
+                      width: 60,
+                      height: 3.5,
+                      borderRadius: 99,
+                      backgroundColor: sw.accent,
+                    }}
+                  />
                   <div
                     onClick={() => onFocusField("input-title")}
                     className="clickable-slot"
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 190,
+                      top: 172,
                       width: 864,
-                      fontSize: 40,
-                      lineHeight: "48px",
+                      fontSize: 44,
+                      lineHeight: "54px",
                       fontWeight: 700,
-                      letterSpacing: "-0.025em",
+                      letterSpacing: "-0.028em",
                       color: titleCol,
                       textAlign: "left",
                     }}
@@ -271,10 +354,10 @@ export function SlideStageCanvas({
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 300,
+                      top: 298,
                       width: 820,
-                      fontSize: 18,
-                      lineHeight: "28px",
+                      fontSize: 20,
+                      lineHeight: "31px",
                       whiteSpace: "pre-wrap",
                       color: bodyCol,
                       textAlign: "left",
@@ -282,32 +365,43 @@ export function SlideStageCanvas({
                   >
                     {item.summary}
                   </div>
+                  {/* Anchoring bottom hairline */}
                   <div
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 464,
-                      width: 48,
-                      height: 3,
-                      borderRadius: 99,
-                      backgroundColor: sw.accent,
+                      top: 458,
+                      width: 864,
+                      height: 1,
+                      backgroundColor: sw.divider,
                     }}
                   />
                 </>
               ) : layout === "closing" ? (
                 <>
                   <div
+                    style={{
+                      position: "absolute",
+                      left: 452,
+                      top: 140,
+                      width: 56,
+                      height: 3,
+                      borderRadius: 99,
+                      backgroundColor: sw.accent,
+                    }}
+                  />
+                  <div
                     onClick={() => onFocusField("input-title")}
                     className="clickable-slot"
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 34,
+                      top: 168,
                       width: 864,
-                      fontSize: 28,
-                      lineHeight: "36px",
+                      fontSize: 34,
+                      lineHeight: "44px",
                       fontWeight: 700,
-                      letterSpacing: "-0.02em",
+                      letterSpacing: "-0.022em",
                       color: titleCol,
                       textAlign: "center",
                     }}
@@ -315,26 +409,15 @@ export function SlideStageCanvas({
                     {item.title || "谢谢聆听"}
                   </div>
                   <div
-                    style={{
-                      position: "absolute",
-                      left: 456,
-                      top: 108,
-                      width: 48,
-                      height: 2.5,
-                      borderRadius: 99,
-                      backgroundColor: sw.accent,
-                    }}
-                  />
-                  <div
                     onClick={() => onFocusField("input-summary")}
                     className="clickable-slot"
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 180,
+                      top: 250,
                       width: 864,
-                      fontSize: 19,
-                      lineHeight: "30px",
+                      fontSize: 20,
+                      lineHeight: "32px",
                       whiteSpace: "pre-wrap",
                       color: bodyCol,
                       textAlign: "center",
@@ -342,6 +425,16 @@ export function SlideStageCanvas({
                   >
                     {item.summary}
                   </div>
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 220,
+                      top: 444,
+                      width: 520,
+                      height: 1,
+                      backgroundColor: sw.divider,
+                    }}
+                  />
                 </>
               ) : (
                 <>
@@ -352,10 +445,10 @@ export function SlideStageCanvas({
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 30,
+                      top: 28,
                       width: 864,
-                      fontSize: 26,
-                      lineHeight: "34px",
+                      fontSize: 28,
+                      lineHeight: "36px",
                       fontWeight: 700,
                       letterSpacing: "-0.02em",
                       color: titleCol,
@@ -363,14 +456,26 @@ export function SlideStageCanvas({
                   >
                     {item.title || "未命名标题"}
                   </div>
+                  {/* Full hairline + left theme accent segment */}
                   <div
                     style={{
                       position: "absolute",
                       left: 48,
-                      top: 106,
+                      top: 104,
                       width: 864,
                       height: 1,
                       backgroundColor: sw.divider,
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 48,
+                      top: 103,
+                      width: 60,
+                      height: 2.5,
+                      borderRadius: 99,
+                      backgroundColor: sw.accent,
                     }}
                   />
 
@@ -388,7 +493,7 @@ export function SlideStageCanvas({
                         margin: 0,
                         display: "flex",
                         flexDirection: "column",
-                        gap: 12,
+                        gap: 16,
                       }}
                     >
                       {item.summary
@@ -402,16 +507,16 @@ export function SlideStageCanvas({
                               display: "flex",
                               alignItems: "flex-start",
                               gap: 14,
-                              fontSize: 18,
-                              lineHeight: "26px",
+                              fontSize: 20,
+                              lineHeight: "29px",
                               color: bodyCol,
                             }}
                           >
                             <span
                               style={{
-                                marginTop: 10,
-                                width: 6,
-                                height: 6,
+                                marginTop: 11,
+                                width: 6.5,
+                                height: 6.5,
                                 borderRadius: 99,
                                 backgroundColor: sw.accent,
                                 flexShrink: 0,
@@ -426,10 +531,30 @@ export function SlideStageCanvas({
                       <div
                         style={{
                           position: "absolute",
+                          left: 48,
+                          top: 120,
+                          width: 412,
+                          height: 1,
+                          backgroundColor: sw.divider,
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 500,
+                          top: 120,
+                          width: 412,
+                          height: 1,
+                          backgroundColor: sw.divider,
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
                           left: 480,
-                          top: 128,
+                          top: 126,
                           width: 1,
-                          height: 344,
+                          height: 350,
                           backgroundColor: sw.divider,
                         }}
                       />
@@ -439,10 +564,10 @@ export function SlideStageCanvas({
                         style={{
                           position: "absolute",
                           left: 48,
-                          top: 124,
+                          top: 128,
                           width: 412,
-                          fontSize: 18,
-                          lineHeight: "26px",
+                          fontSize: 20,
+                          lineHeight: "29px",
                           whiteSpace: "pre-wrap",
                           color: bodyCol,
                         }}
@@ -455,10 +580,10 @@ export function SlideStageCanvas({
                         style={{
                           position: "absolute",
                           left: 500,
-                          top: 124,
+                          top: 128,
                           width: 412,
-                          fontSize: 18,
-                          lineHeight: "26px",
+                          fontSize: 20,
+                          lineHeight: "29px",
                           whiteSpace: "pre-wrap",
                           color: item.column_right ? bodyCol : sw.muted,
                         }}
@@ -474,31 +599,31 @@ export function SlideStageCanvas({
                         style={{
                           position: "absolute",
                           left: 48,
-                          top: 124,
-                          width: 440,
-                          fontSize: 18,
-                          lineHeight: "26px",
+                          top: 126,
+                          width: 388,
+                          fontSize: 20,
+                          lineHeight: "29px",
                           whiteSpace: "pre-wrap",
                           color: bodyCol,
                         }}
                       >
                         {item.summary}
                       </div>
+                      {/* Expanded 456x372 image visual stage */}
                       <div
                         style={{
                           position: "absolute",
-                          left: 512,
-                          top: 124,
-                          width: 400,
-                          height: 356,
-                          borderRadius: 12,
-                          border: `1px solid ${sw.divider}`,
+                          left: 456,
+                          top: 120,
+                          width: 456,
+                          height: 372,
+                          borderTop: `1px solid ${sw.divider}`,
+                          borderBottom: `1px solid ${sw.divider}`,
                           backgroundColor: sw.surface,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           overflow: "hidden",
-                          padding: 12,
                         }}
                       >
                         {item.image_asset_id ? (
@@ -509,8 +634,8 @@ export function SlideStageCanvas({
                             )}`}
                             alt={item.image_asset_id}
                             style={{
-                              maxWidth: "100%",
-                              maxHeight: "100%",
+                              width: "100%",
+                              height: "100%",
                               objectFit: "contain",
                             }}
                           />
@@ -538,10 +663,10 @@ export function SlideStageCanvas({
                       style={{
                         position: "absolute",
                         left: 48,
-                        top: 124,
+                        top: 126,
                         width: 864,
-                        fontSize: 18,
-                        lineHeight: "28px",
+                        fontSize: 20,
+                        lineHeight: "30px",
                         whiteSpace: "pre-wrap",
                         color: bodyCol,
                       }}
@@ -580,7 +705,7 @@ export function SlideStageCanvas({
                 onClick={() => setThemePopoverOpen(false)}
               />
               <div className="absolute bottom-full left-0 mb-2.5 w-[312px] apple-glass dock-shadow rounded-2xl p-3 z-50">
-                <div className="text-[12px] font-semibold text-[#6e6e73] px-1 pb-2.5">
+                <div className="text-[12px] font-semibold text-[#52525b] px-1 pb-2.5">
                   选择演示主题
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -596,7 +721,7 @@ export function SlideStageCanvas({
                         }}
                         className={`text-left p-2 rounded-xl transition-all cursor-pointer ${
                           active
-                            ? "ring-2 ring-[#0071e3] bg-[#0071e3]/[0.06]"
+                            ? "ring-2 ring-[#1d1d1f] bg-black/[0.04]"
                             : "ring-1 ring-black/[0.08] bg-white hover:bg-[#f5f5f7]"
                         }`}
                       >
@@ -606,7 +731,7 @@ export function SlideStageCanvas({
                         >
                           <div className="flex items-center justify-between">
                             <span
-                              className="w-1.5 h-1.5 rounded-full"
+                              className="w-3.5 h-[2px] rounded-full"
                               style={{ backgroundColor: th.swatches.accent }}
                             />
                             <span
@@ -628,7 +753,7 @@ export function SlideStageCanvas({
                         <div className="text-[12.5px] font-semibold text-[#1d1d1f]">
                           {th.name}
                         </div>
-                        <div className="text-[11px] text-[#86868b] truncate">
+                        <div className="text-[11px] text-[#71717a] truncate">
                           {th.description}
                         </div>
                       </button>
@@ -658,13 +783,13 @@ export function SlideStageCanvas({
                   {activeTheme.name}
                 </span>
               )}
-              <ChevronDown className="w-3 h-3 text-[#86868b] shrink-0" />
+              <ChevronDown className="w-3 h-3 text-[#71717a] shrink-0" />
             </button>
 
             <div className="w-px h-5 bg-black/[0.08] shrink-0" />
 
-            {/* Segmented Layout Control with Wireframe Mini-Icons */}
-            <div className="flex items-center bg-black/[0.045] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0">
+            {/* Segmented Layout Control with Distinct 16:9 Miniature Diagrams */}
+            <div className="flex items-center bg-black/[0.05] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0">
               {LAYOUT_OPTIONS.map((opt) => {
                 const active = layout === opt.value;
                 return (
@@ -675,8 +800,8 @@ export function SlideStageCanvas({
                     title={opt.label}
                     className={`px-2.5 py-1 rounded-[9px] text-[12px] flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                       active
-                        ? "bg-white text-[#1d1d1f] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.1)]"
-                        : "text-[#6e6e73] hover:text-[#1d1d1f] font-medium"
+                        ? "bg-[#1d1d1f] text-white font-medium shadow-[0_1px_3px_rgba(0,0,0,0.16)]"
+                        : "text-[#52525b] hover:text-[#1d1d1f] font-medium"
                     }`}
                   >
                     <LayoutIcon layout={opt.value} />
@@ -694,14 +819,14 @@ export function SlideStageCanvas({
               onClick={onToggleAutoFit}
               title={
                 autoFit
-                  ? "自动缩字已开启（正文轻度超框时自动按 18→16→14pt 退让）"
-                  : "自动缩字已关闭（严格按 18pt 测量）"
+                  ? "自动缩字已开启（正文轻度超框时自动按 20→18→16→14pt 退让）"
+                  : "自动缩字已关闭（严格按固定字号测量）"
               }
               className="px-2.5 py-1.5 rounded-xl hover:bg-black/[0.05] text-[12.5px] font-medium text-[#1d1d1f] flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0"
             >
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
-                  autoFit ? "bg-[#34c759]" : "bg-[#c7c7cc]"
+                  autoFit ? "bg-[#1d1d1f]" : "bg-[#a1a1aa]"
                 }`}
               />
               {!compactDock && <span>{autoFit ? "自动缩字" : "固定字号"}</span>}

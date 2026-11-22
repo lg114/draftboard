@@ -32,28 +32,44 @@ FONT_EA = "Microsoft YaHei"
 TEXT_COLOR = RGBColor(0x26, 0x26, 0x26)
 
 # (x, y, w, h) in pt
-BOX_TITLE = (48, 30, 864, 72)
-BOX_BODY = (48, 120, 864, 360)
-BOX_COLUMN_LEFT = (48, 120, 420, 360)
-BOX_COLUMN_RIGHT = (492, 120, 420, 360)
-BOX_TEXT_IMAGE_LEFT = (48, 120, 440, 360)
-BOX_TEXT_IMAGE_RIGHT = (512, 120, 400, 360)
-BOX_COVER_TITLE = (48, 190, 864, 92)
-BOX_COVER_SUBTITLE = (48, 300, 864, 72)
-BOX_CONCLUSION = (48, 180, 864, 180)
+BOX_TITLE = (48, 28, 864, 72)
+BOX_BODY = (48, 122, 864, 364)
+BOX_COLUMN_LEFT = (48, 126, 412, 358)
+BOX_COLUMN_RIGHT = (500, 126, 412, 358)
+BOX_TEXT_IMAGE_LEFT = (48, 124, 388, 360)
+BOX_TEXT_IMAGE_RIGHT = (456, 120, 456, 372)
+BOX_COVER_TITLE = (48, 172, 864, 114)
+BOX_COVER_SUBTITLE = (48, 298, 820, 96)
+BOX_CLOSING_TITLE = (48, 168, 864, 72)
+BOX_CONCLUSION = (48, 250, 864, 176)
 BOX_PAGE_NUMBER = (840, 504, 72, 22)
 
-# role -> (font_size_pt, line_spacing_pt, space_after_pt)
+# Phase-1 baseline styles (preserved for `default` unstyled theme)
 STYLE_TITLE = (24, 29, 0)
 STYLE_COVER_TITLE = (40, 46, 0)
 STYLE_BODY = (18, 22, 8)
 STYLE_BULLET = (18, 22, 6)
+
+# Curated studio theme styles (richer hierarchy, auto-fit safe)
+STUDIO_TITLE = (28, 36, 0)
+STUDIO_COVER_TITLE = (44, 52, 0)
+STUDIO_COVER_SUBTITLE = (20, 30, 8)
+STUDIO_CLOSING_TITLE = (34, 42, 0)
+STUDIO_BODY = (20, 28, 10)
+STUDIO_BULLET = (20, 28, 8)
 
 # Controlled auto-fit step-down ladders (PRD 8.4: body >= 14pt, title >= 24pt)
 AUTO_FIT_COVER_TITLE = [(40, 46, 0), (34, 40, 0), (28, 34, 0)]
 AUTO_FIT_TITLE = [(24, 29, 0)]
 AUTO_FIT_BODY = [(18, 22, 8), (16, 20, 6), (14, 18, 5)]
 AUTO_FIT_BULLET = [(18, 22, 6), (16, 20, 5), (14, 18, 4)]
+
+STUDIO_AUTO_FIT_COVER_TITLE = [(44, 52, 0), (38, 45, 0), (32, 38, 0), (28, 34, 0)]
+STUDIO_AUTO_FIT_COVER_SUBTITLE = [(20, 30, 8), (18, 26, 6), (16, 22, 5)]
+STUDIO_AUTO_FIT_CLOSING_TITLE = [(34, 42, 0), (28, 35, 0), (24, 30, 0)]
+STUDIO_AUTO_FIT_TITLE = [(28, 36, 0), (24, 30, 0)]
+STUDIO_AUTO_FIT_BODY = [(20, 28, 10), (18, 25, 8), (16, 22, 6), (14, 18, 5)]
+STUDIO_AUTO_FIT_BULLET = [(20, 28, 8), (18, 24, 6), (16, 21, 5), (14, 18, 4)]
 
 PAD_X_PT = 8
 PAD_Y_PT = 4
@@ -63,9 +79,15 @@ _IMAGE_STUB_RE = re.compile(r"^\[image:\s*(.+?)\s*\]$", re.IGNORECASE)
 _IMAGE_EXTS = (".png", ".jpg", ".jpeg")
 
 
-def _box_for(layout: SlideLayout, role: str) -> tuple[int, int, int, int]:
+def _box_for(
+    layout: SlideLayout, role: str, *, decorative: bool = False
+) -> tuple[int, int, int, int]:
     if role == "title":
-        return BOX_COVER_TITLE if layout == SlideLayout.COVER else BOX_TITLE
+        if layout == SlideLayout.COVER:
+            return BOX_COVER_TITLE
+        if layout == SlideLayout.CLOSING and decorative:
+            return BOX_CLOSING_TITLE
+        return BOX_TITLE
     if role == "subtitle":
         return BOX_COVER_SUBTITLE
     if role == "conclusion":
@@ -81,7 +103,22 @@ def _box_for(layout: SlideLayout, role: str) -> tuple[int, int, int, int]:
     return BOX_BODY
 
 
-def _style_for(layout: SlideLayout, role: str) -> tuple[int, int, int]:
+def _style_for(
+    layout: SlideLayout, role: str, *, decorative: bool = False
+) -> tuple[int, int, int]:
+    if decorative:
+        if role == "title":
+            if layout == SlideLayout.COVER:
+                return STUDIO_COVER_TITLE
+            if layout == SlideLayout.CLOSING:
+                return STUDIO_CLOSING_TITLE
+            return STUDIO_TITLE
+        if role == "subtitle":
+            return STUDIO_COVER_SUBTITLE
+        if role == "bullet":
+            return STUDIO_BULLET
+        return STUDIO_BODY
+
     if role == "title":
         return STYLE_COVER_TITLE if layout == SlideLayout.COVER else STYLE_TITLE
     if role == "bullet":
@@ -90,10 +127,22 @@ def _style_for(layout: SlideLayout, role: str) -> tuple[int, int, int]:
 
 
 def _style_candidates(
-    layout: SlideLayout, role: str, auto_fit: bool
+    layout: SlideLayout, role: str, auto_fit: bool, *, decorative: bool = False
 ) -> list[tuple[int, int, int]]:
     if not auto_fit:
-        return [_style_for(layout, role)]
+        return [_style_for(layout, role, decorative=decorative)]
+    if decorative:
+        if role == "title":
+            if layout == SlideLayout.COVER:
+                return STUDIO_AUTO_FIT_COVER_TITLE
+            if layout == SlideLayout.CLOSING:
+                return STUDIO_AUTO_FIT_CLOSING_TITLE
+            return STUDIO_AUTO_FIT_TITLE
+        if role == "subtitle":
+            return STUDIO_AUTO_FIT_COVER_SUBTITLE
+        if role == "bullet":
+            return STUDIO_AUTO_FIT_BULLET
+        return STUDIO_AUTO_FIT_BODY
     if role == "title":
         return AUTO_FIT_COVER_TITLE if layout == SlideLayout.COVER else AUTO_FIT_TITLE
     if role == "bullet":
@@ -221,16 +270,24 @@ def _apply_theme_chrome(
 
     if theme.decorative:
         if layout == SlideLayout.COVER:
-            # Subtle short accent mark anchored cleanly at bottom-left
-            _add_line(pptx_slide, 48, 464, 96, 464, theme.accent_rgb, width_pt=3.0)
+            # Editorial top-left accent bar + bottom anchoring hairline
+            _add_line(pptx_slide, 48, 146, 108, 146, theme.accent_rgb, width_pt=3.5)
+            _add_line(pptx_slide, 48, 458, 912, 458, theme.divider_rgb, width_pt=1.0)
         elif layout == SlideLayout.CLOSING:
-            # Centered minimal accent rule below closing title
-            _add_line(pptx_slide, 456, 108, 504, 108, theme.accent_rgb, width_pt=2.5)
+            # Centered minimal accent rule above closing title + bottom hairline
+            _add_line(pptx_slide, 452, 140, 508, 140, theme.accent_rgb, width_pt=3.0)
+            _add_line(pptx_slide, 220, 444, 740, 444, theme.divider_rgb, width_pt=1.0)
         else:
-            # Whisper-thin full-width hairline below content title
-            _add_line(pptx_slide, 48, 106, 912, 106, theme.divider_rgb, width_pt=1.0)
+            # Full-width hairline with crisp left accent segment under title
+            _add_line(pptx_slide, 48, 104, 912, 104, theme.divider_rgb, width_pt=1.0)
+            _add_line(pptx_slide, 48, 104, 108, 104, theme.accent_rgb, width_pt=2.5)
             if layout == SlideLayout.TWO_COLUMN:
-                _add_line(pptx_slide, 480, 128, 480, 472, theme.divider_rgb, width_pt=1.0)
+                _add_line(pptx_slide, 480, 126, 480, 476, theme.divider_rgb, width_pt=1.0)
+                _add_line(pptx_slide, 48, 120, 460, 120, theme.divider_rgb, width_pt=1.0)
+                _add_line(pptx_slide, 500, 120, 912, 120, theme.divider_rgb, width_pt=1.0)
+            elif layout == SlideLayout.TEXT_IMAGE:
+                _add_line(pptx_slide, 456, 118, 912, 118, theme.divider_rgb, width_pt=1.0)
+                _add_line(pptx_slide, 456, 494, 912, 494, theme.divider_rgb, width_pt=1.0)
 
     if theme.show_page_number and layout != SlideLayout.COVER:
         x, y, w, h = BOX_PAGE_NUMBER
@@ -267,7 +324,7 @@ def _add_textbox(
     style: tuple[int, int, int],
     theme: ThemeSpec,
 ) -> None:
-    x, y, w, h = _box_for(layout, role)
+    x, y, w, h = _box_for(layout, role, decorative=theme.decorative)
     size_pt, line_pt, space_after_pt = style
     if layout == SlideLayout.COVER:
         centered = not theme.left_aligned_cover
@@ -310,8 +367,8 @@ def _add_picture_contain(
     if img_w <= 0 or img_h <= 0:
         raise ValueError(f"Image '{img_path.name}' has invalid dimensions.")
     scale = min(bw / img_w, bh / img_h)
-    draw_w = img_w * scale
-    draw_h = img_h * scale
+    draw_w = round(img_w * scale, 6)
+    draw_h = round(img_h * scale, 6)
     left = bx + (bw - draw_w) / 2.0
     top = by + (bh - draw_h) / 2.0
     pptx_slide.shapes.add_picture(
@@ -331,6 +388,8 @@ def _measure_and_resolve(
     artifact: Artifact,
     fonts: FontPair,
     auto_fit: bool,
+    *,
+    decorative: bool = False,
 ) -> tuple[dict[tuple[str, str], tuple[int, int, int]], list[str]]:
     resolved: dict[tuple[str, str], tuple[int, int, int]] = {}
     errors: list[str] = []
@@ -339,8 +398,10 @@ def _measure_and_resolve(
         for role, items in _group_boxes(slide):
             if role == "image":
                 continue
-            x, y, w, h = _box_for(slide.layout, role)
-            candidates = _style_candidates(slide.layout, role, auto_fit)
+            x, y, w, h = _box_for(slide.layout, role, decorative=decorative)
+            candidates = _style_candidates(
+                slide.layout, role, auto_fit, decorative=decorative
+            )
             chosen_style = None
             last_measurement = None
 
@@ -432,14 +493,14 @@ def export_pptx(
     if fonts is None:
         fonts = load_fonts()
 
+    theme = get_theme(artifact.template_id)
+
     effective_auto_fit = artifact.auto_fit if auto_fit is None else auto_fit
     resolved_styles, measure_errors = _measure_and_resolve(
-        artifact, fonts, auto_fit=effective_auto_fit
+        artifact, fonts, auto_fit=effective_auto_fit, decorative=theme.decorative
     )
     if measure_errors:
         raise ValueError("Layout check failed:\n" + "\n".join(measure_errors))
-
-    theme = get_theme(artifact.template_id)
 
     prs = Presentation()
     prs.slide_width = Pt(CANVAS_W_PT)

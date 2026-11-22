@@ -429,9 +429,9 @@ def test_text_image_layout_embeds_native_picture(tmp_path, font_pair):
     assert len(pics) == 1
     pic = pics[0]
     bx, by, bw, bh = BOX_TEXT_IMAGE_RIGHT
-    # Aspect ratio 2:1 fitted inside 400x360 -> width=400pt, height=200pt, vertically centered
-    assert pic.width == Pt(400)
-    assert pic.height == Pt(200)
+    # Aspect ratio 2:1 fitted inside 456x372 -> width=456pt, height=228pt, vertically centered
+    assert pic.width == Pt(456)
+    assert pic.height == Pt(228)
     assert pic.left >= Pt(bx) and pic.left + pic.width <= Pt(bx + bw)
     assert pic.top >= Pt(by) and pic.top + pic.height <= Pt(by + bh)
     # Left text box is at BOX_TEXT_IMAGE_LEFT

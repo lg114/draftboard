@@ -12,31 +12,31 @@
 }
 
 .apple-glass {
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: saturate(180%) blur(22px);
   -webkit-backdrop-filter: saturate(180%) blur(22px);
 }
 
 .slide-shadow {
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 16px 40px rgba(0, 0, 0, 0.085),
-    0 0 0 1px rgba(0, 0, 0, 0.06);
+    0 2px 6px rgba(0, 0, 0, 0.08),
+    0 22px 48px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.10);
 }
 
 .dock-shadow {
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.04),
-    0 10px 28px rgba(0, 0, 0, 0.075),
-    0 0 0 1px rgba(0, 0, 0, 0.07);
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 10px 28px rgba(0, 0, 0, 0.09),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .thumb-selected {
-  box-shadow: 0 0 0 2.5px #0071e3, 0 4px 14px rgba(0, 113, 227, 0.16);
+  box-shadow: 0 0 0 2px #1d1d1f, 0 4px 14px rgba(0, 0, 0, 0.14);
 }
 
 .thumb-idle {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.075);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.09);
 }
 
 .clean-scroll::-webkit-scrollbar {
@@ -47,11 +47,11 @@
   background: transparent;
 }
 .clean-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.14);
   border-radius: 99px;
 }
 .clean-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.24);
+  background: rgba(0, 0, 0, 0.26);
 }
 
 .clickable-slot {
@@ -59,7 +59,7 @@
   transition: outline-color 0.15s ease;
 }
 .clickable-slot:hover {
-  outline: 2px dashed rgba(0, 113, 227, 0.5);
+  outline: 1.5px dashed rgba(29, 29, 31, 0.38);
   outline-offset: 6px;
   cursor: text;
 }

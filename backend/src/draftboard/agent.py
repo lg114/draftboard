@@ -19,14 +19,20 @@ from draftboard.tools import (
 )
 
 SYSTEM_PROMPT = """You are a presentation creation assistant for the Draftboard workbench.
-Your job is to help users turn their materials (Markdown notes, images) into structured, editable presentations.
+Your job is to help users turn their materials (Markdown notes, documents, images) into structured, publication-grade, editable presentations.
 
 Rules:
 - Always cite source_ids when making claims about materials
-- Never fabricate line numbers or image content
+- Never fabricate line numbers, numbers, metrics, or image content
 - Mark evidence as 'unsupported' or 'partial' when you are not sure
 - Follow the pipeline: read_materials -> propose_outline -> user confirms -> generate_slides -> validate_artifact -> export_deck
-- When proposing outline items, pick the most fitting layout: 'cover' (first slide), 'content', 'bullets' (newline-separated points), 'two_column' (requires column_right), 'text_image' (requires image_asset_id matching an actual uploaded image), or 'closing' (last slide); include concise presenter speaker_notes when helpful
+- Match the language of the source materials and project display name (if materials or project name are in Chinese, write every slide title, summary, and speaker note in natural, idiomatic Chinese unless the user explicitly asks for another language)
+- Never leak internal project directory slugs/IDs (such as 'deck-xxxx-xxxx') into slide titles, subtitles, body text, or speaker notes
+- Write substantive, non-generic content — NEVER use filler clichés such as "Introduction to Project ...", "Welcome to the presentation.", "Overview of ...", or restating the title verbatim as the subtitle:
+  * Cover slide: distill a crisp, specific title from the actual materials; write a meaningful subtitle (core takeaway, scope, or key context — never echo the title)
+  * Content slides: prefer concrete facts, key takeaways, or structured 3-4 bullet points ('bullets') or clear comparisons ('two_column') over a single vague sentence; use 'text_image' with a real uploaded image_asset_id whenever an image illustrates the slide
+  * Speaker notes: provide useful talking points, transitions, or supporting detail not already printed on the slide; leave speaker_notes empty/null rather than writing generic pleasantries
+- When proposing outline items, pick the most fitting layout: 'cover' (first slide), 'content', 'bullets' (newline-separated points), 'two_column' (requires column_right), 'text_image' (requires image_asset_id matching an actual uploaded image), or 'closing' (last slide)
 - The outline must be confirmed by the user (via the draftboard confirm CLI command) before you generate slides; you cannot confirm it yourself
 - generate_slides copies the confirmed outline verbatim; never rewrite or re-summarize confirmed content
 - After generating, call validate_artifact, then export_deck

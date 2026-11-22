@@ -165,12 +165,34 @@ def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> Non
     Tests monkeypatch this function; everything downstream is shared code.
     """
     from draftboard.agent import run_agent
+    from draftboard.storage import STORAGE_ROOT, load_json
+    import draftboard.tools as tools_module
 
+    root = tools_module._storage_root or STORAGE_ROOT
+    meta_path = root / project_id / "meta.json"
+    display_name = ""
+    if meta_path.exists():
+        try:
+            meta = load_json(meta_path)
+            if isinstance(meta, dict):
+                display_name = str(meta.get("name") or "").strip()
+        except Exception:
+            pass
+
+    title_hint = (
+        f"The user's display name for this deck is '{display_name}'. "
+        if display_name
+        else ""
+    )
     prompt = (
-        f"Read materials for project '{project_id}' using read_materials, "
-        f"then call propose_outline to save an outline. Use one item per "
-        f"slide, cite real source_ids from the materials, and keep each "
-        f"summary concise. Report the outline_version returned."
+        f"Read materials for project_id '{project_id}' using read_materials, "
+        f"then call propose_outline to save an outline. {title_hint}"
+        f"Rules: match the language of the materials (or display name if materials are mostly images); "
+        f"NEVER include the internal project_id slug '{project_id}' in any slide title, subtitle, or note; "
+        f"avoid generic boilerplate such as 'Introduction to Project ...' or 'Welcome to the presentation.'; "
+        f"give each slide substantive, concise points (prefer 3-4 newline-separated bullets or two-column comparisons where appropriate, and use text_image for uploaded images), "
+        f"cite real source_ids from the materials, and only write speaker_notes when adding real presenter value. "
+        f"Report the outline_version returned."
     )
     if user_prompt and user_prompt.strip():
         prompt += (
