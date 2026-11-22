@@ -32,10 +32,10 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 ## Development & Testing
 
 ```bash
-# Backend local dev server & offline tests (inside backend/)
+# Backend local dev server & tests (inside backend/)
 uv sync
-uv run draftboard serve --reload
-uv run pytest tests/ -m "not integration" -v
+uv run draftboard serve --reload              # http://127.0.0.1:8000 (auto-reload)
+uv run pytest tests/ -m "not integration" -v  # offline tests only (skips live LLM API tests; omit -m to run all)
 
 # Frontend hot-reload dev & static bundle sync (inside frontend/)
 npm install

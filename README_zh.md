@@ -32,10 +32,10 @@ draftboard serve
 ## 开发与测试
 
 ```bash
-# 后端本地开发服务与离线测试（在 backend/ 目录下）
+# 后端本地开发服务与测试（在 backend/ 目录下）
 uv sync
-uv run draftboard serve --reload
-uv run pytest tests/ -m "not integration" -v
+uv run draftboard serve --reload              # http://127.0.0.1:8000（支持热重载）
+uv run pytest tests/ -m "not integration" -v  # 仅离线单测（跳过真实大模型 API 集成测试；去掉 -m 可跑全量）
 
 # 前端热重载开发与静态产物同步（在 frontend/ 目录下）
 npm install
