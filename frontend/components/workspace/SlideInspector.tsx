@@ -138,10 +138,12 @@ export function SlideInspector({
   const [customInstruction, setCustomInstruction] = useState("");
   const [refineCandidate, setRefineCandidate] =
     useState<SlideRefineCandidate | null>(null);
+  const [refineNotice, setRefineNotice] = useState("");
 
   useEffect(() => {
     setNotesOpen(false);
     setRefineCandidate(null);
+    setRefineNotice("");
     setSourcePickerOpen(false);
   }, [item.outline_item_id]);
 
@@ -150,10 +152,21 @@ export function SlideInspector({
     instruction?: string
   ) {
     setRefiningMode(mode);
+    setRefineNotice("");
     try {
       const candidate = await onRefineSlide(mode, instruction);
       if (candidate) {
-        setRefineCandidate(candidate);
+        const unchanged =
+          candidate.title.trim() === item.title.trim() &&
+          candidate.summary.trim() === item.summary.trim() &&
+          (candidate.column_right || "").trim() === (item.column_right || "").trim() &&
+          (!candidate.layout || candidate.layout === layout);
+        if (unchanged) {
+          setRefineCandidate(null);
+          setRefineNotice("当前内容已足够精炼，无需改动（可用「自定义」指定改写方向）。");
+        } else {
+          setRefineCandidate(candidate);
+        }
       }
     } finally {
       setRefiningMode(null);
@@ -784,7 +797,7 @@ export function SlideInspector({
             </div>
           )}
 
-          {/* Lightweight Inline AI Refine Action Strip (attached to body, low visual clutter) */}
+          {/* Lightweight Inline AI Refine Action Strip (layout-aware, only relevant actions) */}
           <div className="space-y-2 pt-0.5">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-[#71717a] mr-0.5">
@@ -797,24 +810,32 @@ export function SlideInspector({
                 onClick={() => void triggerRefine("concise")}
                 className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
               >
-                {refiningMode === "concise" ? "精简中…" : "精简字数"}
+                {refiningMode === "concise"
+                  ? "处理中…"
+                  : layout === "cover" || layout === "closing"
+                  ? "润色精炼"
+                  : "精简字数"}
               </button>
-              <button
-                type="button"
-                disabled={Boolean(refiningMode)}
-                onClick={() => void triggerRefine("bullets")}
-                className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
-              >
-                {refiningMode === "bullets" ? "提炼中…" : "转分点"}
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(refiningMode)}
-                onClick={() => void triggerRefine("two_column")}
-                className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
-              >
-                {refiningMode === "two_column" ? "拆分中…" : "转双栏"}
-              </button>
+              {(layout === "content" || layout === "two_column") && (
+                <button
+                  type="button"
+                  disabled={Boolean(refiningMode)}
+                  onClick={() => void triggerRefine("bullets")}
+                  className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  {refiningMode === "bullets" ? "提炼中…" : "转分点"}
+                </button>
+              )}
+              {(layout === "content" || layout === "bullets") && (
+                <button
+                  type="button"
+                  disabled={Boolean(refiningMode)}
+                  onClick={() => void triggerRefine("two_column")}
+                  className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  {refiningMode === "two_column" ? "拆分中…" : "转双栏"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setCustomOpen((v) => !v)}
@@ -827,6 +848,12 @@ export function SlideInspector({
                 自定义
               </button>
             </div>
+
+            {refineNotice && (
+              <div className="text-[12px] text-[#52525b] px-1">
+                {refineNotice}
+              </div>
+            )}
 
             {customOpen && (
               <form
@@ -841,7 +868,7 @@ export function SlideInspector({
                   type="text"
                   value={customInstruction}
                   onChange={(e) => setCustomInstruction(e.target.value)}
-                  placeholder="输入修改要求（如：更精炼、补充数据）…"
+                  placeholder="输入修改要求（如：更专业简洁、突出关键数据）…"
                   className="flex-1 min-w-0 text-[12.5px] text-[#1d1d1f] placeholder-[#a1a1aa] bg-white rounded-xl px-3 py-1.5 border border-black/[0.12] focus:border-[#1d1d1f] outline-none"
                   autoFocus
                 />
@@ -861,11 +888,15 @@ export function SlideInspector({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>AI 修改建议 · 确认后生效</span>
+                    <span>
+                      {refineCandidate.source === "fallback"
+                        ? "本地规则整理 · 确认后生效"
+                        : "AI 修改建议 · 确认后生效"}
+                    </span>
                   </span>
-                  {refineCandidate.layout && (
+                  {refineCandidate.layout && refineCandidate.layout !== layout && (
                     <span className="text-[11px] font-medium text-[#27272a] bg-[#f5f5f7] px-2 py-0.5 rounded-full border border-black/[0.08]">
-                      版式：{LAYOUT_LABELS[refineCandidate.layout] || refineCandidate.layout}
+                      切为：{LAYOUT_LABELS[refineCandidate.layout] || refineCandidate.layout}
                     </span>
                   )}
                 </div>

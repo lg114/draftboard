@@ -41,6 +41,38 @@ Rules:
 """
 
 
+def resolve_chat_client(model: Any = None) -> tuple[AsyncOpenAI, str]:
+    """Build an AsyncOpenAI client + model name from the active env config.
+
+    Supports Google AI Studio (Gemini) via its OpenAI-compatible endpoint,
+    custom OPENAI_BASE_URL gateways, and standard OpenAI keys.
+    """
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    explicit_model = model if isinstance(model, str) else None
+
+    if gemini_key or (base_url and "generativelanguage.googleapis.com" in base_url):
+        api_key = gemini_key or openai_key
+        resolved_base = (
+            base_url or "https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        model_name = (
+            explicit_model
+            or os.environ.get("DRAFTBOARD_MODEL")
+            or os.environ.get("GEMINI_MODEL")
+            or "gemini-2.5-flash"
+        )
+        return AsyncOpenAI(api_key=api_key, base_url=resolved_base, max_retries=4), model_name
+
+    if base_url:
+        model_name = explicit_model or os.environ.get("DRAFTBOARD_MODEL", "gpt-4o-mini")
+        return AsyncOpenAI(api_key=openai_key, base_url=base_url, max_retries=4), model_name
+
+    model_name = explicit_model or os.environ.get("DRAFTBOARD_MODEL", "gpt-4o-mini")
+    return AsyncOpenAI(api_key=openai_key, max_retries=4), model_name
+
+
 def resolve_model(model: Any = None) -> Any:
     """Resolve model string or OpenAIChatCompletionsModel instance.
 
@@ -54,23 +86,8 @@ def resolve_model(model: Any = None) -> Any:
     openai_key = os.environ.get("OPENAI_API_KEY")
     base_url = os.environ.get("OPENAI_BASE_URL")
 
-    # If GEMINI_API_KEY is provided or base_url points to googleapis:
-    if gemini_key or (base_url and "generativelanguage.googleapis.com" in base_url):
-        api_key = gemini_key or openai_key
-        base_url = base_url or "https://generativelanguage.googleapis.com/v1beta/openai/"
-        model_name = (
-            model
-            or os.environ.get("DRAFTBOARD_MODEL")
-            or os.environ.get("GEMINI_MODEL")
-            or "gemini-2.5-flash"
-        )
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url, max_retries=5)
-        return OpenAIChatCompletionsModel(model=model_name, openai_client=client)
-
-    # Standard custom base_url
-    if base_url:
-        client = AsyncOpenAI(api_key=openai_key, base_url=base_url, max_retries=5)
-        model_name = model or os.environ.get("DRAFTBOARD_MODEL", "gpt-4o-mini")
+    if gemini_key or base_url:
+        client, model_name = resolve_chat_client(model)
         return OpenAIChatCompletionsModel(model=model_name, openai_client=client)
 
     return model or os.environ.get("DRAFTBOARD_MODEL", "gpt-4o-mini")

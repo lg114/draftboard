@@ -232,6 +232,7 @@ export interface SlideRefineCandidate {
   column_right?: string | null;
   layout?: OutlineLayout | string | null;
   rationale?: string;
+  source?: "llm" | "fallback";
 }
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {

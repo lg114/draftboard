@@ -299,7 +299,8 @@ def _deterministic_refine_slide(
             "summary": "\n".join(left_lines),
             "column_right": "\n".join(right_lines),
             "layout": "two_column",
-            "rationale": "已将核心陈述拆分为左右双栏对比结构，单栏控制在 4 行以内。",
+            "rationale": "本地规则已将内容拆分为左右双栏结构。",
+            "source": "fallback",
         }
 
     if effective_mode == "bullets":
@@ -313,7 +314,8 @@ def _deterministic_refine_slide(
             "summary": "\n".join(bullet_lines),
             "column_right": column_right,
             "layout": "bullets",
-            "rationale": f"已提炼为 {len(bullet_lines)} 条独立分点要点，每条控制在单行安全宽度内。",
+            "rationale": f"本地规则已整理为 {len(bullet_lines)} 条分点要点。",
+            "source": "fallback",
         }
 
     # Default: "concise" (anti-overflow compaction)
@@ -334,8 +336,68 @@ def _deterministic_refine_slide(
         "summary": "\n".join(concise_lines),
         "column_right": next_right,
         "layout": layout or "content",
-        "rationale": "已精简冗余修饰并收紧单行字数，确保在 18pt 正文框内不溢出。",
+        "rationale": "本地规则已收紧单行长度，确保正文框内安全显示。",
+        "source": "fallback",
     }
+
+
+_REFINE_SYSTEM_PROMPT = """You are a senior presentation editor refining a single slide in Draftboard.
+Return ONLY a valid JSON object with keys: "title", "summary", "column_right", "layout", "rationale".
+
+Hard rules:
+1. Preserve the real subject, facts, and language of the current slide (and bound source excerpts). If the input is in Chinese, reply in natural Chinese.
+2. NEVER copy or paraphrase meta-instructions into slide text (for example, NEVER output filler like "精简版幻灯片", "防止文本框溢出", "聚焦核心事实与数据", "Introduction to Project ...").
+3. NEVER fabricate metrics, names, dates, or claims that are not in the current slide or bound excerpts.
+4. If the current slide is already short and clean (e.g. a cover title and short subtitle), tighten phrasing subtly without erasing its meaning or replacing it with generic meta-text.
+5. For layout="bullets", separate each point with a single newline "\\n" and do NOT prefix lines with "-", "•", or numbers (bullets are rendered automatically).
+6. For layout="two_column", provide balanced non-empty text in both "summary" (left column) and "column_right" (right column).
+7. Keep "layout" unchanged unless the task explicitly asks to switch to "bullets" or "two_column".
+8. Write a concise 1-sentence Chinese "rationale" describing the concrete edit made."""
+
+_PROMPT_ECHO_MARKERS = (
+    "精简版幻灯片",
+    "防止文本框溢出",
+    "文本框溢出",
+    "聚焦核心事实与数据",
+)
+
+
+def _strip_bullet_prefixes(text: str) -> str:
+    lines = [
+        re.sub(r"^[•·\-\*\d]+[\.、\)\s]+", "", ln.strip()).strip()
+        for ln in text.splitlines()
+        if ln.strip()
+    ]
+    return "\n".join(lines)
+
+
+def _looks_like_prompt_echo(text: str) -> bool:
+    return any(marker in text for marker in _PROMPT_ECHO_MARKERS)
+
+
+async def _direct_llm_refine(system_prompt: str, user_prompt: str) -> str:
+    from draftboard.agent import resolve_chat_client
+
+    client, model_name = resolve_chat_client()
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    try:
+        resp = await client.chat.completions.create(
+            model=model_name,
+            messages=messages,  # type: ignore[arg-type]
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+    except Exception:
+        # Some OpenAI-compatible gateways reject response_format; retry cleanly without it.
+        resp = await client.chat.completions.create(
+            model=model_name,
+            messages=messages,  # type: ignore[arg-type]
+            temperature=0.3,
+        )
+    return (resp.choices[0].message.content or "").strip()
 
 
 def refine_slide_item(
@@ -347,63 +409,90 @@ def refine_slide_item(
     source_excerpts: Optional[list[str]] = None,
     mode: str = "concise",
     instruction: Optional[str] = None,
+    project_name: str = "",
 ) -> dict:
     """Produce a non-destructive refinement candidate (Diff preview) for one slide.
 
-    Uses the configured LLM when an API key is available, and falls back to
-    deterministic local rules when offline or in unit tests.
+    Uses a direct, tool-free LLM completion when an API key is configured, and
+    falls back transparently to local rules when offline or in unit tests.
     """
     excerpts = [e for e in (source_excerpts or []) if e and e.strip()]
+    current_layout = layout or "content"
     has_api_key = bool(
         os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     )
+    fallback_reason = "当前未配置模型 API Key，已使用本地规则整理。"
+
     if has_api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
         try:
-            from draftboard.agent import run_agent
-
+            is_hero = current_layout in ("cover", "closing")
             mode_desc = {
-                "concise": "精简字数以防止 PPT 文本框溢出（总行数不超过 4 行，每行不超过 34 字），保留关键事实与数字",
-                "bullets": "改写为 3~5 条按换行分隔的分点要点（layout 设为 'bullets'）",
-                "two_column": "改写为左栏（summary）与右栏（column_right）对称的双栏对比（layout 设为 'two_column'）",
+                "concise": (
+                    "润色标题与副标题/结语，使表达更凝练专业、无套话，保持当前版式不变"
+                    if is_hero
+                    else "压缩冗余措辞使正文更紧凑（最多 4 行、每行约 34 字以内），完整保留原意与数据，保持当前版式不变"
+                ),
+                "bullets": "将正文重排为 3~5 条按换行分隔的精炼要点（layout 设为 'bullets'，行首不要加任何符号）",
+                "two_column": "将内容拆分为结构对称的左右两栏对比：左栏放 summary、右栏放 column_right（layout 设为 'two_column'）",
                 "custom": instruction or "优化本页表达，使其更紧凑清晰",
-            }.get(mode, instruction or "精简优化本页内容")
+            }.get(mode, instruction or "优化本页表达")
 
-            prompt = (
-                f"You are refining a single slide in project '{project_id}'. "
-                f"Do NOT call any tools. Return ONLY a raw JSON object with keys: "
-                f"title, summary, column_right, layout, rationale.\n"
-                f"Strict rule: never fabricate numbers or facts not present in the current slide or source excerpts.\n"
+            deck_ctx = f"Deck name: {project_name}\n" if project_name else ""
+            user_prompt = (
+                f"{deck_ctx}"
                 f"Current slide:\n"
+                f"- layout: {current_layout}\n"
                 f"- title: {title}\n"
-                f"- layout: {layout or 'content'}\n"
                 f"- summary:\n{summary}\n"
-                f"- column_right:\n{column_right or ''}\n"
-                f"Bound source excerpts:\n{chr(10).join(excerpts) if excerpts else '(none)'}\n"
-                f"Refinement task: {mode_desc}\n"
-                f"Additional instruction: {instruction or '(none)'}"
+                f"- column_right:\n{column_right or ''}\n\n"
+                f"Bound source excerpts:\n{chr(10).join(excerpts) if excerpts else '(none)'}\n\n"
+                f"Task: {mode_desc}\n"
+                f"Additional user instruction: {instruction or '(none)'}"
             )
-            raw_out = asyncio.run(run_agent(prompt))
+            raw_out = asyncio.run(_direct_llm_refine(_REFINE_SYSTEM_PROMPT, user_prompt))
             match = re.search(r"\{[\s\S]*\}", raw_out)
             if match:
                 parsed = json.loads(match.group(0))
-                if parsed.get("title") and parsed.get("summary"):
-                    return {
-                        "title": str(parsed["title"]).strip(),
-                        "summary": str(parsed["summary"]).strip(),
-                        "column_right": (
-                            str(parsed["column_right"]).strip()
-                            if parsed.get("column_right")
-                            else column_right
-                        ),
-                        "layout": parsed.get("layout") or layout or "content",
-                        "rationale": str(
-                            parsed.get("rationale") or "已根据原始素材与指令生成修改建议。"
-                        ),
-                    }
-        except Exception:
-            pass
+                cand_title = str(parsed.get("title") or "").strip()
+                cand_summary = str(parsed.get("summary") or "").strip()
+                cand_layout = str(parsed.get("layout") or current_layout).strip()
+                if mode == "concise":
+                    cand_layout = current_layout
+                elif mode == "bullets":
+                    cand_layout = "bullets"
+                elif mode == "two_column":
+                    cand_layout = "two_column"
+                if cand_layout == "bullets":
+                    cand_summary = _strip_bullet_prefixes(cand_summary)
 
-    return _deterministic_refine_slide(
+                cand_right = (
+                    str(parsed["column_right"]).strip()
+                    if parsed.get("column_right")
+                    else column_right
+                )
+                valid_two_col = cand_layout != "two_column" or bool(cand_right)
+                if (
+                    cand_title
+                    and cand_summary
+                    and valid_two_col
+                    and not _looks_like_prompt_echo(cand_summary)
+                    and not _looks_like_prompt_echo(cand_title)
+                ):
+                    return {
+                        "title": cand_title,
+                        "summary": cand_summary,
+                        "column_right": cand_right,
+                        "layout": cand_layout,
+                        "rationale": str(
+                            parsed.get("rationale") or "已结合本页内容与素材生成修改建议。"
+                        ).strip(),
+                        "source": "llm",
+                    }
+                fallback_reason = "模型输出未通过质量校验，已使用本地规则整理。"
+        except Exception:
+            fallback_reason = "模型调用暂时失败，已切换本地规则整理。"
+
+    result = _deterministic_refine_slide(
         title=title,
         summary=summary,
         column_right=column_right,
@@ -412,6 +501,9 @@ def refine_slide_item(
         mode=mode,
         instruction=instruction,
     )
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        result["rationale"] = fallback_reason
+    return result
 
 
 def generate_work(

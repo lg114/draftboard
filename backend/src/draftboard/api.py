@@ -691,16 +691,40 @@ def refine_outline_item(
 
     mat_out = _raw(tools_module.read_materials)(project_id=project_id)
     frag_map = {f.source_id: f for f in mat_out.source_fragments}
-    mat_map = {m.asset_id: m.content for m in mat_out.materials}
+    mat_map = {
+        m.asset_id: m.content
+        for m in mat_out.materials
+        if m.asset_type != "image" and m.content
+    }
     excerpts: list[str] = []
     for sid in sids:
         frag = frag_map.get(sid)
-        if not frag:
+        if not frag or frag.source_id.endswith("-img"):
             continue
-        if frag.content_preview:
-            excerpts.append(frag.content_preview)
-        elif frag.asset_id in mat_map:
-            excerpts.append(mat_map[frag.asset_id][:400])
+        text = ""
+        raw_mat = mat_map.get(frag.asset_id, "")
+        if raw_mat:
+            m_loc = re.search(r"L(\d+)-L(\d+)$", frag.location or "")
+            if m_loc:
+                start_ln = max(0, int(m_loc.group(1)) - 1)
+                end_ln = int(m_loc.group(2))
+                text = "\n".join(raw_mat.splitlines()[start_ln:end_ln]).strip()
+            if not text:
+                text = raw_mat[:600].strip()
+        if not text and frag.content_preview:
+            text = frag.content_preview.strip()
+        if text and "图片素材占位" not in text:
+            excerpts.append(text[:600])
+
+    display_name = ""
+    meta_path = _root() / project_id / "meta.json"
+    if meta_path.exists():
+        try:
+            loaded_meta = load_json(meta_path)
+            if isinstance(loaded_meta, dict):
+                display_name = str(loaded_meta.get("name") or "").strip()
+        except Exception:
+            pass
 
     candidate = tasks.refine_slide_item(
         project_id=project_id,
@@ -711,6 +735,7 @@ def refine_outline_item(
         source_excerpts=excerpts,
         mode=req.mode,
         instruction=req.instruction,
+        project_name=display_name,
     )
     return {
         "outline_item_id": item_id,
