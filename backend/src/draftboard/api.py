@@ -6,15 +6,18 @@ agent use — there is no second generation path here.  Long work (model
 outline generation, slide generation + export) runs as persisted tasks.
 """
 
+import json
 import pathlib
 import re
+import shutil
+import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import Body, FastAPI, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 import draftboard.tasks as tasks
@@ -33,8 +36,18 @@ from draftboard.themes import is_valid_theme, list_themes, resolve_theme_id
 load_dotenv()
 
 _PROJECT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
-_ALLOWED_EXTENSIONS = {".md", ".txt", ".png", ".jpg", ".jpeg"}
+_ALLOWED_EXTENSIONS = {".md", ".txt", ".docx", ".pdf", ".png", ".jpg", ".jpeg"}
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
+_PARENTS = pathlib.Path(__file__).resolve().parents
+_FRONTEND_OUT_DIR = (
+    _PARENTS[3] / "frontend" / "out" if len(_PARENTS) > 3 else None
+)
+
+
+def _web_dir() -> pathlib.Path:
+    if _FRONTEND_OUT_DIR and (_FRONTEND_OUT_DIR / "index.html").exists():
+        return _FRONTEND_OUT_DIR
+    return _STATIC_DIR
 
 
 def _root() -> pathlib.Path:
@@ -283,6 +296,41 @@ def get_project(project_id: str):
     }
 
 
+class UpdateProjectRequest(BaseModel):
+    name: str
+
+
+@app.patch("/api/projects/{project_id}")
+def update_project(project_id: str, req: UpdateProjectRequest):
+    if not _PROJECT_ID_RE.fullmatch(project_id):
+        raise HTTPException(400, "非法的项目 ID")
+    _require_project(project_id)
+    clean_name = req.name.strip()
+    if not clean_name:
+        raise HTTPException(400, "项目名称不能为空")
+    p_dir = _root() / project_id
+    meta_path = p_dir / "meta.json"
+    meta: dict = {"project_id": project_id, "created_at": time.time()}
+    if meta_path.exists():
+        try:
+            meta.update(load_json(meta_path))
+        except Exception:
+            pass
+    meta["name"] = clean_name
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return {"project_id": project_id, "name": clean_name}
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: str):
+    if not _PROJECT_ID_RE.fullmatch(project_id):
+        raise HTTPException(400, "非法的项目 ID")
+    _require_project(project_id)
+    p_dir = _root() / project_id
+    shutil.rmtree(p_dir)
+    return {"deleted": project_id}
+
+
 # ── Materials ────────────────────────────────────────────────────────────────
 
 
@@ -292,14 +340,75 @@ async def upload_material(project_id: str, file: UploadFile):
     name = pathlib.Path(file.filename or "").name
     suffix = pathlib.Path(name).suffix.lower()
     if not name or suffix not in _ALLOWED_EXTENSIONS:
-        raise HTTPException(400, "只支持上传 .md / .txt / .png / .jpg 文件")
+        raise HTTPException(
+            400, "只支持上传 .md / .txt / .docx / .pdf / .png / .jpg 文件"
+        )
     assets_dir = _storage(project_id).root / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     content = await file.read()
     (assets_dir / name).write_bytes(content)
-    output = _raw(tools_module.read_materials)(project_id=project_id)
+    try:
+        output = _raw(tools_module.read_materials)(project_id=project_id)
+    except ValueError as exc:
+        (assets_dir / name).unlink(missing_ok=True)
+        raise HTTPException(400, str(exc)) from exc
     return {
         "asset_id": pathlib.Path(name).stem,
+        "source_fragments": len(output.source_fragments),
+    }
+
+
+@app.delete("/api/projects/{project_id}/materials/{asset_id}")
+def delete_material(project_id: str, asset_id: str):
+    _require_project(project_id)
+    assets_dir = _storage(project_id).root / "assets"
+    if not assets_dir.exists():
+        raise HTTPException(404, f"素材 '{asset_id}' 不存在")
+    matches = [
+        f
+        for f in assets_dir.iterdir()
+        if f.is_file() and (f.stem == asset_id or f.name == asset_id)
+    ]
+    if not matches:
+        raise HTTPException(404, f"素材 '{asset_id}' 不存在")
+    for f in matches:
+        f.unlink(missing_ok=True)
+
+    output = _raw(tools_module.read_materials)(project_id=project_id)
+    remaining_sids = {frag.source_id for frag in output.source_fragments}
+
+    # Clean up dangling references in unconfirmed draft outlines
+    storage = _storage(project_id)
+    outlines_dir = storage.root / "outlines"
+    if outlines_dir.exists():
+        for opath in outlines_dir.glob("*.json"):
+            try:
+                outline = storage.load_outline(opath.stem)
+                if outline.is_confirmed:
+                    continue
+                changed = False
+                for item in outline.items:
+                    filtered = [
+                        sid for sid in item.source_ids if sid in remaining_sids
+                    ]
+                    if len(filtered) != len(item.source_ids):
+                        item.source_ids = filtered
+                        if not item.source_ids:
+                            item.evidence_status = EvidenceStatus.UNSUPPORTED
+                        changed = True
+                    if item.image_asset_id == asset_id:
+                        item.image_asset_id = None
+                        if item.layout == SlideLayout.TEXT_IMAGE:
+                            item.layout = SlideLayout.CONTENT
+                        changed = True
+                if changed:
+                    storage.save_outline(outline)
+            except Exception:
+                pass
+
+    return {
+        "deleted": asset_id,
+        "remaining_materials": len(output.materials),
         "source_fragments": len(output.source_fragments),
     }
 
@@ -324,15 +433,35 @@ def get_image_asset(project_id: str, asset_ref: str):
 # ── Outlines ─────────────────────────────────────────────────────────────────
 
 
+class OutlineGenerateRequest(BaseModel):
+    prompt: Optional[str] = None
+
+
 @app.post("/api/projects/{project_id}/outline/generate", status_code=202)
-def generate_outline(project_id: str):
+def generate_outline(
+    project_id: str,
+    req: Optional[OutlineGenerateRequest] = Body(default=None),
+):
     _require_project(project_id)
+    user_prompt = req.prompt.strip() if (req and req.prompt) else None
     assets_dir = _root() / project_id / "assets"
     materials = [f for f in assets_dir.glob("*") if f.is_file()] if assets_dir.exists() else []
+    if not materials and user_prompt:
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        (assets_dir / "项目简报.md").write_text(
+            f"# 项目创作简报\n\n{user_prompt}\n", encoding="utf-8"
+        )
+        _raw(tools_module.read_materials)(project_id=project_id)
+        materials = [f for f in assets_dir.glob("*") if f.is_file()]
     if not materials:
-        raise HTTPException(400, "项目中暂无可用素材，请先上传 Markdown 笔记或图片后再生成大纲")
+        raise HTTPException(
+            400, "项目中暂无可用素材，请先上传文件或输入主题笔记后再生成大纲"
+        )
     record = tasks.submit(
-        _root(), project_id, "outline", tasks.outline_work(_root(), project_id)
+        _root(),
+        project_id,
+        "outline",
+        tasks.outline_work(_root(), project_id, user_prompt=user_prompt),
     )
     return record.model_dump()
 
@@ -455,6 +584,82 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
     return edited.model_dump()
 
 
+class SlideRefineRequest(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    column_right: Optional[str] = None
+    layout: Optional[str] = None
+    source_ids: Optional[list[str]] = None
+    mode: str = "concise"
+    instruction: Optional[str] = None
+
+
+@app.post("/api/projects/{project_id}/outlines/{version}/items/{item_id}/refine")
+def refine_outline_item(
+    project_id: str,
+    version: str,
+    item_id: str,
+    req: SlideRefineRequest,
+):
+    """Generate a non-destructive AI refinement candidate (Diff preview) for one slide."""
+    _require_project(project_id)
+    storage = _storage(project_id)
+    outline = storage.load_outline(version)
+    target = next(
+        (it for it in outline.items if it.outline_item_id == item_id), None
+    )
+
+    title = req.title if req.title is not None else (target.title if target else "")
+    summary = (
+        req.summary
+        if req.summary is not None
+        else (target.summary if target else "")
+    )
+    column_right = (
+        req.column_right
+        if req.column_right is not None
+        else (target.column_right if target else None)
+    )
+    layout = (
+        req.layout
+        if req.layout is not None
+        else (target.layout.value if (target and target.layout) else "content")
+    )
+    sids = (
+        req.source_ids
+        if req.source_ids is not None
+        else (target.source_ids if target else [])
+    )
+
+    mat_out = _raw(tools_module.read_materials)(project_id=project_id)
+    frag_map = {f.source_id: f for f in mat_out.source_fragments}
+    mat_map = {m.asset_id: m.content for m in mat_out.materials}
+    excerpts: list[str] = []
+    for sid in sids:
+        frag = frag_map.get(sid)
+        if not frag:
+            continue
+        if frag.content_preview:
+            excerpts.append(frag.content_preview)
+        elif frag.asset_id in mat_map:
+            excerpts.append(mat_map[frag.asset_id][:400])
+
+    candidate = tasks.refine_slide_item(
+        project_id=project_id,
+        title=title,
+        summary=summary,
+        column_right=column_right,
+        layout=layout,
+        source_excerpts=excerpts,
+        mode=req.mode,
+        instruction=req.instruction,
+    )
+    return {
+        "outline_item_id": item_id,
+        **candidate,
+    }
+
+
 # ── Generation ───────────────────────────────────────────────────────────────
 
 
@@ -533,6 +738,27 @@ def download(project_id: str):
     raise HTTPException(404, "没有可下载的 PPTX：尚未成功导出过文件")
 
 
+@app.get("/api/projects/{project_id}/download/pdf")
+def download_pdf(project_id: str):
+    _require_project(project_id)
+    report = _latest_success_report(project_id)
+    if not report:
+        raise HTTPException(404, "没有可下载的 PDF：尚未成功导出过文件")
+    pdir = _preview_dir(project_id, report)
+    pdf_path = pdir / "deck.pdf"
+    if not pdf_path.exists():
+        from draftboard.render import render_preview
+
+        render_preview(pathlib.Path(report["pptx_path"]), pdir)
+    if not pdf_path.exists():
+        raise HTTPException(500, "PDF 渲染未生成输出文件")
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{project_id}.pdf",
+    )
+
+
 # ── Per-page preview (same artifact/revision as the download) ────────────────
 
 
@@ -600,9 +826,80 @@ def preview_image(project_id: str, name: str):
     )
 
 
-# ── Minimal closed-loop page ─────────────────────────────────────────────────
+# ── Single-Port Frontend Hosting (Next.js static export + fallback) ──────────
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def index():
-    return FileResponse(_STATIC_DIR / "index.html")
+    return FileResponse(_web_dir() / "index.html")
+
+
+@app.get("/_next/{subpath:path}")
+def next_static_assets(subpath: str):
+    web_root = _web_dir().resolve()
+    target = (web_root / "_next" / subpath).resolve()
+    if not target.is_relative_to(web_root) or not target.is_file():
+        raise HTTPException(404, "静态资源不存在")
+    return FileResponse(target)
+
+
+@app.api_route("/p/{rest_of_path:path}", methods=["GET", "HEAD"])
+def frontend_project_routes(rest_of_path: str):
+    web_root = _web_dir().resolve()
+    cleaned = rest_of_path.strip("/")
+    if not cleaned:
+        raise HTTPException(404, "页面不存在")
+
+    placeholder_dir = (web_root / "p" / "__placeholder__").resolve()
+    if "/" not in cleaned and cleaned.endswith(".txt"):
+        pid = cleaned[:-4]
+        template_path = web_root / "p" / "__placeholder__.txt"
+        media_type = "text/plain; charset=utf-8"
+    else:
+        parts = cleaned.split("/", 1)
+        pid = parts[0]
+        sub = parts[1] if len(parts) > 1 else ""
+        if not sub:
+            template_path = web_root / "p" / "__placeholder__.html"
+            media_type = "text/html; charset=utf-8"
+        elif sub == "preview":
+            template_path = placeholder_dir / "preview.html"
+            media_type = "text/html; charset=utf-8"
+        else:
+            template_path = (placeholder_dir / sub).resolve()
+            if not template_path.is_relative_to(placeholder_dir):
+                raise HTTPException(404, "页面不存在")
+            media_type = (
+                "text/html; charset=utf-8"
+                if template_path.suffix == ".html"
+                else "text/plain; charset=utf-8"
+            )
+
+    if not _PROJECT_ID_RE.fullmatch(pid):
+        raise HTTPException(404, "非法的项目路径")
+
+    if not template_path.is_file():
+        fallback = web_root / "index.html"
+        if fallback.is_file():
+            return FileResponse(fallback)
+        raise HTTPException(404, "前端页面尚未构建")
+
+    body = template_path.read_text(encoding="utf-8").replace(
+        "__placeholder__", pid
+    )
+    return Response(content=body, media_type=media_type)
+
+
+@app.api_route("/{filename}", methods=["GET", "HEAD"])
+def frontend_root_files(filename: str):
+    if "/" in filename or filename.startswith("api"):
+        raise HTTPException(404, "资源不存在")
+    web_root = _web_dir().resolve()
+    target = (web_root / filename).resolve()
+    if filename == "favicon.ico" and not target.is_file():
+        svg_icon = web_root / "icon.svg"
+        if svg_icon.is_file():
+            return FileResponse(svg_icon, media_type="image/svg+xml")
+    if not target.is_relative_to(web_root) or not target.is_file():
+        raise HTTPException(404, "资源不存在")
+    return FileResponse(target)

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Download, Plus, Search, X } from "lucide-react";
+import { Check, Download, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { api, jsonOptions, Project } from "../lib/api";
 import { BackendStatus } from "../components/BackendStatus";
+import { BrandLogo } from "../components/BrandLogo";
 
 interface ProjectSummaryItem {
   project_id: string;
@@ -96,6 +97,9 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNameValue, setEditNameValue] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const derivedSlug = useMemo(() => slugifyName(nameInput), [nameInput]);
   const effectiveId = isCustomizingId ? customId.trim() : derivedSlug;
@@ -190,6 +194,34 @@ export default function ProjectsPage() {
     }
   }
 
+  async function handleRename(pid: string) {
+    const clean = editNameValue.trim();
+    if (!clean) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      await api(`/api/projects/${pid}`, jsonOptions("PATCH", { name: clean }));
+      setProjects((prev) =>
+        prev.map((p) => (p.project_id === pid ? { ...p, name: clean } : p))
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setEditingId(null);
+    }
+  }
+
+  async function handleDelete(pid: string) {
+    try {
+      await api(`/api/projects/${pid}`, { method: "DELETE" });
+      setProjects((prev) => prev.filter((p) => p.project_id !== pid));
+      setConfirmDeleteId(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   const filteredProjects = useMemo(() => {
     if (!search.trim()) return projects;
     const q = search.toLowerCase();
@@ -207,9 +239,10 @@ export default function ProjectsPage() {
         <div className="flex items-center gap-2.5">
           <Link
             href="/"
-            className="w-7 h-7 rounded-[8px] bg-[#1d1d1f] text-white flex items-center justify-center font-semibold text-[13px]"
+            className="hover:opacity-85 transition-opacity shrink-0"
+            title="Draftboard"
           >
-            D
+            <BrandLogo className="w-7 h-7" />
           </Link>
           <span className="font-semibold text-[15px] tracking-[-0.015em] text-[#1d1d1f]">
             Draftboard
@@ -390,24 +423,103 @@ export default function ProjectsPage() {
                   </Link>
 
                   <div className="px-1 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <Link
-                        href={`/p/${p.project_id}`}
-                        className="text-[15.5px] font-semibold text-[#1d1d1f] group-hover:text-[#0071e3] transition-colors truncate"
+                    {editingId === p.project_id ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void handleRename(p.project_id);
+                        }}
+                        className="flex items-center gap-1.5"
                       >
-                        {p.name}
-                      </Link>
-                      {p.download_available && (
-                        <a
-                          href={`/api/projects/${p.project_id}/download`}
-                          download
-                          className="text-[#86868b] hover:text-[#1d1d1f] p-1 rounded-full hover:bg-black/[0.05] transition-colors shrink-0"
-                          title="下载 PPTX"
+                        <input
+                          value={editNameValue}
+                          onChange={(e) => setEditNameValue(e.target.value)}
+                          autoFocus
+                          className="flex-1 min-w-0 text-[14.5px] font-semibold bg-white border border-[#0071e3] rounded-lg px-2.5 py-1 text-[#1d1d1f] outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="p-1.5 rounded-lg bg-[#0071e3] text-white cursor-pointer"
+                          title="保存名称"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-                    </div>
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="p-1.5 rounded-lg bg-black/[0.05] text-[#6e6e73] cursor-pointer"
+                          title="取消"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </form>
+                    ) : confirmDeleteId === p.project_id ? (
+                      <div className="flex items-center justify-between gap-2 py-0.5 px-2 rounded-xl bg-[#fff2f2] border border-[#ff3b30]/20">
+                        <span className="text-[12.5px] font-medium text-[#d70015] truncate">
+                          确认删除此文稿？
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(p.project_id)}
+                            className="px-2.5 py-0.5 rounded-full bg-[#ff3b30] text-white text-[12px] font-medium cursor-pointer"
+                          >
+                            删除
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-2 py-0.5 rounded-full text-[#6e6e73] hover:text-[#1d1d1f] text-[12px] cursor-pointer"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <Link
+                          href={`/p/${p.project_id}`}
+                          className="text-[15.5px] font-semibold text-[#1d1d1f] group-hover:text-[#0071e3] transition-colors truncate"
+                        >
+                          {p.name}
+                        </Link>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDeleteId(null);
+                              setEditingId(p.project_id);
+                              setEditNameValue(p.name);
+                            }}
+                            className="text-[#86868b] hover:text-[#1d1d1f] p-1 rounded-full hover:bg-black/[0.05] opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            title="重命名文稿"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(null);
+                              setConfirmDeleteId(p.project_id);
+                            }}
+                            className="text-[#86868b] hover:text-[#d70015] p-1 rounded-full hover:bg-black/[0.05] opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            title="删除文稿"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          {p.download_available && (
+                            <a
+                              href={`/api/projects/${p.project_id}/download`}
+                              download
+                              className="text-[#86868b] hover:text-[#1d1d1f] p-1 rounded-full hover:bg-black/[0.05] transition-colors"
+                              title="下载 PPTX"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-[13px] text-[#6e6e73]">
                       <span>
                         {p.slide_count > 0 ? `${p.slide_count} 页 · ` : ""}

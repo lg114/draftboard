@@ -595,6 +595,19 @@ def test_index_page_served(client):
     assert r.status_code == 200
     assert "Draftboard" in r.text
 
+    # Single-port frontend hosting serves dynamic workspace & preview routes
+    r_proj = client.get("/p/demo-deck")
+    assert r_proj.status_code == 200
+    assert "Draftboard" in r_proj.text
+    assert "__placeholder__" not in r_proj.text
+
+    r_prev = client.get("/p/demo-deck/preview")
+    assert r_prev.status_code == 200
+    assert "__placeholder__" not in r_prev.text
+
+    # Rejects path traversal or invalid project IDs
+    assert client.get("/p/../evil").status_code == 404
+
 
 # ── Step 2: Themes, Image Assets, Two-Column, Speaker Notes & Auto-Fit ──────
 
@@ -682,3 +695,129 @@ def test_step2_rich_layouts_theme_notes_and_image_pipeline(client):
     # Slide 3 embeds the uploaded image as a native picture shape
     assert any(sh.shape_type == 13 for sh in prs.slides[2].shapes)
     assert prs.slides[2].notes_slide.notes_text_frame.text == "请重点看右侧流程图。"
+
+    # Dual-format export: PDF download is available from the same LibreOffice pipeline
+    pdf_res = client.get(f"/api/projects/{pid}/download/pdf")
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+    assert pdf_res.content.startswith(b"%PDF")
+
+
+def _make_docx_bytes(paragraphs: list[str]) -> bytes:
+    import zipfile
+
+    buf = io.BytesIO()
+    body_xml = "".join(
+        f"<w:p><w:r><w:t>{p}</w:t></w:r></w:p>" for p in paragraphs
+    )
+    doc_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body_xml}</w:body></w:document>"
+    )
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("word/document.xml", doc_xml)
+    return buf.getvalue()
+
+
+def _make_pdf_bytes() -> bytes:
+    import pypdfium2 as pdfium
+
+    pdf = pdfium.PdfDocument.new()
+    pdf.new_page(595, 842)
+    buf = io.BytesIO()
+    pdf.save(buf)
+    pdf.close()
+    return buf.getvalue()
+
+
+def test_docx_pdf_upload_material_delete_refine_and_project_crud(client):
+    # 1. Empty project can generate outline directly from a 1-sentence prompt brief (PRD 2.2)
+    pid = _create(client, "full-workbench")
+    r_gen = client.post(
+        f"/api/projects/{pid}/outline/generate",
+        json={"prompt": "控制在 5 页以内，面向技术架构评审，重点提炼吞吐量提升数据"},
+    )
+    assert r_gen.status_code == 202
+    task = _wait_task(client, pid, r_gen.json()["task_id"])
+    assert task["status"] == "succeeded", task["error"]
+    version = task["result"]["outline_version"]
+
+    # 2. Upload .docx and .pdf materials (PRD F-02)
+    docx_bytes = _make_docx_bytes(["第一段：系统架构延迟降低 40%。", "第二段：内存占用减少 25%。"])
+    r_docx = client.post(
+        f"/api/projects/{pid}/materials",
+        files={"file": ("arch_spec.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert r_docx.status_code == 200
+    assert r_docx.json()["asset_id"] == "arch_spec"
+
+    pdf_bytes = _make_pdf_bytes()
+    r_pdf = client.post(
+        f"/api/projects/{pid}/materials",
+        files={"file": ("report.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert r_pdf.status_code == 200
+    assert r_pdf.json()["asset_id"] == "report"
+
+    mats = client.get(f"/api/projects/{pid}/materials").json()
+    asset_ids = {m["asset_id"] for m in mats["materials"]}
+    assert {"项目简报", "arch_spec", "report"}.issubset(asset_ids)
+    frag_ids = {f["source_id"] for f in mats["source_fragments"]}
+    assert "arch_spec-L1" in frag_ids
+    assert "report-P1" in frag_ids
+
+    # 3. Single-slide AI refinement returns non-destructive Diff candidate (PRD F-12)
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    item_id = outline["items"][0]["outline_item_id"]
+
+    r_ref_bullets = client.post(
+        f"/api/projects/{pid}/outlines/{version}/items/{item_id}/refine",
+        json={
+            "title": "核心性能收益",
+            "summary": "系统架构延迟降低 40%。内存占用减少 25%。吞吐量翻倍。",
+            "layout": "content",
+            "source_ids": ["arch_spec-L1"],
+            "mode": "bullets",
+        },
+    )
+    assert r_ref_bullets.status_code == 200
+    diff_b = r_ref_bullets.json()
+    assert diff_b["layout"] == "bullets"
+    assert "\n" in diff_b["summary"]
+
+    r_ref_twocol = client.post(
+        f"/api/projects/{pid}/outlines/{version}/items/{item_id}/refine",
+        json={
+            "title": "改造前后对比",
+            "summary": "旧架构：黑盒生成经常溢出。\n新架构：fontTools 确定性测量零溢出。",
+            "layout": "content",
+            "source_ids": ["arch_spec-L1"],
+            "mode": "two_column",
+        },
+    )
+    assert r_ref_twocol.status_code == 200
+    diff_tc = r_ref_twocol.json()
+    assert diff_tc["layout"] == "two_column"
+    assert diff_tc["column_right"]
+
+    # Stored outline on disk was NOT mutated by refine preview
+    assert client.get(f"/api/projects/{pid}/outlines/{version}").json() == outline
+
+    # 4. Delete material and verify cleanup (PRD F-16)
+    r_del_mat = client.delete(f"/api/projects/{pid}/materials/report")
+    assert r_del_mat.status_code == 200
+    mats_after = client.get(f"/api/projects/{pid}/materials").json()
+    assert "report" not in {m["asset_id"] for m in mats_after["materials"]}
+
+    # 5. Rename and delete project (PRD F-01)
+    r_rename = client.patch(
+        f"/api/projects/{pid}", json={"name": "2026 核心架构汇报"}
+    )
+    assert r_rename.status_code == 200
+    assert r_rename.json()["name"] == "2026 核心架构汇报"
+    assert client.get(f"/api/projects/{pid}").json()["name"] == "2026 核心架构汇报"
+
+    r_del_proj = client.delete(f"/api/projects/{pid}")
+    assert r_del_proj.status_code == 200
+    assert client.get(f"/api/projects/{pid}").status_code == 404

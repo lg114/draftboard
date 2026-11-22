@@ -7,24 +7,33 @@ import {
   FileText,
   Image as ImageIcon,
   Plus,
+  Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
-import type { Material, OutlineItem, SourceFragment } from "../../lib/api";
+import type {
+  Material,
+  Outline,
+  OutlineItem,
+  SourceFragment,
+} from "../../lib/api";
 import { extractFragmentText, formatAssetLabel } from "./SlideInspector";
 
 interface MaterialsDrawerProps {
   pid: string;
   materials: Material[];
   sourceFragments: SourceFragment[];
+  outline?: Outline | null;
   currentSlide?: OutlineItem;
   currentSlideIndex: number;
   isGenerating: boolean;
   onUploadClick: () => void;
   onPasteNote: (title: string, content: string) => Promise<void>;
+  onDeleteMaterial: (assetId: string) => Promise<void>;
   onToggleSourceId?: (sourceId: string) => void;
   onInsertExcerptToSlide?: (sourceId: string, text: string) => void;
   onApplyImageToSlide?: (imageAssetId: string, sourceId?: string) => void;
-  onGenerateOutline: () => void;
+  onGenerateOutline: (prompt?: string) => void;
   onClose: () => void;
 }
 
@@ -32,11 +41,13 @@ export function MaterialsDrawer({
   pid,
   materials,
   sourceFragments,
+  outline,
   currentSlide,
   currentSlideIndex,
   isGenerating,
   onUploadClick,
   onPasteNote,
+  onDeleteMaterial,
   onToggleSourceId,
   onInsertExcerptToSlide,
   onApplyImageToSlide,
@@ -45,15 +56,34 @@ export function MaterialsDrawer({
 }: MaterialsDrawerProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [regenPrompt, setRegenPrompt] = useState("");
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [confirmDeleteAsset, setConfirmDeleteAsset] = useState<string | null>(
+    null
+  );
+  const [deletingAsset, setDeletingAsset] = useState(false);
 
   const activeMaterial =
     materials.find((m) => m.asset_id === selectedAssetId) || null;
   const activeFragments = activeMaterial
     ? sourceFragments.filter((f) => f.asset_id === activeMaterial.asset_id)
     : [];
+  const activeFragIds = new Set(activeFragments.map((f) => f.source_id));
+
+  const affectedSlides =
+    activeMaterial && outline
+      ? outline.items
+          .map((it, idx) => ({ it, idx }))
+          .filter(
+            ({ it }) =>
+              it.image_asset_id === activeMaterial.asset_id ||
+              it.source_ids.some((sid) => activeFragIds.has(sid))
+          )
+          .map(({ idx }) => idx + 1)
+      : [];
 
   async function handleSaveNote(e: React.FormEvent) {
     e.preventDefault();
@@ -66,6 +96,17 @@ export function MaterialsDrawer({
       setPasteOpen(false);
     } finally {
       setSavingNote(false);
+    }
+  }
+
+  async function handleConfirmDelete(assetId: string) {
+    setDeletingAsset(true);
+    try {
+      await onDeleteMaterial(assetId);
+      setConfirmDeleteAsset(null);
+      setSelectedAssetId(null);
+    } finally {
+      setDeletingAsset(false);
     }
   }
 
@@ -92,6 +133,8 @@ export function MaterialsDrawer({
                   type="button"
                   onClick={() => {
                     setPasteOpen(false);
+                    setRegenOpen(false);
+                    setConfirmDeleteAsset(null);
                     setSelectedAssetId(isSelected ? null : m.asset_id);
                   }}
                   title={`点击查看「${m.asset_id}」内容`}
@@ -128,6 +171,7 @@ export function MaterialsDrawer({
             type="button"
             onClick={() => {
               setSelectedAssetId(null);
+              setRegenOpen(false);
               setPasteOpen((v) => !v);
             }}
             className={`inline-flex items-center gap-1 font-medium cursor-pointer whitespace-nowrap ${
@@ -152,9 +196,17 @@ export function MaterialsDrawer({
           {materials.length > 0 && (
             <button
               type="button"
-              onClick={onGenerateOutline}
+              onClick={() => {
+                setSelectedAssetId(null);
+                setPasteOpen(false);
+                setRegenOpen((v) => !v);
+              }}
               disabled={isGenerating}
-              className="text-[#1d1d1f] hover:text-[#0071e3] font-medium cursor-pointer disabled:opacity-40 whitespace-nowrap"
+              className={`font-medium cursor-pointer disabled:opacity-40 whitespace-nowrap ${
+                regenOpen
+                  ? "text-[#0071e3] underline"
+                  : "text-[#1d1d1f] hover:text-[#0071e3]"
+              }`}
             >
               {isGenerating ? "提炼中…" : "重新提炼大纲"}
             </button>
@@ -168,6 +220,57 @@ export function MaterialsDrawer({
           </button>
         </div>
       </div>
+
+      {/* Controlled Regenerate Outline Panel (PRD Stage 2 & 7.3) */}
+      {regenOpen && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setRegenOpen(false);
+            onGenerateOutline(regenPrompt.trim() || undefined);
+          }}
+          className="max-w-6xl mx-auto p-4 rounded-2xl bg-[#f5f5f7] border border-black/[0.07] space-y-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#0071e3]" />
+              <span className="text-[13px] font-semibold text-[#1d1d1f]">
+                按当前素材库重新提炼大纲
+              </span>
+              {outline && outline.items.length > 0 && (
+                <span className="text-[11.5px] text-[#6e6e73] bg-white px-2.5 py-0.5 rounded-full border border-black/[0.06]">
+                  将生成全新大纲版本，当前版本仍保留在顶栏历史版本列表中可随时切回
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setRegenOpen(false)}
+              className="text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <input
+              type="text"
+              value={regenPrompt}
+              onChange={(e) => setRegenPrompt(e.target.value)}
+              placeholder="可选：输入提炼要求（例如：控制在 6 页以内，重点突出性能对比与落地结论）"
+              className="flex-1 text-[13px] text-[#1d1d1f] placeholder-[#86868b] bg-white rounded-xl px-3.5 py-2 border border-black/[0.08] focus:border-[#0071e3] outline-none"
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={isGenerating}
+              className="px-4 py-2 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap"
+            >
+              {isGenerating ? "正在提炼…" : "开始提炼新版本"}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Inline "Paste Text Note" Sheet */}
       {pasteOpen && (
@@ -228,7 +331,7 @@ export function MaterialsDrawer({
       {/* Selected Material Inspector Panel */}
       {activeMaterial && (
         <div className="max-w-6xl mx-auto p-4 rounded-2xl bg-[#f5f5f7] border border-black/[0.07] space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {activeMaterial.asset_type === "image" ? (
                 <ImageIcon className="w-4 h-4 text-[#0071e3] shrink-0" />
@@ -244,13 +347,52 @@ export function MaterialsDrawer({
                   : `共 ${activeFragments.length} 个文本切片`}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedAssetId(null)}
-              className="text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              {confirmDeleteAsset === activeMaterial.asset_id ? (
+                <div className="flex items-center gap-2 bg-[#fff2f2] border border-[#ff3b30]/20 px-2.5 py-1 rounded-full text-[12px]">
+                  <span className="text-[#d70015] font-medium">
+                    {affectedSlides.length > 0
+                      ? `第 ${affectedSlides.join("、")} 页正引用此素材，确认删除？`
+                      : "确认从项目删除此素材？"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={deletingAsset}
+                    onClick={() =>
+                      void handleConfirmDelete(activeMaterial.asset_id)
+                    }
+                    className="px-2.5 py-0.5 rounded-full bg-[#ff3b30] text-white font-medium cursor-pointer disabled:opacity-40"
+                  >
+                    {deletingAsset ? "删除中…" : "确认删除"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteAsset(null)}
+                    className="text-[#6e6e73] hover:text-[#1d1d1f] cursor-pointer"
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteAsset(activeMaterial.asset_id)}
+                  className="inline-flex items-center gap-1 text-[12px] text-[#86868b] hover:text-[#d70015] transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>删除素材</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setSelectedAssetId(null)}
+                className="text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {activeMaterial.asset_type === "image" ? (
@@ -322,7 +464,7 @@ export function MaterialsDrawer({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11.5px]">
                         <span className="font-mono font-semibold text-[#1d1d1f]">
-                          {frag.location.replace(/^L/, "第 ")} 行
+                          {frag.location.replace(/^L/, "第 ")}
                         </span>
                         {bound && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#248a3d]">

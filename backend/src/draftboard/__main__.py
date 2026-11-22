@@ -60,11 +60,12 @@ def main() -> None:
         "--revision", type=int, default=None, help="Revision (default: latest)"
     )
 
-    # serve: run the web API + minimal workbench page
-    serve_p = sub.add_parser("serve", help="Run the Draftboard web API")
+    # serve: run the web API + single-port frontend workbench
+    serve_p = sub.add_parser("serve", help="Run the Draftboard web workbench & API")
     serve_p.add_argument("--host", default="127.0.0.1", help="Bind host")
     serve_p.add_argument("--port", type=int, default=8000, help="Bind port")
     serve_p.add_argument("--reload", action="store_true", help="Enable auto-reload on code changes")
+    serve_p.add_argument("--build", action="store_true", help="Rebuild frontend static bundle before starting")
 
     args = parser.parse_args()
 
@@ -184,10 +185,39 @@ def main() -> None:
         sys.exit(1)
 
     elif args.command == "serve":
+        import shutil
+        import subprocess
         import uvicorn
 
+        pkg_dir = pathlib.Path(__file__).resolve().parent
+        has_embedded_ui = (pkg_dir / "static" / "_next").is_dir()
+        frontend_dir = (
+            pkg_dir.parents[2] / "frontend"
+            if len(pkg_dir.parents) > 2
+            else None
+        )
+        out_index = (
+            frontend_dir / "out" / "index.html" if frontend_dir else None
+        )
+        if (
+            frontend_dir
+            and (frontend_dir / "package.json").exists()
+            and (args.build or (not has_embedded_ui and not (out_index and out_index.exists())))
+        ):
+            npm_cmd = shutil.which("npm")
+            if npm_cmd:
+                print("Building frontend static bundle...")
+                subprocess.run([npm_cmd, "run", "build"], cwd=str(frontend_dir), check=False)
+
+        src_dir = str(pkg_dir)
         print(f"Draftboard workbench: http://{args.host}:{args.port}/")
-        uvicorn.run("draftboard.api:app", host=args.host, port=args.port, reload=args.reload)
+        uvicorn.run(
+            "draftboard.api:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            reload_dirs=[src_dir] if args.reload else None,
+        )
         sys.exit(0)
 
 

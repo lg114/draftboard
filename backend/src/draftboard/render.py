@@ -68,6 +68,7 @@ def render_preview(pptx_path: pathlib.Path, out_dir: pathlib.Path) -> list[pathl
         pdf_path = scratch_path / (pptx_path.stem + ".pdf")
         if not pdf_path.exists():
             raise RuntimeError(f"LibreOffice 没有生成 PDF：{pptx_path.name}")
+        shutil.copy2(pdf_path, out_dir / "deck.pdf")
 
         pages: list[pathlib.Path] = []
         with pdfium.PdfDocument(str(pdf_path)) as pdf:

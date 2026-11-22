@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
@@ -14,6 +14,7 @@ import {
   OutlineLayout,
   Preview,
   Project,
+  SlideRefineCandidate,
   SourceFragment,
   Task,
   ThemeOption,
@@ -45,9 +46,35 @@ function buildOutlineEditPayload(outline: Outline) {
   };
 }
 
+function isOutlineReadyForAutoSave(outline: Outline | null): boolean {
+  if (!outline || outline.items.length === 0) return false;
+  for (const item of outline.items) {
+    if (!item.title.trim() || !item.summary.trim()) return false;
+    if (
+      item.layout === "two_column" &&
+      !(item.column_right && item.column_right.trim())
+    ) {
+      return false;
+    }
+    if (
+      item.layout === "text_image" &&
+      !(item.image_asset_id && item.image_asset_id.trim())
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export default function ProjectWorkspacePage() {
   const params = useParams<{ id: string }>();
-  const pid = params.id;
+  const pathname = usePathname();
+  const pid = useMemo(() => {
+    const seg = pathname?.split("/").filter(Boolean)[1];
+    return seg && seg !== "__placeholder__"
+      ? decodeURIComponent(seg)
+      : params.id;
+  }, [pathname, params.id]);
 
   const [project, setProject] = useState<Project | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -71,6 +98,7 @@ export default function ProjectWorkspacePage() {
   const [report, setReport] = useState<ExportReport | null>(null);
   const [showMaterialsDrawer, setShowMaterialsDrawer] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
 
@@ -364,18 +392,47 @@ export default function ProjectWorkspacePage() {
     await uploadFiles([file]);
   }
 
-  async function genOutline() {
-    if (materials.length === 0) {
-      setRawError("请先上传 Markdown 笔记或图片后再提炼大纲。");
+  async function deleteMaterial(assetId: string) {
+    setRawError(null);
+    try {
+      await api(
+        `/api/projects/${pid}/materials/${encodeURIComponent(assetId)}`,
+        { method: "DELETE" }
+      );
+      flashToast(`已删除素材「${assetId}」`);
+      await refresh();
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  async function renameProject(newName: string) {
+    const clean = newName.trim();
+    if (!clean) return;
+    try {
+      await api(`/api/projects/${pid}`, jsonOptions("PATCH", { name: clean }));
+      setProject((prev) => (prev ? { ...prev, name: clean } : prev));
+      flashToast("已更新文稿名称");
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  async function genOutline(userPrompt?: string) {
+    if (materials.length === 0 && !(userPrompt && userPrompt.trim())) {
+      setRawError("请先上传素材文件、粘贴笔记，或输入一句话主题要求。");
       return;
     }
     setRawError(null);
     setIsGenerating(true);
     setStatus("正在解析材料并提炼大纲…");
     try {
-      const task = await api<Task>(`/api/projects/${pid}/outline/generate`, {
-        method: "POST",
-      });
+      const task = await api<Task>(
+        `/api/projects/${pid}/outline/generate`,
+        userPrompt && userPrompt.trim()
+          ? jsonOptions("POST", { prompt: userPrompt.trim() })
+          : { method: "POST" }
+      );
       startPolling(task.task_id);
     } catch (e) {
       setIsGenerating(false);
@@ -384,28 +441,54 @@ export default function ProjectWorkspacePage() {
     }
   }
 
-  const saveOutline = useCallback(async () => {
-    if (!outline) return;
-    setRawError(null);
-    try {
-      const updated = await api<Outline>(
-        `/api/projects/${pid}/outlines/${outline.outline_version}`,
-        jsonOptions("PUT", buildOutlineEditPayload(outline))
-      );
-      setOutline(updated);
-      setSavedOutline(JSON.parse(JSON.stringify(updated)));
-      setVersion(updated.outline_version);
-      flashToast(
-        updated.outline_version !== outline.outline_version
-          ? `已派生新草稿 ${updated.outline_version}`
-          : "已保存修改"
-      );
-      const proj = await api<Project>(`/api/projects/${pid}`);
-      setProject(proj);
-    } catch (e) {
-      setRawError((e as Error).message);
+  const saveOutline = useCallback(
+    async (silent = false) => {
+      if (!outline) return;
+      setRawError(null);
+      setIsSaving(true);
+      try {
+        const updated = await api<Outline>(
+          `/api/projects/${pid}/outlines/${outline.outline_version}`,
+          jsonOptions("PUT", buildOutlineEditPayload(outline))
+        );
+        setOutline(updated);
+        setSavedOutline(JSON.parse(JSON.stringify(updated)));
+        setVersion(updated.outline_version);
+        if (!silent) {
+          flashToast(
+            updated.outline_version !== outline.outline_version
+              ? `已派生新草稿 ${updated.outline_version}`
+              : "已保存修改"
+          );
+        }
+        const proj = await api<Project>(`/api/projects/${pid}`);
+        setProject(proj);
+      } catch (e) {
+        if (!silent) {
+          setRawError((e as Error).message);
+        }
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [outline, pid, flashToast]
+  );
+
+  // 1.2s debounced auto-save when edits are valid (PRD F-01)
+  useEffect(() => {
+    if (
+      !isStale ||
+      isGenerating ||
+      isSaving ||
+      !isOutlineReadyForAutoSave(outline)
+    ) {
+      return;
     }
-  }, [outline, pid, flashToast]);
+    const timer = setTimeout(() => {
+      void saveOutline(true);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [outline, isStale, isGenerating, isSaving, saveOutline]);
 
   async function confirmGenerate() {
     if (!version || !outline) return;
@@ -592,6 +675,58 @@ export default function ProjectWorkspacePage() {
     });
   }
 
+  async function refineSlideItem(
+    index: number,
+    mode: "concise" | "bullets" | "two_column" | "custom",
+    instruction?: string
+  ): Promise<SlideRefineCandidate | null> {
+    if (!outline || !outline.items[index] || !version) return null;
+    const item = outline.items[index];
+    setRawError(null);
+    try {
+      return await api<SlideRefineCandidate>(
+        `/api/projects/${pid}/outlines/${version}/items/${encodeURIComponent(
+          item.outline_item_id
+        )}/refine`,
+        jsonOptions("POST", {
+          title: item.title,
+          summary: item.summary,
+          column_right: item.column_right ?? null,
+          layout: item.layout ?? null,
+          source_ids: item.source_ids,
+          mode,
+          instruction: instruction ?? null,
+        })
+      );
+    } catch (e) {
+      setRawError((e as Error).message);
+      return null;
+    }
+  }
+
+  function applyRefineCandidate(
+    index: number,
+    candidate: SlideRefineCandidate
+  ) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const item = items[index];
+      items[index] = {
+        ...item,
+        title: candidate.title || item.title,
+        summary: candidate.summary || item.summary,
+        column_right:
+          candidate.column_right !== undefined
+            ? candidate.column_right
+            : item.column_right,
+        layout: (candidate.layout as OutlineLayout) || item.layout,
+      };
+      return { ...prev, items };
+    });
+    flashToast("已应用 AI 修改建议");
+  }
+
   function moveItem(index: number, delta: number) {
     setOutline((prev) => {
       if (!prev) return prev;
@@ -678,7 +813,7 @@ export default function ProjectWorkspacePage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".md,.txt,.png,.jpg,.jpeg"
+        accept=".md,.txt,.pdf,.docx,.png,.jpg,.jpeg"
         multiple
         onChange={(e) => void uploadFiles(e.target.files)}
         className="hidden"
@@ -691,6 +826,7 @@ export default function ProjectWorkspacePage() {
         outline={outline}
         version={version}
         isStale={isStale}
+        isSaving={isSaving}
         isGenerating={isGenerating}
         currentStage={currentStage}
         selectedThemeId={selectedThemeId}
@@ -702,7 +838,8 @@ export default function ProjectWorkspacePage() {
         onToggleRight={() => setRightOpen((v) => !v)}
         onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
         onSelectVersion={(v) => void showOutline(v)}
-        onSaveOutline={() => void saveOutline()}
+        onSaveOutline={() => void saveOutline(false)}
+        onRenameProject={renameProject}
         onUploadClick={() => fileInputRef.current?.click()}
         onGenerateOutline={() => void genOutline()}
         onConfirmGenerate={() => void confirmGenerate()}
@@ -713,11 +850,13 @@ export default function ProjectWorkspacePage() {
           pid={pid}
           materials={materials}
           sourceFragments={sourceFragments}
+          outline={outline}
           currentSlide={currentItem}
           currentSlideIndex={selectedIndex}
           isGenerating={isGenerating}
           onUploadClick={() => fileInputRef.current?.click()}
           onPasteNote={uploadPastedNote}
+          onDeleteMaterial={deleteMaterial}
           onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
           onInsertExcerptToSlide={(sid, text) =>
             insertExcerptToSlide(selectedIndex, sid, text)
@@ -725,7 +864,7 @@ export default function ProjectWorkspacePage() {
           onApplyImageToSlide={(imgId, sid) =>
             applyImageToSlide(selectedIndex, imgId, sid)
           }
-          onGenerateOutline={() => void genOutline()}
+          onGenerateOutline={(p) => void genOutline(p)}
           onClose={() => setShowMaterialsDrawer(false)}
         />
       )}
@@ -833,6 +972,12 @@ export default function ProjectWorkspacePage() {
                 applyImageToSlide(selectedIndex, imgId, sid)
               }
               onSplitTwoColumn={() => splitTwoColumn(selectedIndex)}
+              onRefineSlide={(mode, inst) =>
+                refineSlideItem(selectedIndex, mode, inst)
+              }
+              onApplyRefineCandidate={(cand) =>
+                applyRefineCandidate(selectedIndex, cand)
+              }
               onUploadClick={() => fileInputRef.current?.click()}
             />
           )}
@@ -844,7 +989,7 @@ export default function ProjectWorkspacePage() {
           onUploadClick={() => fileInputRef.current?.click()}
           onDropFiles={(files) => void uploadFiles(files)}
           onPasteNote={uploadPastedNote}
-          onGenerateOutline={() => void genOutline()}
+          onGenerateOutline={(p) => void genOutline(p)}
         />
       )}
     </div>

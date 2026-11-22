@@ -8,12 +8,14 @@ import {
   Image as ImageIcon,
   Link2,
   Plus,
+  Sparkles,
   X,
 } from "lucide-react";
 import type {
   Issue,
   Material,
   OutlineItem,
+  SlideRefineCandidate,
   SourceFragment,
 } from "../../lib/api";
 import {
@@ -34,6 +36,11 @@ interface SlideInspectorProps {
   onToggleSourceId: (sourceId: string) => void;
   onApplyImageToSlide: (imageAssetId: string, sourceId?: string) => void;
   onSplitTwoColumn: () => void;
+  onRefineSlide: (
+    mode: "concise" | "bullets" | "two_column" | "custom",
+    instruction?: string
+  ) => Promise<SlideRefineCandidate | null>;
+  onApplyRefineCandidate: (candidate: SlideRefineCandidate) => void;
   onUploadClick: () => void;
 }
 
@@ -50,7 +57,7 @@ export function extractFragmentText(
     (m) => m.asset_id === frag.asset_id && m.asset_type !== "image"
   );
   if (mat && mat.content) {
-    const match = /^L(\d+)-L(\d+)$/.exec(frag.location);
+    const match = /L(\d+)-L(\d+)$/.exec(frag.location);
     if (match) {
       const start = Math.max(0, parseInt(match[1], 10) - 1);
       const end = parseInt(match[2], 10);
@@ -61,6 +68,7 @@ export function extractFragmentText(
         .trim();
       if (slice) return slice;
     }
+    if (frag.content_preview) return frag.content_preview;
     const trimmed = mat.content.trim();
     if (trimmed) return trimmed.slice(0, 360);
   }
@@ -116,14 +124,37 @@ export function SlideInspector({
   onToggleSourceId,
   onApplyImageToSlide,
   onSplitTwoColumn,
+  onRefineSlide,
+  onApplyRefineCandidate,
   onUploadClick,
 }: SlideInspectorProps) {
   const [notesOpen, setNotesOpen] = useState(Boolean(item.speaker_notes));
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [refiningMode, setRefiningMode] = useState<string | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customInstruction, setCustomInstruction] = useState("");
+  const [refineCandidate, setRefineCandidate] =
+    useState<SlideRefineCandidate | null>(null);
 
   useEffect(() => {
     if (item.speaker_notes) setNotesOpen(true);
+    setRefineCandidate(null);
   }, [item.outline_item_id, item.speaker_notes]);
+
+  async function triggerRefine(
+    mode: "concise" | "bullets" | "two_column" | "custom",
+    instruction?: string
+  ) {
+    setRefiningMode(mode);
+    try {
+      const candidate = await onRefineSlide(mode, instruction);
+      if (candidate) {
+        setRefineCandidate(candidate);
+      }
+    } finally {
+      setRefiningMode(null);
+    }
+  }
 
   const layout = inferEffectiveLayout(item.layout, slideIndex, totalSlides);
   const imageAssets = materials.filter((m) => m.asset_type === "image");
@@ -207,9 +238,24 @@ export function SlideInspector({
       <div className="p-5 space-y-5 flex-1">
         {/* In-place Slide QA Issues */}
         {slideIssues.length > 0 && (
-          <div className="p-3.5 rounded-2xl bg-[#fff2f2] border border-[#ff3b30]/20 space-y-1">
-            <div className="text-[12.5px] font-semibold text-[#d70015]">
-              本页排版校验未通过
+          <div className="p-3.5 rounded-2xl bg-[#fff2f2] border border-[#ff3b30]/20 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[12.5px] font-semibold text-[#d70015]">
+                本页排版校验未通过
+              </div>
+              <button
+                type="button"
+                disabled={Boolean(refiningMode)}
+                onClick={() => void triggerRefine("concise")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#d70015] hover:bg-[#b80012] text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>
+                  {refiningMode === "concise"
+                    ? "正在精简…"
+                    : "AI 一键精简防超框"}
+                </span>
+              </button>
             </div>
             {slideIssues.map((iss, i) => (
               <p
@@ -438,6 +484,140 @@ export function SlideInspector({
             )}
           </div>
         )}
+
+        {/* Single-Slide AI Refinement & Diff Preview (PRD F-12) */}
+        <div className="pt-3 border-t border-black/[0.06] space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#6e6e73]">
+              <Sparkles className="w-3.5 h-3.5 text-[#0071e3]" />
+              <span>AI 本页精修</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setCustomOpen((v) => !v)}
+              className="text-[11.5px] text-[#0071e3] hover:underline font-medium cursor-pointer"
+            >
+              {customOpen ? "收起指令" : "自定义指令"}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              disabled={Boolean(refiningMode)}
+              onClick={() => void triggerRefine("concise")}
+              className="px-2.5 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#0071e3]/10 text-[#1d1d1f] hover:text-[#0071e3] text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+            >
+              {refiningMode === "concise" ? "精简中…" : "精简字数防超框"}
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(refiningMode)}
+              onClick={() => void triggerRefine("bullets")}
+              className="px-2.5 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#0071e3]/10 text-[#1d1d1f] hover:text-[#0071e3] text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+            >
+              {refiningMode === "bullets" ? "提炼中…" : "提炼为分点"}
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(refiningMode)}
+              onClick={() => void triggerRefine("two_column")}
+              className="px-2.5 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#0071e3]/10 text-[#1d1d1f] hover:text-[#0071e3] text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+            >
+              {refiningMode === "two_column" ? "拆分中…" : "改写为双栏对比"}
+            </button>
+          </div>
+
+          {customOpen && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!customInstruction.trim() || refiningMode) return;
+                void triggerRefine("custom", customInstruction.trim());
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                type="text"
+                value={customInstruction}
+                onChange={(e) => setCustomInstruction(e.target.value)}
+                placeholder="输入修改要求（如：更精炼、补充性能指标）…"
+                className="flex-1 min-w-0 text-[12.5px] text-[#1d1d1f] placeholder-[#86868b] bg-[#f5f5f7] focus:bg-white rounded-xl px-3 py-1.5 border border-transparent focus:border-[#0071e3] outline-none"
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={!customInstruction.trim() || Boolean(refiningMode)}
+                className="px-3 py-1.5 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-medium cursor-pointer disabled:opacity-40 shrink-0"
+              >
+                {refiningMode === "custom" ? "生成中…" : "生成建议"}
+              </button>
+            </form>
+          )}
+
+          {/* Non-Destructive Diff Candidate Card */}
+          {refineCandidate && (
+            <div className="p-3.5 rounded-2xl bg-[#0071e3]/[0.05] border border-[#0071e3]/25 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] font-semibold text-[#0071e3] flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI 修改建议 · 确认后生效</span>
+                </span>
+                {refineCandidate.layout && (
+                  <span className="text-[11px] font-medium text-[#0071e3] bg-white px-2 py-0.5 rounded-full border border-[#0071e3]/20">
+                    建议版式：{LAYOUT_LABELS[refineCandidate.layout] || refineCandidate.layout}
+                  </span>
+                )}
+              </div>
+
+              {refineCandidate.rationale && (
+                <p className="text-[11.5px] text-[#6e6e73] leading-snug">
+                  {refineCandidate.rationale}
+                </p>
+              )}
+
+              <div className="p-2.5 rounded-xl bg-white border border-black/[0.06] space-y-1.5 text-[12.5px]">
+                {refineCandidate.title !== item.title && (
+                  <div className="font-semibold text-[#1d1d1f] pb-1 border-b border-black/[0.05]">
+                    标题：{refineCandidate.title}
+                  </div>
+                )}
+                <div className="text-[#1d1d1f] whitespace-pre-wrap leading-relaxed">
+                  {refineCandidate.summary}
+                </div>
+                {refineCandidate.layout === "two_column" &&
+                  refineCandidate.column_right && (
+                    <div className="pt-1.5 border-t border-black/[0.06] text-[#1d1d1f] whitespace-pre-wrap leading-relaxed">
+                      <span className="text-[11px] font-semibold text-[#6e6e73] block mb-0.5">
+                        右栏对比：
+                      </span>
+                      {refineCandidate.column_right}
+                    </div>
+                  )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setRefineCandidate(null)}
+                  className="px-3 py-1 rounded-full text-[12px] font-medium text-[#6e6e73] hover:text-[#1d1d1f] cursor-pointer"
+                >
+                  放弃
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onApplyRefineCandidate(refineCandidate);
+                    setRefineCandidate(null);
+                  }}
+                  className="px-3.5 py-1 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-medium transition-colors cursor-pointer"
+                >
+                  确认应用
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Collapsible Speaker Notes */}
         <div className="pt-4 border-t border-black/[0.06] space-y-2">

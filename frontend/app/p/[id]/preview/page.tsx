@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -14,7 +14,13 @@ import { api, ExportReport, Preview } from "../../../../lib/api";
 
 export default function PreviewPage() {
   const params = useParams<{ id: string }>();
-  const pid = params.id;
+  const pathname = usePathname();
+  const pid = useMemo(() => {
+    const seg = pathname?.split("/").filter(Boolean)[1];
+    return seg && seg !== "__placeholder__"
+      ? decodeURIComponent(seg)
+      : params.id;
+  }, [pathname, params.id]);
 
   const [preview, setPreview] = useState<Preview | null>(null);
   const [report, setReport] = useState<ExportReport | null>(null);
@@ -105,6 +111,14 @@ export default function PreviewPage() {
               <span>{rendering ? "渲染中…" : "重新渲染"}</span>
             </button>
           )}
+          <a
+            href={`/api/projects/${pid}/download/pdf`}
+            download
+            className="px-3.5 py-1.5 rounded-full bg-black/[0.06] hover:bg-black/[0.1] text-[#1d1d1f] text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>下载 PDF</span>
+          </a>
           <a
             href={`/api/projects/${pid}/download`}
             download

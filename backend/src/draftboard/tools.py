@@ -9,8 +9,11 @@ variable (set in tests to redirect writes to a tmp directory).
 
 import pathlib
 import uuid
+import xml.etree.ElementTree as ET
+import zipfile
 from typing import Optional
 
+import pypdfium2 as pdfium
 from agents import function_tool
 
 from draftboard.models import (
@@ -43,6 +46,70 @@ def _get_storage(project_id: str) -> ProjectStorage:
     return ProjectStorage(project_id, storage_root=_storage_root)
 
 
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _extract_docx_text(filepath: pathlib.Path) -> str:
+    """Extract plain text from a .docx file using stdlib zipfile + ElementTree."""
+    try:
+        with zipfile.ZipFile(filepath) as zf:
+            if "word/document.xml" not in zf.namelist():
+                raise ValueError(f"DOCX 文件缺少 word/document.xml: {filepath.name}")
+            xml_bytes = zf.read("word/document.xml")
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"无法解析损坏的 DOCX 文件 '{filepath.name}'") from exc
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise ValueError(f"DOCX 文档 XML 结构损坏 '{filepath.name}'") from exc
+
+    lines: list[str] = []
+    body = root.find(f"{_W_NS}body")
+    container = body if body is not None else root
+    for elem in container:
+        if elem.tag == f"{_W_NS}p":
+            para = "".join(t.text or "" for t in elem.findall(f".//{_W_NS}t")).strip()
+            if para:
+                lines.append(para)
+        elif elem.tag == f"{_W_NS}tbl":
+            for row in elem.findall(f".//{_W_NS}tr"):
+                cells = []
+                for cell in row.findall(f"./{_W_NS}tc"):
+                    cell_text = " ".join(
+                        "".join(t.text or "" for t in p.findall(f".//{_W_NS}t")).strip()
+                        for p in cell.findall(f".//{_W_NS}p")
+                    ).strip()
+                    if cell_text:
+                        cells.append(cell_text)
+                if cells:
+                    lines.append(" | ".join(cells))
+    return "\n".join(lines)
+
+
+def _extract_pdf_pages(filepath: pathlib.Path) -> list[tuple[int, str]]:
+    """Extract per-page plain text from a PDF file using pypdfium2."""
+    try:
+        doc = pdfium.PdfDocument(str(filepath))
+    except Exception as exc:
+        raise ValueError(f"无法解析 PDF 文件 '{filepath.name}'（可能已损坏或受密码保护）") from exc
+
+    pages: list[tuple[int, str]] = []
+    try:
+        page_count = len(doc)
+        for idx in range(page_count):
+            page = doc[idx]
+            textpage = page.get_textpage()
+            raw = textpage.get_text_range() or ""
+            cleaned = "\n".join(
+                line.strip() for line in raw.splitlines() if line.strip()
+            )
+            pages.append((idx + 1, cleaned))
+    finally:
+        doc.close()
+    return pages
+
+
 # ── Tool 1: read_materials ────────────────────────────────────────────────────
 
 
@@ -51,12 +118,13 @@ def read_materials(
     project_id: str,
     asset_ids: Optional[list[str]] = None,
 ) -> ReadMaterialsOutput:
-    """Read project materials (Markdown/TXT files and images) from disk.
+    """Read project materials (Markdown/TXT/DOCX/PDF files and images) from disk.
 
-    Scans ~/.draftboard/projects/{project_id}/assets/ for .md, .txt, .png, and
-    .jpg files.  Text content is returned verbatim and split into 50-line
-    source fragments.  Images are represented as a stub string of the form
-    '[image: {filename}]' – the agent must NOT fabricate any image analysis.
+    Scans ~/.draftboard/projects/{project_id}/assets/ for .md, .txt, .docx,
+    .pdf, .png, and .jpg files.  Text content is returned verbatim and split
+    into 50-line (or per-page) source fragments.  Images are represented as a
+    stub string of the form '[image: {filename}]' – the agent must NOT
+    fabricate any image analysis.
 
     Args:
         project_id: Identifier of the project whose assets to read.
@@ -75,7 +143,7 @@ def read_materials(
 
     # Collect candidate files
     candidate_files: list[pathlib.Path] = []
-    for ext in ("*.md", "*.txt", "*.png", "*.jpg", "*.jpeg"):
+    for ext in ("*.md", "*.txt", "*.docx", "*.pdf", "*.png", "*.jpg", "*.jpeg"):
         candidate_files.extend(assets_dir.glob(ext))
 
     for filepath in sorted(candidate_files):
@@ -83,8 +151,12 @@ def read_materials(
         if asset_ids is not None and stem not in asset_ids:
             continue
 
-        if filepath.suffix.lower() in (".md", ".txt"):
-            text = filepath.read_text(encoding="utf-8", errors="replace")
+        suffix = filepath.suffix.lower()
+        if suffix in (".md", ".txt", ".docx"):
+            if suffix == ".docx":
+                text = _extract_docx_text(filepath)
+            else:
+                text = filepath.read_text(encoding="utf-8", errors="replace")
             materials.append(
                 MaterialContent(
                     asset_id=stem,
@@ -107,6 +179,56 @@ def read_materials(
                         content_preview=" ".join(chunk_lines[:3])[:200] or None,
                     )
                 )
+        elif suffix == ".pdf":
+            pdf_pages = _extract_pdf_pages(filepath)
+            combined_parts: list[str] = []
+            if not pdf_pages:
+                fragments.append(
+                    SourceFragment(
+                        source_id=f"{stem}-P1",
+                        asset_id=stem,
+                        location="P1",
+                        content_preview="[空 PDF 文档]",
+                    )
+                )
+            for page_num, page_text in pdf_pages:
+                if page_text:
+                    combined_parts.append(page_text)
+                lines = page_text.splitlines()
+                if len(lines) <= 50:
+                    preview = (
+                        " ".join(lines[:3])[:200]
+                        if lines
+                        else "[该页无可提取文本（可能为纯图片/扫描页）]"
+                    )
+                    fragments.append(
+                        SourceFragment(
+                            source_id=f"{stem}-P{page_num}",
+                            asset_id=stem,
+                            location=f"P{page_num}",
+                            content_preview=preview,
+                        )
+                    )
+                else:
+                    chunk_size = 50
+                    for chunk_start in range(0, len(lines), chunk_size):
+                        chunk_end = min(chunk_start + chunk_size, len(lines))
+                        chunk_lines = lines[chunk_start:chunk_end]
+                        fragments.append(
+                            SourceFragment(
+                                source_id=f"{stem}-P{page_num}-L{chunk_start + 1}",
+                                asset_id=stem,
+                                location=f"P{page_num} L{chunk_start + 1}-L{chunk_end}",
+                                content_preview=" ".join(chunk_lines[:3])[:200] or None,
+                            )
+                        )
+            materials.append(
+                MaterialContent(
+                    asset_id=stem,
+                    asset_type=AssetType.MARKDOWN,
+                    content="\n\n".join(combined_parts),
+                )
+            )
         else:
             # Image file
             stub = f"[image: {filepath.name}]"

@@ -7,7 +7,11 @@ pipeline functions themselves are the same ones the CLI and agent use.
 """
 
 import asyncio
+import inspect
+import json
+import os
 import pathlib
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -155,7 +159,7 @@ def submit(
 # ── Work definitions (reuse the existing pipeline tools) ─────────────────────
 
 
-def outline_via_agent(project_id: str) -> None:
+def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> None:
     """Ask the real agent to read materials and propose an outline.
 
     Tests monkeypatch this function; everything downstream is shared code.
@@ -168,6 +172,12 @@ def outline_via_agent(project_id: str) -> None:
         f"slide, cite real source_ids from the materials, and keep each "
         f"summary concise. Report the outline_version returned."
     )
+    if user_prompt and user_prompt.strip():
+        prompt += (
+            f"\n\nUser direction / constraints (follow while still strictly "
+            f"citing real source_ids and marking unsupported claims as "
+            f"'unsupported' without fabricating numbers):\n{user_prompt.strip()}"
+        )
     asyncio.run(run_agent(prompt))
 
 
@@ -181,20 +191,205 @@ def _latest_outline_version(root: pathlib.Path, project_id: str) -> Optional[str
     return max(files, key=lambda p: p.stat().st_mtime).stem
 
 
-def outline_work(root: pathlib.Path, project_id: str) -> Callable[[TaskContext], dict]:
+def outline_work(
+    root: pathlib.Path,
+    project_id: str,
+    user_prompt: Optional[str] = None,
+) -> Callable[[TaskContext], dict]:
     def work(ctx: TaskContext) -> dict:
         assets_dir = root / project_id / "assets"
         materials = [f for f in assets_dir.glob("*") if f.is_file()] if assets_dir.exists() else []
         if not materials:
-            raise RuntimeError("项目中暂无可用素材，请先上传 Markdown 笔记或图片后再生成大纲。")
+            raise RuntimeError("项目中暂无可用素材，请先上传文件或输入主题笔记后再生成大纲。")
         ctx.set_step("读取材料并生成大纲")
-        outline_via_agent(project_id)
+        params = inspect.signature(outline_via_agent).parameters
+        if user_prompt and len(params) >= 2:
+            outline_via_agent(project_id, user_prompt)
+        else:
+            outline_via_agent(project_id)
         version = _latest_outline_version(root, project_id)
         if version is None:
             raise RuntimeError("Agent 没有保存任何大纲，请检查素材内容格式或稍后重试。")
         return {"outline_version": version}
 
     return work
+
+
+def _split_clauses(text: str) -> list[str]:
+    raw_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(raw_lines) >= 2:
+        return [re.sub(r"^[•\-\*\d\.、\s]+", "", ln).strip() for ln in raw_lines if ln.strip()]
+    parts = [
+        p.strip()
+        for p in re.split(r"[。；;！!？?\n]+", text)
+        if p and p.strip()
+    ]
+    return [re.sub(r"^[•\-\*\d\.、\s]+", "", p).strip() for p in parts if p.strip()]
+
+
+def _deterministic_refine_slide(
+    title: str,
+    summary: str,
+    column_right: Optional[str],
+    layout: Optional[str],
+    source_excerpts: list[str],
+    mode: str,
+    instruction: Optional[str],
+) -> dict:
+    """Deterministic local refinement rules (also used as offline fallback)."""
+    base_title = title.strip() or "核心要点"
+    if len(base_title) > 22 and mode == "concise":
+        base_title = base_title[:21].rstrip("，、：: ") + "…"
+
+    base_text = summary.strip()
+    if (not base_text or base_text == "输入本页的核心陈述内容…") and source_excerpts:
+        base_text = source_excerpts[0].strip()
+
+    effective_mode = mode
+    if mode == "custom" and instruction:
+        inst = instruction.lower()
+        if any(k in inst for k in ("双栏", "对比", "左右", "two_column")):
+            effective_mode = "two_column"
+        elif any(k in inst for k in ("分点", "要点", "列表", "bullet")):
+            effective_mode = "bullets"
+        else:
+            effective_mode = "concise"
+
+    clauses = _split_clauses(base_text)
+    if not clauses and source_excerpts:
+        clauses = _split_clauses(source_excerpts[0])
+    if not clauses:
+        clauses = [base_text or "待补充要点"]
+
+    if effective_mode == "two_column":
+        if len(clauses) == 1 and len(clauses[0]) > 16:
+            mid_char = len(clauses[0]) // 2
+            clauses = [clauses[0][:mid_char].strip(), clauses[0][mid_char:].strip()]
+        elif len(clauses) == 1:
+            clauses = [clauses[0], (column_right or "").strip() or "对比与落地成效"]
+        mid = max(1, (len(clauses) + 1) // 2)
+        left_lines = [c[:42] for c in clauses[:mid][:4]]
+        right_lines = [c[:42] for c in clauses[mid:][:4]]
+        if not right_lines:
+            right_lines = [(column_right or "").strip() or clauses[-1][:42]]
+        return {
+            "title": base_title,
+            "summary": "\n".join(left_lines),
+            "column_right": "\n".join(right_lines),
+            "layout": "two_column",
+            "rationale": "已将核心陈述拆分为左右双栏对比结构，单栏控制在 4 行以内。",
+        }
+
+    if effective_mode == "bullets":
+        bullet_lines = []
+        for c in clauses[:5]:
+            trimmed = c[:38].rstrip("，、") + ("…" if len(c) > 38 else "")
+            if trimmed:
+                bullet_lines.append(trimmed)
+        return {
+            "title": base_title,
+            "summary": "\n".join(bullet_lines),
+            "column_right": column_right,
+            "layout": "bullets",
+            "rationale": f"已提炼为 {len(bullet_lines)} 条独立分点要点，每条控制在单行安全宽度内。",
+        }
+
+    # Default: "concise" (anti-overflow compaction)
+    concise_lines = []
+    for c in clauses[:4]:
+        trimmed = c[:34].rstrip("，、") + ("…" if len(c) > 34 else "")
+        if trimmed:
+            concise_lines.append(trimmed)
+    next_right = column_right
+    if layout == "two_column" and column_right:
+        r_clauses = _split_clauses(column_right)
+        next_right = "\n".join(
+            c[:32].rstrip("，、") + ("…" if len(c) > 32 else "")
+            for c in r_clauses[:4]
+        )
+    return {
+        "title": base_title,
+        "summary": "\n".join(concise_lines),
+        "column_right": next_right,
+        "layout": layout or "content",
+        "rationale": "已精简冗余修饰并收紧单行字数，确保在 18pt 正文框内不溢出。",
+    }
+
+
+def refine_slide_item(
+    project_id: str,
+    title: str,
+    summary: str,
+    column_right: Optional[str] = None,
+    layout: Optional[str] = None,
+    source_excerpts: Optional[list[str]] = None,
+    mode: str = "concise",
+    instruction: Optional[str] = None,
+) -> dict:
+    """Produce a non-destructive refinement candidate (Diff preview) for one slide.
+
+    Uses the configured LLM when an API key is available, and falls back to
+    deterministic local rules when offline or in unit tests.
+    """
+    excerpts = [e for e in (source_excerpts or []) if e and e.strip()]
+    has_api_key = bool(
+        os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    )
+    if has_api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            from draftboard.agent import run_agent
+
+            mode_desc = {
+                "concise": "精简字数以防止 PPT 文本框溢出（总行数不超过 4 行，每行不超过 34 字），保留关键事实与数字",
+                "bullets": "改写为 3~5 条按换行分隔的分点要点（layout 设为 'bullets'）",
+                "two_column": "改写为左栏（summary）与右栏（column_right）对称的双栏对比（layout 设为 'two_column'）",
+                "custom": instruction or "优化本页表达，使其更紧凑清晰",
+            }.get(mode, instruction or "精简优化本页内容")
+
+            prompt = (
+                f"You are refining a single slide in project '{project_id}'. "
+                f"Do NOT call any tools. Return ONLY a raw JSON object with keys: "
+                f"title, summary, column_right, layout, rationale.\n"
+                f"Strict rule: never fabricate numbers or facts not present in the current slide or source excerpts.\n"
+                f"Current slide:\n"
+                f"- title: {title}\n"
+                f"- layout: {layout or 'content'}\n"
+                f"- summary:\n{summary}\n"
+                f"- column_right:\n{column_right or ''}\n"
+                f"Bound source excerpts:\n{chr(10).join(excerpts) if excerpts else '(none)'}\n"
+                f"Refinement task: {mode_desc}\n"
+                f"Additional instruction: {instruction or '(none)'}"
+            )
+            raw_out = asyncio.run(run_agent(prompt))
+            match = re.search(r"\{[\s\S]*\}", raw_out)
+            if match:
+                parsed = json.loads(match.group(0))
+                if parsed.get("title") and parsed.get("summary"):
+                    return {
+                        "title": str(parsed["title"]).strip(),
+                        "summary": str(parsed["summary"]).strip(),
+                        "column_right": (
+                            str(parsed["column_right"]).strip()
+                            if parsed.get("column_right")
+                            else column_right
+                        ),
+                        "layout": parsed.get("layout") or layout or "content",
+                        "rationale": str(
+                            parsed.get("rationale") or "已根据原始素材与指令生成修改建议。"
+                        ),
+                    }
+        except Exception:
+            pass
+
+    return _deterministic_refine_slide(
+        title=title,
+        summary=summary,
+        column_right=column_right,
+        layout=layout,
+        source_excerpts=excerpts,
+        mode=mode,
+        instruction=instruction,
+    )
 
 
 def generate_work(

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Check, ChevronDown, Download, Play, RefreshCw } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
+import { BrandLogo } from "../BrandLogo";
 import type { WorkspaceStage } from "./layoutUtils";
 
 interface WorkspaceHeaderProps {
@@ -13,6 +14,7 @@ interface WorkspaceHeaderProps {
   outline: Outline | null;
   version: string;
   isStale: boolean;
+  isSaving?: boolean;
   isGenerating: boolean;
   currentStage: WorkspaceStage;
   selectedThemeId: string;
@@ -25,6 +27,7 @@ interface WorkspaceHeaderProps {
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
+  onRenameProject?: (newName: string) => Promise<void>;
   onUploadClick: () => void;
   onGenerateOutline: () => void;
   onConfirmGenerate: () => void;
@@ -37,6 +40,7 @@ export function WorkspaceHeader({
   outline,
   version,
   isStale,
+  isSaving = false,
   isGenerating,
   currentStage,
   selectedThemeId,
@@ -49,11 +53,14 @@ export function WorkspaceHeader({
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
+  onRenameProject,
   onUploadClick,
   onGenerateOutline,
   onConfirmGenerate,
 }: WorkspaceHeaderProps) {
   const [isVersionOpen, setIsVersionOpen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
   const sortedOutlines = [...(project?.outlines ?? [])].sort(
     (a, b) => b.mtime - a.mtime
@@ -110,26 +117,66 @@ export function WorkspaceHeader({
 
         <Link
           href="/"
-          className="w-7 h-7 rounded-[8px] bg-[#1d1d1f] text-white flex items-center justify-center font-semibold text-[13px] hover:opacity-85 transition-opacity shrink-0"
+          className="hover:opacity-85 transition-opacity shrink-0"
           title="返回文稿列表"
         >
-          D
+          <BrandLogo className="w-7 h-7" />
         </Link>
 
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[14.5px] font-semibold tracking-[-0.015em] text-[#1d1d1f] truncate">
-            {project?.name || pid}
-          </span>
+          {isEditingName ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setIsEditingName(false);
+                if (onRenameProject && nameDraft.trim()) {
+                  void onRenameProject(nameDraft.trim());
+                }
+              }}
+              className="flex items-center"
+            >
+              <input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={() => {
+                  setIsEditingName(false);
+                  if (onRenameProject && nameDraft.trim()) {
+                    void onRenameProject(nameDraft.trim());
+                  }
+                }}
+                autoFocus
+                className="text-[14px] font-semibold bg-white border border-[#0071e3] rounded-lg px-2 py-0.5 text-[#1d1d1f] outline-none w-44"
+              />
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (!onRenameProject) return;
+                setNameDraft(project?.name || pid);
+                setIsEditingName(true);
+              }}
+              title="点击重命名文稿"
+              className="text-[14.5px] font-semibold tracking-[-0.015em] text-[#1d1d1f] hover:text-[#0071e3] truncate cursor-pointer transition-colors"
+            >
+              {project?.name || pid}
+            </button>
+          )}
 
           {/* Inline Save / Version Trigger (macOS Pages style) */}
           {hasOutline && (
             <div className="relative flex items-center gap-1.5 shrink-0">
-              {isStale ? (
+              {isSaving ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/[0.04] text-[#6e6e73] text-[12px] font-medium whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0071e3] animate-pulse" />
+                  <span>自动保存中…</span>
+                </span>
+              ) : isStale ? (
                 <button
                   type="button"
                   onClick={onSaveOutline}
                   className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ff9500]/14 hover:bg-[#ff9500]/22 text-[#b25000] text-[12px] font-medium transition-colors cursor-pointer whitespace-nowrap"
-                  title="保存当前修改 (Ctrl/⌘+S)"
+                  title="立即保存修改 (Ctrl/⌘+S，或停顿 1.2 秒自动保存)"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-[#ff9500]" />
                   <span>未保存 · 保存</span>
@@ -310,6 +357,15 @@ export function WorkspaceHeader({
                     className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
                   />
                 </button>
+                <a
+                  href={`/api/projects/${pid}/download/pdf`}
+                  download
+                  className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-[#1d1d1f] bg-black/[0.05] hover:bg-black/[0.09] transition-colors flex items-center gap-1 whitespace-nowrap"
+                  title="下载同源渲染的 PDF 文件"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>PDF</span>
+                </a>
                 <a
                   href={`/api/projects/${pid}/download`}
                   download
