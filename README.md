@@ -34,11 +34,8 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 ```bash
 # Backend local dev server & offline tests (inside backend/)
 uv sync
-.venv/bin/draftboard serve --reload                       # macOS / Linux
-.\.venv\Scripts\draftboard.exe serve --reload             # Windows
-
-.venv/bin/pytest tests/ -m "not integration" -v           # macOS / Linux
-.\.venv\Scripts\pytest.exe tests/ -m "not integration" -v # Windows
+uv run draftboard serve --reload
+uv run pytest tests/ -m "not integration" -v
 
 # Frontend hot-reload dev & static bundle sync (inside frontend/)
 npm install

@@ -34,11 +34,8 @@ draftboard serve
 ```bash
 # 后端本地开发服务与离线测试（在 backend/ 目录下）
 uv sync
-.venv/bin/draftboard serve --reload                       # macOS / Linux
-.\.venv\Scripts\draftboard.exe serve --reload             # Windows
-
-.venv/bin/pytest tests/ -m "not integration" -v           # macOS / Linux
-.\.venv\Scripts\pytest.exe tests/ -m "not integration" -v # Windows
+uv run draftboard serve --reload
+uv run pytest tests/ -m "not integration" -v
 
 # 前端热重载开发与静态产物同步（在 frontend/ 目录下）
 npm install
