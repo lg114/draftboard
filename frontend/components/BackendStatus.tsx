@@ -44,33 +44,22 @@ export function BackendStatus() {
     };
   }, []);
 
+  // Silent when healthy or initializing — surface only when offline.
+  if (status !== "offline") {
+    return null;
+  }
+
   return (
     <div
       title={
-        status === "online"
-          ? `后端已连接 · ${latency ?? 0}ms`
-          : status === "offline"
-          ? "未检测到后端服务，请启动 draftboard serve"
-          : "检测连接中…"
+        latency !== null
+          ? `连接异常 · ${latency}ms`
+          : "未检测到后端服务，请启动 draftboard serve"
       }
-      className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#6e6e73] select-none"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#fff2f2] border border-[#ff3b30]/20 text-[12px] font-medium text-[#c02620] select-none"
     >
-      <span
-        className={`w-2 h-2 rounded-full ${
-          status === "online"
-            ? "bg-[#34c759]"
-            : status === "offline"
-            ? "bg-[#ff3b30]"
-            : "bg-[#ff9500] animate-pulse"
-        }`}
-      />
-      <span>
-        {status === "online"
-          ? "服务就绪"
-          : status === "offline"
-          ? "服务离线"
-          : "连接中"}
-      </span>
+      <span className="w-1.5 h-1.5 rounded-full bg-[#d70015]" />
+      <span>服务离线</span>
     </div>
   );
 }

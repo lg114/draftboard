@@ -171,14 +171,26 @@ export interface ExportReport {
   issues: Issue[];
 }
 
+export interface CoverSlidePreview {
+  title: string;
+  summary: string;
+  layout: OutlineLayout | string | null;
+  column_right?: string | null;
+  image_asset_id?: string | null;
+}
+
 export interface ProjectSummary {
   project_id: string;
   name?: string;
+  theme_id?: string;
   stage?: "ready" | "confirmed" | "outline_draft" | "materials_ready" | "empty";
   stage_label?: string;
   slide_count?: number;
   materials_count?: number;
+  material_names?: string[];
   insufficient_evidence_count?: number;
+  cover_slide?: CoverSlidePreview | null;
+  preview_cover_url?: string | null;
   download_available?: boolean;
   mtime?: number;
 }
@@ -186,6 +198,7 @@ export interface ProjectSummary {
 export interface Project {
   project_id: string;
   name?: string;
+  theme_id?: string;
   stage?: string;
   stage_label?: string;
   slide_count?: number;

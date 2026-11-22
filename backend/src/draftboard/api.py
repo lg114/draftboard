@@ -163,41 +163,80 @@ class CreateProjectRequest(BaseModel):
 def _project_summary(pid: str) -> dict:
     p_dir = _root() / pid
     meta_path = p_dir / "meta.json"
-    name = pid
+    meta: dict = {}
     if meta_path.exists():
         try:
-            name = load_json(meta_path).get("name") or pid
+            loaded_meta = load_json(meta_path)
+            if isinstance(loaded_meta, dict):
+                meta = loaded_meta
         except Exception:
             pass
+    name = meta.get("name") or pid
 
     outlines = _outline_summaries(pid)
     reports = _export_reports(pid)
     latest_report = reports[-1] if reports else None
     latest_success = _latest_success_report(pid)
+    art_meta = _latest_artifact_meta(pid)
+
+    raw_theme = meta.get("theme_id") or art_meta.get("template_id") or "keynote_light"
+    theme_id = resolve_theme_id(raw_theme) if is_valid_theme(raw_theme) else "keynote_light"
 
     assets_dir = p_dir / "assets"
-    materials_count = len([f for f in assets_dir.glob("*") if f.is_file()]) if assets_dir.exists() else 0
+    asset_files = (
+        sorted([f for f in assets_dir.glob("*") if f.is_file()], key=lambda f: f.name.lower())
+        if assets_dir.exists()
+        else []
+    )
+    materials_count = len(asset_files)
+    material_names = [f.name for f in asset_files[:3]]
 
     slide_count = 0
     insufficient_evidence_count = 0
     is_confirmed = False
+    cover_slide: Optional[dict] = None
+    latest_outline_version: Optional[str] = None
 
     if outlines:
         latest_outline_meta = max(outlines, key=lambda o: o["mtime"])
+        latest_outline_version = latest_outline_meta["outline_version"]
         is_confirmed = latest_outline_meta["is_confirmed"]
         slide_count = latest_outline_meta["item_count"]
         try:
-            outline_data = load_json(p_dir / "outlines" / f"{latest_outline_meta['outline_version']}.json")
-            for it in outline_data.get("items", []):
+            outline_data = load_json(p_dir / "outlines" / f"{latest_outline_version}.json")
+            items = outline_data.get("items", [])
+            for it in items:
                 if (
                     it.get("evidence_status") in ("unsupported", "insufficient")
                     or not it.get("source_ids")
                 ):
                     insufficient_evidence_count += 1
+            if items:
+                first = items[0]
+                cover_slide = {
+                    "title": (first.get("title") or "").strip(),
+                    "summary": (first.get("summary") or "").strip(),
+                    "layout": first.get("layout"),
+                    "column_right": first.get("column_right"),
+                    "image_asset_id": first.get("image_asset_id"),
+                }
         except Exception:
             pass
     elif latest_report:
         slide_count = latest_report.get("slide_count", 0)
+
+    preview_cover_url: Optional[str] = None
+    if latest_success:
+        exported_theme = art_meta.get("template_id")
+        exported_outline = art_meta.get("outline_version")
+        theme_in_sync = (not exported_theme) or (resolve_theme_id(exported_theme) == theme_id)
+        outline_in_sync = (not latest_outline_version) or (exported_outline == latest_outline_version)
+        if theme_in_sync and outline_in_sync:
+            pdir = _preview_dir(pid, latest_success)
+            pages = sorted(pdir.glob("page-*.png")) if pdir.exists() else []
+            if pages:
+                cache_tag = f"{latest_success['artifact_id']}-r{latest_success['artifact_revision']}"
+                preview_cover_url = f"/api/projects/{pid}/preview/{pages[0].name}?v={cache_tag}"
 
     if latest_success:
         stage = "ready"
@@ -224,11 +263,15 @@ def _project_summary(pid: str) -> dict:
     return {
         "project_id": pid,
         "name": name,
+        "theme_id": theme_id,
         "stage": stage,
         "stage_label": stage_label,
         "slide_count": slide_count,
         "materials_count": materials_count,
+        "material_names": material_names,
         "insufficient_evidence_count": insufficient_evidence_count,
+        "cover_slide": cover_slide,
+        "preview_cover_url": preview_cover_url,
         "download_available": latest_success is not None,
         "mtime": mtime,
     }
@@ -281,6 +324,7 @@ def get_project(project_id: str):
     return {
         "project_id": project_id,
         "name": summary["name"],
+        "theme_id": summary["theme_id"],
         "stage": summary["stage"],
         "stage_label": summary["stage_label"],
         "slide_count": summary["slide_count"],
@@ -297,7 +341,8 @@ def get_project(project_id: str):
 
 
 class UpdateProjectRequest(BaseModel):
-    name: str
+    name: Optional[str] = None
+    theme_id: Optional[str] = None
 
 
 @app.patch("/api/projects/{project_id}")
@@ -305,20 +350,33 @@ def update_project(project_id: str, req: UpdateProjectRequest):
     if not _PROJECT_ID_RE.fullmatch(project_id):
         raise HTTPException(400, "非法的项目 ID")
     _require_project(project_id)
-    clean_name = req.name.strip()
-    if not clean_name:
-        raise HTTPException(400, "项目名称不能为空")
+    if req.name is None and req.theme_id is None:
+        raise HTTPException(400, "没有需要更新的字段")
     p_dir = _root() / project_id
     meta_path = p_dir / "meta.json"
     meta: dict = {"project_id": project_id, "created_at": time.time()}
     if meta_path.exists():
         try:
-            meta.update(load_json(meta_path))
+            loaded_meta = load_json(meta_path)
+            if isinstance(loaded_meta, dict):
+                meta.update(loaded_meta)
         except Exception:
             pass
-    meta["name"] = clean_name
+    if req.name is not None:
+        clean_name = req.name.strip()
+        if not clean_name:
+            raise HTTPException(400, "项目名称不能为空")
+        meta["name"] = clean_name
+    if req.theme_id is not None:
+        if not is_valid_theme(req.theme_id):
+            raise HTTPException(400, f"未知主题: {req.theme_id}")
+        meta["theme_id"] = resolve_theme_id(req.theme_id)
     meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
-    return {"project_id": project_id, "name": clean_name}
+    return {
+        "project_id": project_id,
+        "name": meta.get("name") or project_id,
+        "theme_id": meta.get("theme_id"),
+    }
 
 
 @app.delete("/api/projects/{project_id}")

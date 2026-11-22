@@ -167,8 +167,9 @@ export default function ProjectWorkspacePage() {
       const data = await api<Project>(`/api/projects/${pid}`);
       setProject(data);
       if (!themeInitializedRef.current) {
-        if (data.latest_template_id) {
-          setSelectedThemeId(data.latest_template_id);
+        const initialTheme = data.theme_id || data.latest_template_id;
+        if (initialTheme) {
+          setSelectedThemeId(initialTheme);
         }
         if (typeof data.latest_auto_fit === "boolean") {
           setAutoFit(data.latest_auto_fit);
@@ -949,7 +950,13 @@ export default function ProjectWorkspacePage() {
             statusText={status}
             isGenerating={isGenerating}
             onSelectIndex={setSelectedIndex}
-            onSelectTheme={setSelectedThemeId}
+            onSelectTheme={(themeId) => {
+              setSelectedThemeId(themeId);
+              void api(
+                `/api/projects/${pid}`,
+                jsonOptions("PATCH", { theme_id: themeId })
+              ).catch(() => {});
+            }}
             onSelectLayout={handleSelectLayout}
             onToggleAutoFit={() => setAutoFit((v) => !v)}
             onFocusField={focusInspectorField}

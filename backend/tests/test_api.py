@@ -821,3 +821,44 @@ def test_docx_pdf_upload_material_delete_refine_and_project_crud(client):
     r_del_proj = client.delete(f"/api/projects/{pid}")
     assert r_del_proj.status_code == 200
     assert client.get(f"/api/projects/{pid}").status_code == 404
+
+
+def test_project_summary_preview_and_theme_sync(client):
+    pid = _create(client)
+    # Initial summary defaults to keynote_light with no cover slide
+    summary0 = next(
+        p for p in client.get("/api/projects").json()["projects"]
+        if p["project_id"] == pid
+    )
+    assert summary0["theme_id"] == "keynote_light"
+    assert summary0["cover_slide"] is None
+    assert summary0["material_names"] == []
+
+    # Persist theme selection via PATCH
+    r_theme = client.patch(f"/api/projects/{pid}", json={"theme_id": "nordic_pine"})
+    assert r_theme.status_code == 200
+    assert r_theme.json()["theme_id"] == "nordic_pine"
+    assert client.get(f"/api/projects/{pid}").json()["theme_id"] == "nordic_pine"
+
+    # Reject invalid theme
+    assert client.patch(f"/api/projects/{pid}", json={"theme_id": "nonexistent"}).status_code == 400
+
+    # Upload material -> material_names populated
+    _upload_txt(client, pid, name="notes.txt")
+    summary1 = next(
+        p for p in client.get("/api/projects").json()["projects"]
+        if p["project_id"] == pid
+    )
+    assert summary1["material_names"] == ["notes.txt"]
+    assert summary1["stage"] == "materials_ready"
+
+    # Generate outline -> cover_slide reflects real first slide content
+    _run_outline(client, pid)
+    summary2 = next(
+        p for p in client.get("/api/projects").json()["projects"]
+        if p["project_id"] == pid
+    )
+    assert summary2["theme_id"] == "nordic_pine"
+    assert summary2["cover_slide"] is not None
+    assert summary2["cover_slide"]["title"]
+    assert summary2["stage"] == "outline_draft"
