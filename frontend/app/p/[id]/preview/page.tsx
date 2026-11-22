@@ -72,7 +72,7 @@ export default function PreviewPage() {
 
   async function renderNow() {
     setRendering(true);
-    setNotice("正在调用 LibreOffice 渲染逐页高清视图…");
+    setNotice("正在渲染逐页高清矢量预览…");
     try {
       const p = await api<Preview>(`/api/projects/${pid}/preview/render`, {
         method: "POST",
@@ -206,9 +206,9 @@ export default function PreviewPage() {
             <div className="text-[16px] font-semibold text-[#1d1d1f]">
               {notice || "尚未生成 Office 渲染预览"}
             </div>
-            <p className="text-[13.5px] text-[#6e6e73] leading-relaxed">
+            <p className="text-[13.5px] text-[#52525b] leading-relaxed">
               {report?.success
-                ? "点击下方按钮调用本地 LibreOffice 生成逐页高清预览图。"
+                ? "点击下方按钮立即生成逐页高清预览图与矢量 PDF。"
                 : "请先回到工作台确认大纲并导出 PPTX。"}
             </p>
             {report?.success ? (
@@ -218,7 +218,7 @@ export default function PreviewPage() {
                 disabled={rendering}
                 className="px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13.5px] font-medium transition-colors disabled:opacity-45 cursor-pointer"
               >
-                {rendering ? "正在渲染…" : "生成 Office 渲染图"}
+                {rendering ? "正在渲染…" : "生成高清预览图"}
               </button>
             ) : (
               <Link

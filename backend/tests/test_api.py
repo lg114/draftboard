@@ -327,18 +327,12 @@ def test_api_download_matches_direct_export(client, env):
 
 # ── Per-page preview ─────────────────────────────────────────────────────────
 
-_SOFFICE_AVAILABLE = (
-    pathlib.Path(r"C:\Program Files\LibreOffice\program\soffice.com").exists()
-    or shutil.which("soffice") is not None
-)
-
 
 def test_preview_404_without_export(client):
     pid = _create(client)
     assert client.get(f"/api/projects/{pid}/preview").status_code == 404
 
 
-@pytest.mark.skipif(not _SOFFICE_AVAILABLE, reason="LibreOffice not installed")
 def test_preview_rendered_from_same_generation(client):
     pid = _create(client)
     _upload_txt(client, pid)
@@ -696,7 +690,7 @@ def test_step2_rich_layouts_theme_notes_and_image_pipeline(client):
     assert any(sh.shape_type == 13 for sh in prs.slides[2].shapes)
     assert prs.slides[2].notes_slide.notes_text_frame.text == "请重点看右侧流程图。"
 
-    # Dual-format export: PDF download is available from the same LibreOffice pipeline
+    # Dual-format export: pure-Python vector PDF works on all platforms without LibreOffice
     pdf_res = client.get(f"/api/projects/{pid}/download/pdf")
     assert pdf_res.status_code == 200
     assert pdf_res.headers["content-type"] == "application/pdf"
