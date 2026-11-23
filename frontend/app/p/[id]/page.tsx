@@ -109,6 +109,8 @@ export default function ProjectWorkspacePage() {
   const themeInitializedRef = useRef(false);
 
   const [outline, setOutline] = useState<Outline | null>(null);
+  const outlineRef = useRef<Outline | null>(null);
+  outlineRef.current = outline;
   const [savedOutline, setSavedOutline] = useState<Outline | null>(null);
   const [undoStack, setUndoStack] = useState<Outline[]>([]);
   const [redoStack, setRedoStack] = useState<Outline[]>([]);
@@ -698,28 +700,28 @@ export default function ProjectWorkspacePage() {
       updater: (prev: Outline) => Outline | null,
       opts?: { coalesceKey?: string }
     ) => {
-      setOutline((prev) => {
-        if (!prev) return prev;
-        const next = updater(prev);
-        if (!next || next === prev) return prev;
+      const prev = outlineRef.current;
+      if (!prev) return;
+      const next = updater(prev);
+      if (!next || next === prev) return;
 
-        const now = Date.now();
-        const key = opts?.coalesceKey;
-        const lastC = lastCoalesceRef.current;
-        const shouldCoalesce =
-          Boolean(key) &&
-          lastC !== null &&
-          lastC.key === key &&
-          now - lastC.ts < 700;
+      const now = Date.now();
+      const key = opts?.coalesceKey;
+      const lastC = lastCoalesceRef.current;
+      const shouldCoalesce =
+        Boolean(key) &&
+        lastC !== null &&
+        lastC.key === key &&
+        now - lastC.ts < 700;
 
-        if (!shouldCoalesce) {
-          const snap: Outline = JSON.parse(JSON.stringify(prev));
-          setUndoStack((stack) => [...stack.slice(-39), snap]);
-        }
-        setRedoStack([]);
-        lastCoalesceRef.current = key ? { key, ts: now } : null;
-        return next;
-      });
+      if (!shouldCoalesce) {
+        const snap: Outline = JSON.parse(JSON.stringify(prev));
+        setUndoStack((stack) => [...stack.slice(-39), snap]);
+      }
+      setRedoStack([]);
+      lastCoalesceRef.current = key ? { key, ts: now } : null;
+      outlineRef.current = next;
+      setOutline(next);
     },
     []
   );

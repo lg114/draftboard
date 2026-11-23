@@ -659,6 +659,13 @@ export function CustomSlideLayer({
   const bg = resolveCanvasColor(customBg, sw, sw.bg) || sw.bg;
 
   const dragRef = useRef<DragSession | null>(null);
+  const liveBoxRef = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const [liveBox, setLiveBox] = useState<{
     id: string;
     x: number;
@@ -691,7 +698,9 @@ export function CustomSlideLayer({
           const maxY = Math.min(540, 540 - d.origH);
           const nx = Math.round(Math.max(minX, Math.min(maxX, d.origX + dx)));
           const ny = Math.round(Math.max(minY, Math.min(maxY, d.origY + dy)));
-          setLiveBox({ id: d.elementId, x: nx, y: ny, w: d.origW, h: d.origH });
+          const nextBox = { id: d.elementId, x: nx, y: ny, w: d.origW, h: d.origH };
+          liveBoxRef.current = nextBox;
+          setLiveBox(nextBox);
           setGuides({ x: null, y: null });
           return;
         }
@@ -703,13 +712,15 @@ export function CustomSlideLayer({
           d.origH,
           siblings
         );
-        setLiveBox({
+        const nextBox = {
           id: d.elementId,
           x: snapped.x,
           y: snapped.y,
           w: d.origW,
           h: d.origH,
-        });
+        };
+        liveBoxRef.current = nextBox;
+        setLiveBox(nextBox);
         setGuides({ x: snapped.guideX, y: snapped.guideY });
       } else {
         const minW = d.kind === "chart" ? 180 : d.kind === "table" ? 160 : 32;
@@ -720,7 +731,9 @@ export function CustomSlideLayer({
         const nh = Math.round(
           Math.max(minH, Math.min(540 - d.origY, d.origH + dy))
         );
-        setLiveBox({ id: d.elementId, x: d.origX, y: d.origY, w: nw, h: nh });
+        const nextBox = { id: d.elementId, x: d.origX, y: d.origY, w: nw, h: nh };
+        liveBoxRef.current = nextBox;
+        setLiveBox(nextBox);
         setGuides({ x: null, y: null });
       }
     };
@@ -728,19 +741,19 @@ export function CustomSlideLayer({
     const onPointerUp = () => {
       const d = dragRef.current;
       if (!d) return;
+      const finalBox = liveBoxRef.current;
       dragRef.current = null;
-      setLiveBox((cur) => {
-        if (d.moved && cur && cur.id === d.elementId && onUpdateElement) {
-          onUpdateElement(d.elementId, {
-            x: cur.x,
-            y: cur.y,
-            w: cur.w,
-            h: cur.h,
-          });
-        }
-        return null;
-      });
+      liveBoxRef.current = null;
+      setLiveBox(null);
       setGuides({ x: null, y: null });
+      if (d.moved && finalBox && finalBox.id === d.elementId && onUpdateElement) {
+        onUpdateElement(d.elementId, {
+          x: finalBox.x,
+          y: finalBox.y,
+          w: finalBox.w,
+          h: finalBox.h,
+        });
+      }
     };
 
     window.addEventListener("pointermove", onPointerMove);
