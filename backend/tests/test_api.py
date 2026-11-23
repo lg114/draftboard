@@ -856,3 +856,57 @@ def test_project_summary_preview_and_theme_sync(client):
     assert summary2["cover_slide"] is not None
     assert summary2["cover_slide"]["title"]
     assert summary2["stage"] == "outline_draft"
+
+
+def test_zero_friction_project_creation_and_auto_naming(client):
+    import draftboard.tasks as tasks_mod
+    import draftboard.tools as tools_mod
+
+    # 1. /p/new SPA shell is served directly without creating a project on disk
+    r_new = client.get("/p/new")
+    assert r_new.status_code == 200
+    assert "Draftboard" in r_new.text
+    assert client.get("/api/projects").json()["projects"] == []
+
+    # 2. POST /api/projects with empty body auto-generates deck ID + untitled placeholder
+    r_create = client.post("/api/projects", json={})
+    assert r_create.status_code == 200
+    created = r_create.json()
+    pid = created["project_id"]
+    assert pid.startswith("deck-")
+    assert created["name"] == "未命名文稿"
+    assert created["auto_named"] is True
+
+    # 3. Auto-named placeholder must NEVER be injected into the outline AI prompt
+    prompt_untitled = tasks_mod._build_outline_prompt(tools_mod._storage_root, pid)
+    assert "未命名文稿" not in prompt_untitled
+    assert "display name for this deck" not in prompt_untitled
+
+    # 4. Generating an outline auto-backfills project name from slide 1 cover title
+    _upload_txt(client, pid, name="q3_review.txt")
+    version = _run_outline(client, pid)
+    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
+    expected_cover_title = outline["items"][0]["title"].strip()[:40]
+    proj_after = client.get(f"/api/projects/{pid}").json()
+    assert proj_after["name"] == expected_cover_title
+    assert proj_after["name"] != "未命名文稿"
+
+    # 5. Manual rename sets auto_named=False and is NEVER overwritten on regeneration
+    r_rename = client.patch(f"/api/projects/{pid}", json={"name": "我的手工标题"})
+    assert r_rename.status_code == 200
+    prompt_named = tasks_mod._build_outline_prompt(tools_mod._storage_root, pid)
+    assert "我的手工标题" in prompt_named
+    _run_outline(client, pid)
+    assert client.get(f"/api/projects/{pid}").json()["name"] == "我的手工标题"
+
+    # 6. Explicitly named project on creation is also never overwritten
+    r_named = client.post(
+        "/api/projects",
+        json={"name": "预先命名的汇报", "auto_named": False},
+    )
+    assert r_named.status_code == 200
+    pid2 = r_named.json()["project_id"]
+    assert r_named.json()["auto_named"] is False
+    _upload_txt(client, pid2, name="notes.txt")
+    _run_outline(client, pid2)
+    assert client.get(f"/api/projects/{pid2}").json()["name"] == "预先命名的汇报"

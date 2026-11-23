@@ -69,12 +69,20 @@ function isOutlineReadyForAutoSave(outline: Outline | null): boolean {
 export default function ProjectWorkspacePage() {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
-  const pid = useMemo(() => {
+  const routePid = useMemo(() => {
     const seg = pathname?.split("/").filter(Boolean)[1];
     return seg && seg !== "__placeholder__"
       ? decodeURIComponent(seg)
       : params.id;
   }, [pathname, params.id]);
+
+  const [createdPid, setCreatedPid] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const createdPidRef = useRef<string | null>(null);
+  const createPromiseRef = useRef<Promise<string> | null>(null);
+
+  const pid = routePid === "new" ? createdPid ?? "new" : routePid;
+  const isDraftNew = pid === "new";
 
   const [project, setProject] = useState<Project | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -127,28 +135,71 @@ export default function ProjectWorkspacePage() {
       .catch(() => {});
   }, []);
 
-  const loadPreview = useCallback(async () => {
-    try {
-      const p = await api<Preview>(`/api/projects/${pid}/preview`);
-      setPreview(p);
-    } catch {
-      setPreview(null);
-    }
-    try {
-      const r = await api<ExportReport>(`/api/projects/${pid}/result`);
-      setReport(r);
-      if (r && !r.success && r.issues?.length) {
-        setIssues(r.issues);
+  const ensureProjectId = useCallback(async (): Promise<string> => {
+    if (routePid !== "new") return routePid;
+    if (createdPidRef.current) return createdPidRef.current;
+    if (createPromiseRef.current) return createPromiseRef.current;
+
+    const creating = (async () => {
+      const cleanDraftName = draftName.trim();
+      const payload = cleanDraftName
+        ? { name: cleanDraftName, auto_named: false }
+        : {};
+      const res = await api<{ project_id: string; name: string }>(
+        "/api/projects",
+        jsonOptions("POST", payload)
+      );
+      createdPidRef.current = res.project_id;
+      setCreatedPid(res.project_id);
+      if (typeof window !== "undefined") {
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `/p/${encodeURIComponent(res.project_id)}`
+        );
       }
-    } catch {
-      setReport(null);
+      return res.project_id;
+    })();
+
+    createPromiseRef.current = creating;
+    try {
+      return await creating;
+    } finally {
+      createPromiseRef.current = null;
     }
-  }, [pid]);
+  }, [routePid, draftName]);
+
+  const loadPreview = useCallback(
+    async (overridePid?: string) => {
+      const targetPid = overridePid ?? (createdPidRef.current || pid);
+      if (!targetPid || targetPid === "new") return;
+      try {
+        const p = await api<Preview>(`/api/projects/${targetPid}/preview`);
+        setPreview(p);
+      } catch {
+        setPreview(null);
+      }
+      try {
+        const r = await api<ExportReport>(`/api/projects/${targetPid}/result`);
+        setReport(r);
+        if (r && !r.success && r.issues?.length) {
+          setIssues(r.issues);
+        }
+      } catch {
+        setReport(null);
+      }
+    },
+    [pid]
+  );
 
   const showOutline = useCallback(
-    async (v: string) => {
+    async (v: string, overridePid?: string) => {
+      const targetPid = overridePid ?? (createdPidRef.current || pid);
+      if (!targetPid || targetPid === "new") return;
       try {
-        const data = await api<Outline>(`/api/projects/${pid}/outlines/${v}`);
+        const data = await api<Outline>(
+          `/api/projects/${targetPid}/outlines/${v}`
+        );
         setOutline(data);
         setSavedOutline(JSON.parse(JSON.stringify(data)));
         setVersion(v);
@@ -162,40 +213,47 @@ export default function ProjectWorkspacePage() {
     [pid]
   );
 
-  const refresh = useCallback(async () => {
-    try {
-      const data = await api<Project>(`/api/projects/${pid}`);
-      setProject(data);
-      if (!themeInitializedRef.current) {
-        const initialTheme = data.theme_id || data.latest_template_id;
-        if (initialTheme && initialTheme !== "default") {
-          setSelectedThemeId(initialTheme);
+  const refresh = useCallback(
+    async (overridePid?: string) => {
+      const targetPid = overridePid ?? (createdPidRef.current || pid);
+      if (!targetPid || targetPid === "new") return null;
+      try {
+        const data = await api<Project>(`/api/projects/${targetPid}`);
+        setProject(data);
+        if (!themeInitializedRef.current) {
+          const initialTheme = data.theme_id || data.latest_template_id;
+          if (initialTheme && initialTheme !== "default") {
+            setSelectedThemeId(initialTheme);
+          }
+          if (typeof data.latest_auto_fit === "boolean") {
+            setAutoFit(data.latest_auto_fit);
+          }
+          themeInitializedRef.current = true;
         }
-        if (typeof data.latest_auto_fit === "boolean") {
-          setAutoFit(data.latest_auto_fit);
+
+        const mats = await api<MaterialsResponse>(
+          `/api/projects/${targetPid}/materials`
+        );
+        setMaterials(mats.materials || []);
+        setSourceFragments(mats.source_fragments || []);
+
+        const outlines = [...data.outlines].sort((a, b) => b.mtime - a.mtime);
+        if (outlines.length > 0) {
+          await showOutline(outlines[0].outline_version, targetPid);
+        } else {
+          setOutline(null);
+          setSavedOutline(null);
+          setVersion("");
         }
-        themeInitializedRef.current = true;
+        await loadPreview(targetPid);
+        return data;
+      } catch (e) {
+        setRawError((e as Error).message);
+        return null;
       }
-
-      const mats = await api<MaterialsResponse>(`/api/projects/${pid}/materials`);
-      setMaterials(mats.materials || []);
-      setSourceFragments(mats.source_fragments || []);
-
-      const outlines = [...data.outlines].sort((a, b) => b.mtime - a.mtime);
-      if (outlines.length > 0) {
-        await showOutline(outlines[0].outline_version);
-      } else {
-        setOutline(null);
-        setSavedOutline(null);
-        setVersion("");
-      }
-      await loadPreview();
-      return data;
-    } catch (e) {
-      setRawError((e as Error).message);
-      return null;
-    }
-  }, [pid, showOutline, loadPreview]);
+    },
+    [pid, showOutline, loadPreview]
+  );
 
   const reportTask = useCallback(
     (task: Task) => {
@@ -224,13 +282,17 @@ export default function ProjectWorkspacePage() {
   );
 
   const startPolling = useCallback(
-    (taskId: string) => {
+    (taskId: string, overridePid?: string) => {
+      const targetPid = overridePid ?? (createdPidRef.current || pid);
+      if (!targetPid || targetPid === "new") return;
       stopPolling();
       setIsGenerating(true);
       const tick = async () => {
         let task: Task;
         try {
-          task = await api<Task>(`/api/projects/${pid}/tasks/${taskId}`);
+          task = await api<Task>(
+            `/api/projects/${targetPid}/tasks/${taskId}`
+          );
         } catch {
           stopPolling();
           setIsGenerating(false);
@@ -241,16 +303,16 @@ export default function ProjectWorkspacePage() {
           stopPolling();
           setIsGenerating(false);
           reportTask(task);
-          const data = await refresh();
+          const data = await refresh(targetPid);
           if (task.status === "succeeded" && task.result?.outline_version) {
-            await showOutline(task.result.outline_version);
+            await showOutline(task.result.outline_version, targetPid);
           }
-          await loadPreview();
+          await loadPreview(targetPid);
           if (data) {
             const active = data.tasks.find(
               (t) => t.status === "queued" || t.status === "running"
             );
-            if (active) startPolling(active.task_id);
+            if (active) startPolling(active.task_id, targetPid);
           }
         }
       };
@@ -261,20 +323,42 @@ export default function ProjectWorkspacePage() {
   );
 
   useEffect(() => {
+    if (routePid === "new") {
+      stopPolling();
+      createdPidRef.current = null;
+      setCreatedPid(null);
+      setDraftName("");
+      setProject(null);
+      setMaterials([]);
+      setSourceFragments([]);
+      setOutline(null);
+      setSavedOutline(null);
+      setVersion("");
+      setPreview(null);
+      setReport(null);
+      setRawError(null);
+      setIssues([]);
+      return () => {
+        stopPolling();
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      };
+    }
+
     (async () => {
-      const data = await refresh();
+      const data = await refresh(routePid);
       if (data) {
         const active = data.tasks.find(
           (t) => t.status === "queued" || t.status === "running"
         );
-        if (active) startPolling(active.task_id);
+        if (active) startPolling(active.task_id, routePid);
       }
     })();
     return () => {
       stopPolling();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
-  }, [pid, refresh, startPolling]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routePid]);
 
   const isStale = useMemo(() => {
     if (!outline || !savedOutline) return false;
@@ -351,10 +435,11 @@ export default function ProjectWorkspacePage() {
     setRawError(null);
     setStatus("正在上传素材…");
     try {
+      const targetPid = await ensureProjectId();
       for (const file of Array.from(files)) {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch(`/api/projects/${pid}/materials`, {
+        const res = await fetch(`/api/projects/${targetPid}/materials`, {
           method: "POST",
           body: fd,
         });
@@ -367,7 +452,7 @@ export default function ProjectWorkspacePage() {
         }
       }
       flashToast(`已上传 ${files.length} 份素材`);
-      await refresh();
+      await refresh(targetPid);
       setStatus("");
     } catch (e) {
       setRawError((e as Error).message);
@@ -394,14 +479,16 @@ export default function ProjectWorkspacePage() {
   }
 
   async function deleteMaterial(assetId: string) {
+    const targetPid = createdPidRef.current || pid;
+    if (!targetPid || targetPid === "new") return;
     setRawError(null);
     try {
       await api(
-        `/api/projects/${pid}/materials/${encodeURIComponent(assetId)}`,
+        `/api/projects/${targetPid}/materials/${encodeURIComponent(assetId)}`,
         { method: "DELETE" }
       );
       flashToast(`已删除素材「${assetId}」`);
-      await refresh();
+      await refresh(targetPid);
     } catch (e) {
       setRawError((e as Error).message);
     }
@@ -410,8 +497,17 @@ export default function ProjectWorkspacePage() {
   async function renameProject(newName: string) {
     const clean = newName.trim();
     if (!clean) return;
+    if (isDraftNew && !createdPidRef.current) {
+      setDraftName(clean);
+      flashToast("已更新文稿名称");
+      return;
+    }
+    const targetPid = createdPidRef.current || pid;
     try {
-      await api(`/api/projects/${pid}`, jsonOptions("PATCH", { name: clean }));
+      await api(
+        `/api/projects/${targetPid}`,
+        jsonOptions("PATCH", { name: clean })
+      );
       setProject((prev) => (prev ? { ...prev, name: clean } : prev));
       flashToast("已更新文稿名称");
     } catch (e) {
@@ -428,13 +524,14 @@ export default function ProjectWorkspacePage() {
     setIsGenerating(true);
     setStatus("正在解析材料并提炼大纲…");
     try {
+      const targetPid = await ensureProjectId();
       const task = await api<Task>(
-        `/api/projects/${pid}/outline/generate`,
+        `/api/projects/${targetPid}/outline/generate`,
         userPrompt && userPrompt.trim()
           ? jsonOptions("POST", { prompt: userPrompt.trim() })
           : { method: "POST" }
       );
-      startPolling(task.task_id);
+      startPolling(task.task_id, targetPid);
     } catch (e) {
       setIsGenerating(false);
       setStatus("");
@@ -808,6 +905,19 @@ export default function ProjectWorkspacePage() {
   }, [outline, isStale, saveOutline]);
 
   const currentItem = outline?.items[selectedIndex];
+  const headerProject: Project | null =
+    project ??
+    (isDraftNew
+      ? {
+          project_id: "new",
+          name: draftName || "未命名文稿",
+          outlines: [],
+          generated_outline_version: null,
+          latest_report: null,
+          download_available: false,
+          tasks: [],
+        }
+      : null);
 
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-canvas text-ink">
@@ -822,7 +932,7 @@ export default function ProjectWorkspacePage() {
 
       <WorkspaceHeader
         pid={pid}
-        project={project}
+        project={headerProject}
         materialsCount={materials.length}
         outline={outline}
         version={version}

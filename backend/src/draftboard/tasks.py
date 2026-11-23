@@ -159,25 +159,78 @@ def submit(
 # ── Work definitions (reuse the existing pipeline tools) ─────────────────────
 
 
-def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> None:
-    """Ask the real agent to read materials and propose an outline.
+DEFAULT_UNTITLED_NAME = "未命名文稿"
 
-    Tests monkeypatch this function; everything downstream is shared code.
-    """
-    from draftboard.agent import run_agent
-    from draftboard.storage import STORAGE_ROOT, load_json
-    import draftboard.tools as tools_module
 
-    root = tools_module._storage_root or STORAGE_ROOT
+def _maybe_auto_name_project_from_outline(
+    root: pathlib.Path, project_id: str, outline_version: str
+) -> None:
+    """Backfill project display name from slide 1 cover title when still auto-named."""
+    from draftboard.storage import load_json
+
+    p_dir = root / project_id
+    meta_path = p_dir / "meta.json"
+    if not meta_path.exists():
+        return
+    try:
+        meta = load_json(meta_path)
+    except Exception:
+        return
+    if not isinstance(meta, dict):
+        return
+
+    auto_flag = meta.get("auto_named")
+    current_name = str(meta.get("name") or "").strip()
+    is_still_auto = auto_flag is True or (
+        auto_flag is None and current_name in ("", DEFAULT_UNTITLED_NAME)
+    )
+    if not is_still_auto:
+        return
+
+    outline_path = p_dir / "outlines" / f"{outline_version}.json"
+    if not outline_path.exists():
+        return
+    try:
+        outline_data = load_json(outline_path)
+        items = outline_data.get("items") or []
+        if not items:
+            return
+        raw_title = str(items[0].get("title") or "")
+    except Exception:
+        return
+
+    clean_title = re.sub(
+        r"\s+",
+        " ",
+        raw_title.replace("\\r\\n", " ").replace("\\n", " "),
+    ).strip()
+    if len(clean_title) > 40:
+        clean_title = clean_title[:40].rstrip()
+    if not clean_title or clean_title in (DEFAULT_UNTITLED_NAME, "未命名标题"):
+        return
+
+    meta["name"] = clean_title
+    meta["auto_named"] = False
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+
+def _build_outline_prompt(
+    root: pathlib.Path, project_id: str, user_prompt: Optional[str] = None
+) -> str:
     meta_path = root / project_id / "meta.json"
     display_name = ""
+    is_auto_named = False
     if meta_path.exists():
         try:
             meta = load_json(meta_path)
             if isinstance(meta, dict):
                 display_name = str(meta.get("name") or "").strip()
+                is_auto_named = bool(meta.get("auto_named"))
         except Exception:
             pass
+
+    if is_auto_named or display_name == DEFAULT_UNTITLED_NAME:
+        display_name = ""
 
     title_hint = (
         f"The user's display name for this deck is '{display_name}'. "
@@ -200,6 +253,20 @@ def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> Non
             f"citing real source_ids and marking unsupported claims as "
             f"'unsupported' without fabricating numbers):\n{user_prompt.strip()}"
         )
+    return prompt
+
+
+def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> None:
+    """Ask the real agent to read materials and propose an outline.
+
+    Tests monkeypatch this function; everything downstream is shared code.
+    """
+    from draftboard.agent import run_agent
+    from draftboard.storage import STORAGE_ROOT
+    import draftboard.tools as tools_module
+
+    root = tools_module._storage_root or STORAGE_ROOT
+    prompt = _build_outline_prompt(root, project_id, user_prompt)
     asyncio.run(run_agent(prompt))
 
 
@@ -232,6 +299,7 @@ def outline_work(
         version = _latest_outline_version(root, project_id)
         if version is None:
             raise RuntimeError("Agent 没有保存任何大纲，请检查素材内容格式或稍后重试。")
+        _maybe_auto_name_project_from_outline(root, project_id, version)
         return {"outline_version": version}
 
     return work

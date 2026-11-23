@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Check,
@@ -51,22 +50,6 @@ interface ProjectSummaryItem {
 }
 
 const STAGE_STEPS = PROJECT_STAGE_STEPS;
-
-function slugifyName(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return "";
-  if (/^[A-Za-z0-9_-]+$/.test(trimmed)) return trimmed.slice(0, 48);
-  const ascii = trimmed
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  const suffix = Math.random().toString(36).substring(2, 6);
-  if (ascii.length >= 2) return `${ascii.slice(0, 24)}-${suffix}`;
-  const hash = Math.abs(
-    trimmed.split("").reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) | 0, 0)
-  ).toString(36);
-  return `deck-${hash.slice(0, 4)}-${suffix}`;
-}
 
 function formatRelativeTime(timestamp?: number): string {
   if (!timestamp) return "—";
@@ -358,23 +341,14 @@ function SlideCardPreview({
 }
 
 export default function ProjectsPage() {
-  const router = useRouter();
   const [projects, setProjects] = useState<ProjectSummaryItem[]>([]);
   const [themes, setThemes] = useState<ThemeOption[]>(FALLBACK_THEMES);
   const [search, setSearch] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [customId, setCustomId] = useState("");
-  const [isCustomizingId, setIsCustomizingId] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  const derivedSlug = useMemo(() => slugifyName(nameInput), [nameInput]);
-  const effectiveId = isCustomizingId ? customId.trim() : derivedSlug;
 
   const themeMap = useMemo(() => {
     const map = new Map<string, ThemeOption>();
@@ -457,50 +431,6 @@ export default function ProjectsPage() {
     load().catch((e) => setError((e as Error).message));
   }, []);
 
-  useEffect(() => {
-    if (!showCreate) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setShowCreate(false);
-        setError("");
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [showCreate]);
-
-  async function handleCreate(e?: React.FormEvent) {
-    if (e) e.preventDefault();
-    setError("");
-    const trimmedName = nameInput.trim();
-    if (!trimmedName) {
-      setError("请输入文稿名称");
-      return;
-    }
-    const finalId = effectiveId.trim();
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(finalId)) {
-      setError("目录标识只能包含字母、数字、下划线和连字符，且以字母或数字开头");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await api(
-        "/api/projects",
-        jsonOptions("POST", { project_id: finalId, name: trimmedName })
-      );
-      setNameInput("");
-      setCustomId("");
-      setIsCustomizingId(false);
-      setShowCreate(false);
-      router.push(`/p/${finalId}`);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleRename(pid: string) {
     const clean = editNameValue.trim();
     if (!clean) {
@@ -560,30 +490,13 @@ export default function ProjectsPage() {
         <div className="flex items-center gap-3">
           <BackendStatus />
           {projects.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowCreate((v) => !v);
-                setError("");
-              }}
-              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
-                showCreate
-                  ? "bg-transparent text-ink ring-1 ring-black/15 hover:bg-black/[0.05]"
-                  : "bg-ink hover:bg-ink-hover text-white"
-              }`}
+            <Link
+              href="/p/new"
+              className="ui-btn-primary px-4 py-1.5 text-[13px] inline-flex items-center gap-1.5"
             >
-              {showCreate ? (
-                <>
-                  <X className="w-3.5 h-3.5" />
-                  <span>取消</span>
-                </>
-              ) : (
-                <>
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>新建文稿</span>
-                </>
-              )}
-            </button>
+              <Plus className="w-3.5 h-3.5" />
+              <span>新建文稿</span>
+            </Link>
           )}
         </div>
       </header>
@@ -615,77 +528,17 @@ export default function ProjectsPage() {
           )}
         </div>
 
-        {/* Inline Creation Sheet */}
-        {showCreate && (
-          <section className="bg-surface rounded-2xl p-6 border border-black/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.05)] max-w-2xl space-y-4">
-            <div className="text-[15px] font-semibold text-ink">
-              新建演示文稿
-            </div>
-            <form onSubmit={handleCreate} className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-                <input
-                  placeholder="输入文稿名称，例如：2026 年度技术架构评审"
-                  value={nameInput}
-                  onChange={(e) => {
-                    setNameInput(e.target.value);
-                    if (!isCustomizingId) {
-                      setCustomId(slugifyName(e.target.value));
-                    }
-                  }}
-                  disabled={loading}
-                  autoFocus
-                  className="ui-pill-input flex-1 text-[15px]"
-                />
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="submit"
-                    disabled={loading || !nameInput.trim()}
-                    className="ui-btn-primary h-11 px-6 text-[14px] shrink-0"
-                  >
-                    {loading ? "创建中…" : "创建并打开"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreate(false);
-                      setError("");
-                    }}
-                    className="h-11 px-3 rounded-full text-[14px] font-medium text-ink-secondary hover:text-ink hover:bg-black/[0.04] transition-colors shrink-0 cursor-pointer"
-                  >
-                    取消
-                  </button>
-                </div>
-              </div>
-
-              {nameInput.trim() && (
-                <div className="flex items-center justify-between text-[12.5px] text-ink-secondary px-1">
-                  <div className="flex items-center gap-2 font-mono">
-                    <span>标识:</span>
-                    {isCustomizingId ? (
-                      <input
-                        value={customId}
-                        onChange={(e) => setCustomId(e.target.value)}
-                        className="bg-canvas border border-black/15 rounded-lg px-2 py-0.5 text-[12.5px] text-ink outline-none focus:border-ink"
-                      />
-                    ) : (
-                      <span className="text-ink">{effectiveId}</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsCustomizingId((v) => !v)}
-                    className="text-ink underline underline-offset-2 hover:opacity-75 cursor-pointer"
-                  >
-                    {isCustomizingId ? "自动生成" : "自定义标识"}
-                  </button>
-                </div>
-              )}
-
-              {error && (
-                <div className="text-[13px] text-danger">{error}</div>
-              )}
-            </form>
-          </section>
+        {error && (
+          <div className="px-4 py-2.5 rounded-xl bg-danger-bg border border-danger/20 text-[13px] text-danger flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError("")}
+              className="text-danger/70 hover:text-danger cursor-pointer shrink-0"
+            >
+              关闭
+            </button>
+          </div>
         )}
 
         {/* 16:9 Document Library Grid */}
@@ -883,40 +736,21 @@ export default function ProjectsPage() {
                 创建你的第一份演示文稿
               </h2>
               <p className="text-[14px] text-ink-secondary leading-relaxed">
-                命名一个项目，导入笔记或图片，生成可溯源大纲并导出 PPTX。
+                直接导入文档素材、粘贴笔记或输入一句话主题，生成可溯源大纲并导出 PPTX。
+                <br />
+                文稿名称会自动根据封面标题生成，随时可修改。
               </p>
             </div>
 
-            <form
-              onSubmit={handleCreate}
-              className="space-y-3 text-left max-w-md mx-auto"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-                <input
-                  placeholder="文稿名称（例如：2026 技术复盘）"
-                  value={nameInput}
-                  onChange={(e) => {
-                    setNameInput(e.target.value);
-                    if (!isCustomizingId) {
-                      setCustomId(slugifyName(e.target.value));
-                    }
-                  }}
-                  disabled={loading}
-                  autoFocus
-                  className="ui-pill-input flex-1 text-[15px]"
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !nameInput.trim()}
-                  className="ui-btn-primary h-11 px-6 text-[14px] shrink-0"
-                >
-                  {loading ? "创建中…" : "开始创作"}
-                </button>
-              </div>
-              {error && (
-                <div className="text-[13px] text-danger">{error}</div>
-              )}
-            </form>
+            <div className="flex justify-center">
+              <Link
+                href="/p/new"
+                className="ui-btn-primary inline-flex items-center gap-1.5 h-11 px-6 text-[14px]"
+              >
+                <Plus className="w-4 h-4" />
+                <span>新建演示文稿</span>
+              </Link>
+            </div>
           </section>
         ) : null}
       </main>

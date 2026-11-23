@@ -36,6 +36,7 @@ from draftboard.themes import is_valid_theme, list_themes, resolve_theme_id
 load_dotenv()
 
 _PROJECT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+_DEFAULT_UNTITLED_NAME = "未命名文稿"
 _ALLOWED_EXTENSIONS = {".md", ".txt", ".docx", ".pdf", ".png", ".jpg", ".jpeg"}
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
 _PARENTS = pathlib.Path(__file__).resolve().parents
@@ -156,8 +157,18 @@ async def conflict_handler(request, exc):
 
 
 class CreateProjectRequest(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None
     name: Optional[str] = None
+    auto_named: Optional[bool] = None
+
+
+def _generate_project_id() -> str:
+    root = _root()
+    for _ in range(16):
+        candidate = f"deck-{uuid.uuid4().hex[:8]}"
+        if not (root / candidate).exists():
+            return candidate
+    return f"deck-{uuid.uuid4().hex[:12]}"
 
 
 def _project_summary(pid: str) -> dict:
@@ -285,22 +296,53 @@ def _project_summary(pid: str) -> dict:
 
 
 @app.post("/api/projects")
-def create_project(req: CreateProjectRequest):
-    if not _PROJECT_ID_RE.fullmatch(req.project_id):
+def create_project(req: Optional[CreateProjectRequest] = Body(default=None)):
+    req = req or CreateProjectRequest()
+    explicit_id = (req.project_id or "").strip() if req.project_id is not None else ""
+    if req.project_id is not None and not explicit_id:
         raise HTTPException(
             400, "项目 ID 只能包含字母、数字、下划线和连字符，且以字母或数字开头"
         )
-    if (_root() / req.project_id).exists():
-        raise HTTPException(409, f"项目 '{req.project_id}' 已存在")
+    pid = explicit_id or _generate_project_id()
+    if not _PROJECT_ID_RE.fullmatch(pid):
+        raise HTTPException(
+            400, "项目 ID 只能包含字母、数字、下划线和连字符，且以字母或数字开头"
+        )
+    if (_root() / pid).exists():
+        raise HTTPException(409, f"项目 '{pid}' 已存在")
     try:
-        storage = _storage(req.project_id)
-        if req.name:
-            import json, time
-            (storage.root / "meta.json").write_text(
-                json.dumps({"project_id": req.project_id, "name": req.name, "created_at": time.time()}, ensure_ascii=False),
-                encoding="utf-8"
+        storage = _storage(pid)
+        clean_name = (req.name or "").strip()
+        if clean_name:
+            display_name = clean_name
+            is_auto_named = (
+                bool(req.auto_named)
+                if req.auto_named is not None
+                else (clean_name == _DEFAULT_UNTITLED_NAME)
             )
-        return {"project_id": req.project_id, "name": req.name or req.project_id}
+        elif not explicit_id:
+            display_name = _DEFAULT_UNTITLED_NAME
+            is_auto_named = True if req.auto_named is None else bool(req.auto_named)
+        else:
+            display_name = ""
+            is_auto_named = bool(req.auto_named)
+
+        if display_name or is_auto_named:
+            meta_name = display_name or _DEFAULT_UNTITLED_NAME
+            (storage.root / "meta.json").write_text(
+                json.dumps(
+                    {
+                        "project_id": pid,
+                        "name": meta_name,
+                        "auto_named": is_auto_named,
+                        "created_at": time.time(),
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            return {"project_id": pid, "name": meta_name, "auto_named": is_auto_named}
+        return {"project_id": pid, "name": pid, "auto_named": False}
     except Exception as exc:
         raise HTTPException(500, f"创建项目目录失败: {exc}")
 
@@ -374,6 +416,7 @@ def update_project(project_id: str, req: UpdateProjectRequest):
         if not clean_name:
             raise HTTPException(400, "项目名称不能为空")
         meta["name"] = clean_name
+        meta["auto_named"] = False
     if req.theme_id is not None:
         if not is_valid_theme(req.theme_id):
             raise HTTPException(400, f"未知主题: {req.theme_id}")
