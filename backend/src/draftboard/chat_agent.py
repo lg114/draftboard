@@ -1040,6 +1040,69 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
 # ── Prompt Construction & Streaming Runner ────────────────────────────────────
 
 
+def _filter_clean_history(history: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Strip error assistant turns and their paired failed user messages from LLM context."""
+    cleaned: list[dict[str, str]] = []
+    n = len(history)
+    i = 0
+    while i < n:
+        msg = history[i]
+        role = msg.get("role")
+        if msg.get("is_error"):
+            i += 1
+            continue
+        if (
+            role == "user"
+            and i + 1 < n
+            and history[i + 1].get("role") == "assistant"
+            and history[i + 1].get("is_error")
+        ):
+            i += 2
+            continue
+        content = str(msg.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            cleaned.append({"role": role, "content": content})
+        i += 1
+    return cleaned[-12:]
+
+
+def _drop_trailing_failed_turn(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove the trailing failed (user, error_assistant) turn when retrying."""
+    trimmed = list(history)
+    if trimmed and trimmed[-1].get("role") == "assistant" and trimmed[-1].get("is_error"):
+        trimmed.pop()
+        if trimmed and trimmed[-1].get("role") == "user":
+            trimmed.pop()
+    return trimmed
+
+
+def _inspect_tool_output(tool_name: str, output: Any) -> tuple[str, str]:
+    """Classify a tool's raw output into `(status, fallback_summary)`."""
+    if not isinstance(output, str):
+        return "done", ""
+    trimmed = output.strip()
+    if trimmed.startswith("ERROR:"):
+        reason = trimmed[6:].strip()
+        return "error", (reason[:56] + "…") if len(reason) > 56 else reason
+    if trimmed.startswith("{"):
+        try:
+            parsed = json.loads(trimmed)
+            if isinstance(parsed, dict) and parsed.get("ok") is False:
+                issues = parsed.get("issues") or []
+                if tool_name == "check_deck_layout":
+                    label = (
+                        f"发现 {len(issues)} 处排版问题"
+                        if issues
+                        else "检测到排版问题"
+                    )
+                    return "warning", label
+                first = str(issues[0]).strip() if issues else "执行未通过"
+                return "error", (first[:56] + "…") if len(first) > 56 else first
+        except Exception:
+            pass
+    return "done", ""
+
+
 def _build_turn_input(
     project_id: str,
     user_message: str,
@@ -1062,14 +1125,7 @@ def _build_turn_input(
         f"自动缩字 {'开' if state.auto_fit else '关'}]"
     )
 
-    items: list[dict[str, str]] = []
-    # Include up to last 12 historical turns for coherent multi-turn memory
-    for msg in history[-12:]:
-        role = msg.get("role")
-        content = str(msg.get("content") or "").strip()
-        if role in ("user", "assistant") and content:
-            items.append({"role": role, "content": content})
-
+    items = _filter_clean_history(history)
     items.append({"role": "user", "content": f"{context_header}\n\n{user_message.strip()}"})
     return items
 
@@ -1081,6 +1137,7 @@ async def stream_studio_chat(
     selected_slide_index: int = 0,
     theme_id: str = "keynote_light",
     auto_fit: bool = True,
+    replace_last_error: bool = False,
     model: Any = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one streaming PPT Studio Agent turn and yield structured SSE event dicts."""
@@ -1089,11 +1146,17 @@ async def stream_studio_chat(
         yield {
             "type": "error",
             "code": "LLM_NOT_CONFIGURED",
-            "error": "尚未配置大模型，请先点击「配置大模型」添加 OpenAI、Gemini、DeepSeek 或本地 Ollama。",
+            "error": "尚未配置大模型，请先点击「模型设置」配置 API Key 或本地 Ollama。",
+            "retryable": False,
         }
         return
 
-    history = load_chat_history(project_id)
+    raw_history = load_chat_history(project_id)
+    history = (
+        _drop_trailing_failed_turn(raw_history)
+        if replace_last_error
+        else raw_history
+    )
     before_ver = _latest_outline_version(project_id)
 
     state = StudioTurnState(
@@ -1126,93 +1189,146 @@ async def stream_studio_chat(
     pending_tool_ids: list[str] = []
     text_chunks: list[str] = []
 
-    try:
-        streamed = Runner.run_streamed(agent, turn_input, max_turns=12)
-        async for event in streamed.stream_events():
-            ev_type = getattr(event, "type", "")
-            if ev_type == "raw_response_event":
-                data = getattr(event, "data", None)
-                if getattr(data, "type", None) == "response.output_text.delta":
-                    delta = getattr(data, "delta", "")
-                    if delta:
-                        text_chunks.append(delta)
-                        yield {"type": "delta", "delta": delta}
-            elif ev_type == "run_item_stream_event":
-                ev_name = getattr(event, "name", "")
-                item = getattr(event, "item", None)
-                if ev_name == "tool_called":
-                    raw = getattr(item, "raw_item", None)
-                    t_name = str(getattr(raw, "name", "") or "tool")
-                    step_id = f"step-{uuid.uuid4().hex[:8]}"
-                    step = {
-                        "id": step_id,
-                        "name": t_name,
-                        "label": TOOL_LABELS_CN.get(t_name, t_name),
-                        "status": "running",
-                        "summary": "",
-                    }
-                    tool_steps.append(step)
-                    pending_tool_ids.append(step_id)
-                    yield {"type": "tool_start", "step": step}
-                elif ev_name == "tool_output":
-                    step_id = pending_tool_ids.pop(0) if pending_tool_ids else None
-                    matched = next(
-                        (s for s in tool_steps if s["id"] == step_id),
-                        tool_steps[-1] if tool_steps else None,
-                    )
-                    if matched is not None:
-                        matched["status"] = "done"
-                        matched["summary"] = state.last_tool_summaries.get(
-                            matched["name"], ""
-                        )
-                        yield {"type": "tool_done", "step": matched}
-                    if state.has_changes():
-                        yield {
-                            "type": "deck_updated",
-                            "changes": state.to_changes_dict(),
+    active_cfg = llm_config.resolve_effective_llm_config()
+    active_model_name = (
+        model if isinstance(model, str) and model.strip() else active_cfg.model
+    )
+
+    max_attempts = 2 if is_real_runner else 1
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(max_attempts):
+        try:
+            streamed = Runner.run_streamed(agent, turn_input, max_turns=12)
+            async for event in streamed.stream_events():
+                ev_type = getattr(event, "type", "")
+                if ev_type == "raw_response_event":
+                    data = getattr(event, "data", None)
+                    if getattr(data, "type", None) == "response.output_text.delta":
+                        delta = getattr(data, "delta", "")
+                        if delta:
+                            text_chunks.append(delta)
+                            yield {"type": "delta", "delta": delta}
+                elif ev_type == "run_item_stream_event":
+                    ev_name = getattr(event, "name", "")
+                    item = getattr(event, "item", None)
+                    if ev_name == "tool_called":
+                        raw = getattr(item, "raw_item", None)
+                        t_name = str(getattr(raw, "name", "") or "tool")
+                        step_id = f"step-{uuid.uuid4().hex[:8]}"
+                        step = {
+                            "id": step_id,
+                            "name": t_name,
+                            "label": TOOL_LABELS_CN.get(t_name, t_name),
+                            "status": "running",
+                            "summary": "",
                         }
+                        tool_steps.append(step)
+                        pending_tool_ids.append(step_id)
+                        yield {"type": "tool_start", "step": step}
+                    elif ev_name == "tool_output":
+                        step_id = pending_tool_ids.pop(0) if pending_tool_ids else None
+                        matched = next(
+                            (s for s in tool_steps if s["id"] == step_id),
+                            tool_steps[-1] if tool_steps else None,
+                        )
+                        if matched is not None:
+                            out_val = getattr(item, "output", None)
+                            step_status, err_summary = _inspect_tool_output(
+                                matched["name"], out_val
+                            )
+                            matched["status"] = step_status
+                            matched["summary"] = (
+                                err_summary
+                                if step_status != "done" and err_summary
+                                else state.last_tool_summaries.get(matched["name"], "")
+                            )
+                            yield {"type": "tool_done", "step": matched}
+                        if state.has_changes():
+                            yield {
+                                "type": "deck_updated",
+                                "changes": state.to_changes_dict(),
+                            }
 
-        final_text = "".join(text_chunks).strip()
-        if not final_text and getattr(streamed, "final_output", None):
-            final_text = str(streamed.final_output).strip()
-            if final_text:
-                yield {"type": "delta", "delta": final_text}
+            final_text = "".join(text_chunks).strip()
+            if not final_text and getattr(streamed, "final_output", None):
+                final_text = str(streamed.final_output).strip()
+                if final_text:
+                    yield {"type": "delta", "delta": final_text}
 
-        # Ensure any lingering tool step is marked done
-        for st in tool_steps:
-            if st["status"] == "running":
-                st["status"] = "done"
+            for st in tool_steps:
+                if st["status"] == "running":
+                    st["status"] = "done"
 
-        assistant_msg_record: dict[str, Any] = {
-            "id": f"msg-{uuid.uuid4().hex[:10]}",
-            "role": "assistant",
-            "content": final_text or "已完成处理。",
-            "created_at": _now_iso(),
-            "tool_steps": tool_steps,
-            "changes": state.to_changes_dict(),
-        }
-        save_chat_history(project_id, [*history, user_msg_record, assistant_msg_record])
-        yield {
-            "type": "done",
-            "message": assistant_msg_record,
-            "changes": state.to_changes_dict(),
-        }
-    except Exception as exc:
-        err_msg = str(exc)
-        if "API key" in err_msg or "api_key" in err_msg or "AuthenticationError" in err_msg:
-            err_msg = "未检测到有效的模型 API Key，请先配置 OPENAI_API_KEY 或 GEMINI_API_KEY。"
-        # Still persist user message + error note so context isn't mysteriously lost
-        error_record: dict[str, Any] = {
-            "id": f"msg-{uuid.uuid4().hex[:10]}",
-            "role": "assistant",
-            "content": f"处理请求时出错：{err_msg}",
-            "created_at": _now_iso(),
-            "tool_steps": [
-                {**s, "status": "done" if s["status"] == "done" else "error"}
-                for s in tool_steps
-            ],
-            "changes": state.to_changes_dict(),
-            "is_error": True,
-        }
-        save_chat_history(project_id, [*history, user_msg_record, error_record])
-        yield {"type": "error", "error": err_msg, "message": error_record}
+            assistant_msg_record: dict[str, Any] = {
+                "id": f"msg-{uuid.uuid4().hex[:10]}",
+                "role": "assistant",
+                "content": final_text or "已完成处理。",
+                "created_at": _now_iso(),
+                "tool_steps": tool_steps,
+                "changes": state.to_changes_dict(),
+            }
+            save_chat_history(project_id, [*history, user_msg_record, assistant_msg_record])
+            yield {
+                "type": "done",
+                "message": assistant_msg_record,
+                "changes": state.to_changes_dict(),
+            }
+            return
+        except Exception as exc:
+            last_exc = exc
+            code, _, retryable = llm_config.classify_llm_error(exc, active_model_name)
+            can_retry_silently = (
+                attempt + 1 < max_attempts
+                and retryable
+                and code in ("RATE_LIMIT", "TIMEOUT_OR_NETWORK")
+                and not text_chunks
+                and not state.has_changes()
+            )
+            if can_retry_silently:
+                tool_steps.clear()
+                pending_tool_ids.clear()
+                await asyncio.sleep(1.5)
+                continue
+            break
+
+    assert last_exc is not None
+    error_code, friendly_msg, retryable = llm_config.classify_llm_error(
+        last_exc, active_model_name
+    )
+    raw_detail = str(last_exc).strip()[:600]
+    changes_dict = state.to_changes_dict()
+
+    if changes_dict and changes_dict.get("after_outline_version"):
+        touched = changes_dict.get("touched_slides") or []
+        if touched:
+            pages_str = "、".join(str(p) for p in touched[:4])
+            suffix = f" 等 {len(touched)} 页" if len(touched) > 4 else ""
+            friendly_msg += f"\n\n注意：报错前已对第 {pages_str} 页{suffix}生效了部分修改，可在下方一键撤回。"
+        else:
+            friendly_msg += "\n\n注意：报错前已生成了部分修改，可在下方一键撤回。"
+
+    error_record: dict[str, Any] = {
+        "id": f"msg-{uuid.uuid4().hex[:10]}",
+        "role": "assistant",
+        "content": friendly_msg,
+        "created_at": _now_iso(),
+        "tool_steps": [
+            {**s, "status": "error" if s["status"] == "running" else s["status"]}
+            for s in tool_steps
+        ],
+        "changes": changes_dict,
+        "is_error": True,
+        "error_code": error_code,
+        "error_detail": raw_detail if raw_detail and raw_detail != friendly_msg else "",
+        "retryable": retryable,
+    }
+    save_chat_history(project_id, [*history, user_msg_record, error_record])
+    yield {
+        "type": "error",
+        "code": error_code,
+        "error": friendly_msg,
+        "error_detail": error_record["error_detail"],
+        "retryable": retryable,
+        "message": error_record,
+    }

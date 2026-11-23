@@ -239,7 +239,7 @@ export interface ChatToolStep {
   id: string;
   name: string;
   label: string;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "warning" | "error";
   summary?: string;
 }
 
@@ -262,6 +262,9 @@ export interface ChatMessage {
   tool_steps?: ChatToolStep[];
   changes?: ChatDeckChanges | null;
   is_error?: boolean;
+  error_code?: string;
+  error_detail?: string;
+  retryable?: boolean;
 }
 
 export interface ChatHistoryResponse {

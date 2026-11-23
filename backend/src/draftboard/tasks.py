@@ -262,12 +262,18 @@ def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> Non
     Tests monkeypatch this function; everything downstream is shared code.
     """
     from draftboard.agent import run_agent
+    from draftboard.llm_config import classify_llm_error, resolve_effective_llm_config
     from draftboard.storage import STORAGE_ROOT
     import draftboard.tools as tools_module
 
     root = tools_module._storage_root or STORAGE_ROOT
     prompt = _build_outline_prompt(root, project_id, user_prompt)
-    asyncio.run(run_agent(prompt))
+    try:
+        asyncio.run(run_agent(prompt))
+    except Exception as exc:
+        cfg = resolve_effective_llm_config()
+        _, friendly, _ = classify_llm_error(exc, cfg.model)
+        raise RuntimeError(f"{friendly}（原始错误：{str(exc)[:220]}）") from exc
 
 
 def _latest_outline_version(root: pathlib.Path, project_id: str) -> Optional[str]:

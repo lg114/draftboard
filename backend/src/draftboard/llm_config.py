@@ -29,6 +29,103 @@ class LLMNotConfiguredError(ValueError):
     """Raised when an AI operation is invoked with no usable LLM configuration."""
 
 
+def classify_llm_error(
+    exc: Exception, model_name: str = ""
+) -> tuple[str, str, bool]:
+    """Map raw LLM / SDK exceptions into `(error_code, friendly_cn, retryable)`."""
+    if isinstance(exc, LLMNotConfiguredError):
+        return (
+            "LLM_NOT_CONFIGURED",
+            "尚未配置大模型，请先点击「模型设置」配置 API Key 或本地 Ollama。",
+            False,
+        )
+
+    cls_name = type(exc).__name__
+    msg = str(exc) or cls_name
+    low = msg.lower()
+    model_hint = f"「{model_name}」" if model_name else ""
+
+    if "maxturnsexceeded" in cls_name.lower() or "max turns" in low:
+        return (
+            "MAX_TURNS",
+            "本轮任务步骤过多已自动暂停，建议缩小单次修改范围或拆成两步继续。",
+            False,
+        )
+    if (
+        "401" in msg
+        or "authentication" in low
+        or "invalid api key" in low
+        or "invalid_api_key" in low
+        or "incorrect api key" in low
+        or "api_key" in low
+        or "api key" in low
+        or "unauthorized" in low
+    ):
+        return (
+            "AUTH_ERROR",
+            "鉴权失败：当前模型的 API Key 无效或已过期，请在模型设置中检查。",
+            False,
+        )
+    if (
+        "404" in msg
+        or ("model" in low and ("not found" in low or "does not exist" in low))
+        or "model_not_found" in low
+    ):
+        return (
+            "MODEL_NOT_FOUND",
+            f"找不到模型{model_hint}，请在模型设置中核对模型名称或接口地址。",
+            False,
+        )
+    if (
+        "429" in msg
+        or "ratelimit" in cls_name.lower()
+        or "rate limit" in low
+        or "rate_limit" in low
+        or "quota" in low
+        or "resource_exhausted" in low
+        or "too many requests" in low
+    ):
+        return (
+            "RATE_LIMIT",
+            "触发模型频率或额度限制（429），可稍后点击重试或切换其他配置。",
+            True,
+        )
+    if (
+        "context_length" in low
+        or "maximum context" in low
+        or "context window" in low
+        or "too many tokens" in low
+        or "token limit" in low
+        or "request too large" in low
+    ):
+        return (
+            "CONTEXT_TOO_LONG",
+            "当前对话或素材上下文超出模型长度限制，建议清空历史对话或精简素材后重试。",
+            False,
+        )
+    if (
+        "timeout" in low
+        or "timed out" in low
+        or "connection" in low
+        or "connecterror" in cls_name.lower()
+        or "apiconnectionerror" in cls_name.lower()
+        or "502" in msg
+        or "503" in msg
+        or "504" in msg
+        or "overloaded" in low
+    ):
+        return (
+            "TIMEOUT_OR_NETWORK",
+            "连接模型接口超时或网络中断，请检查接口地址与网络状态后重试。",
+            True,
+        )
+    return (
+        "AGENT_ERROR",
+        f"模型调用异常：{msg[:160]}",
+        True,
+    )
+
+
 PROVIDER_PRESETS: list[dict[str, Any]] = [
     {
         "id": "openai",
@@ -485,18 +582,7 @@ async def test_llm_connection(
             "model": resolved_model,
         }
     except Exception as exc:
-        msg = str(exc)
-        low = msg.lower()
-        if "401" in msg or "authentication" in low or "invalid api key" in low or "api_key" in low:
-            friendly = "鉴权失败：API Key 无效或已过期。"
-        elif "404" in msg or "model" in low and "not found" in low:
-            friendly = f"找不到模型「{clean_model}」，请检查模型名称是否正确。"
-        elif "connection" in low or "connect" in low or "timed out" in low:
-            friendly = "无法连接到接口地址，请检查 Base URL 或本地服务是否已启动。"
-        elif "429" in msg or "rate limit" in low or "quota" in low:
-            friendly = "触发频率或额度限制（429），接口可连通但当前额度不足。"
-        else:
-            friendly = msg[:220]
+        _, friendly, _ = classify_llm_error(exc, clean_model)
         return {"ok": False, "error": friendly}
     finally:
         try:

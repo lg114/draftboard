@@ -36,6 +36,7 @@ interface AgentChatPanelProps {
   activeModelLabel?: string;
   onOpenLLMSettings: () => void;
   onSendMessage: (text: string) => void;
+  onRetryMessage: (text: string, failedMessageId: string) => void;
   onStopStreaming: () => void;
   onJumpToSlide: (slideIndex: number) => void;
   onRevertVersion: (version: string) => void;
@@ -210,6 +211,8 @@ function ToolStepsBar({
   if (!steps.length) return null;
 
   const activeStep = [...steps].reverse().find((s) => s.status === "running");
+  const errorCount = steps.filter((s) => s.status === "error").length;
+  const warningCount = steps.filter((s) => s.status === "warning").length;
 
   return (
     <div className="rounded-xl bg-canvas border border-black/[0.07] overflow-hidden">
@@ -224,6 +227,20 @@ function ToolStepsBar({
               <span className="w-2 h-2 rounded-full bg-ink animate-pulse shrink-0" />
               <span className="font-medium text-ink truncate">
                 正在{activeStep.label}…
+              </span>
+            </>
+          ) : errorCount > 0 ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-danger shrink-0" />
+              <span className="font-medium text-ink-secondary truncate">
+                执行 {steps.length} 项操作（{errorCount} 项异常）
+              </span>
+            </>
+          ) : warningCount > 0 ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+              <span className="font-medium text-ink-secondary truncate">
+                完成 {steps.length} 项操作（{warningCount} 项提醒）
               </span>
             </>
           ) : (
@@ -256,19 +273,101 @@ function ToolStepsBar({
                       ? "bg-ink animate-pulse"
                       : st.status === "error"
                       ? "bg-danger"
+                      : st.status === "warning"
+                      ? "bg-warning-dot"
                       : "bg-success"
                   }`}
                 />
                 <span className="text-ink truncate">{st.label}</span>
               </div>
               {st.summary && (
-                <span className="text-ink-muted shrink-0 truncate max-w-[140px]">
+                <span
+                  className={`shrink-0 truncate max-w-[155px] ${
+                    st.status === "error"
+                      ? "text-danger"
+                      : st.status === "warning"
+                      ? "text-warning"
+                      : "text-ink-muted"
+                  }`}
+                >
                   {st.summary}
                 </span>
               )}
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ErrorBubbleCard({
+  msg,
+  retryText,
+  disabled,
+  onRetry,
+  onOpenLLMSettings,
+}: {
+  msg: ChatMessage;
+  retryText: string | null;
+  disabled: boolean;
+  onRetry: () => void;
+  onOpenLLMSettings: () => void;
+}) {
+  const [showDetail, setShowDetail] = useState(false);
+  const showModelSettings =
+    !msg.error_code ||
+    [
+      "LLM_NOT_CONFIGURED",
+      "AUTH_ERROR",
+      "MODEL_NOT_FOUND",
+      "RATE_LIMIT",
+      "TIMEOUT_OR_NETWORK",
+      "AGENT_ERROR",
+    ].includes(msg.error_code);
+
+  return (
+    <div className="p-3 rounded-xl bg-danger-bg border border-danger/20 text-[13px] text-danger leading-relaxed space-y-2.5">
+      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+
+      <div className="flex flex-wrap items-center gap-3 pt-0.5">
+        {retryText && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onRetry}
+            className="inline-flex items-center gap-1 font-semibold text-danger underline underline-offset-2 hover:opacity-80 cursor-pointer disabled:opacity-40"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>重试</span>
+          </button>
+        )}
+
+        {showModelSettings && (
+          <button
+            type="button"
+            onClick={onOpenLLMSettings}
+            className="font-semibold text-danger underline underline-offset-2 hover:opacity-80 cursor-pointer"
+          >
+            检查模型设置
+          </button>
+        )}
+
+        {msg.error_detail && (
+          <button
+            type="button"
+            onClick={() => setShowDetail((v) => !v)}
+            className="text-danger/80 hover:text-danger underline underline-offset-2 cursor-pointer"
+          >
+            {showDetail ? "收起详情" : "查看详情"}
+          </button>
+        )}
+      </div>
+
+      {showDetail && msg.error_detail && (
+        <pre className="p-2.5 rounded-lg bg-surface/85 border border-danger/15 text-[13px] font-mono text-danger/90 whitespace-pre-wrap break-all overflow-x-auto">
+          {msg.error_detail}
+        </pre>
       )}
     </div>
   );
@@ -393,6 +492,7 @@ export function AgentChatPanel({
   activeModelLabel = "",
   onOpenLLMSettings,
   onSendMessage,
+  onRetryMessage,
   onStopStreaming,
   onJumpToSlide,
   onRevertVersion,
@@ -548,6 +648,11 @@ export function AgentChatPanel({
               );
             }
 
+            const prevUserMsg =
+              idx > 0 && messages[idx - 1]?.role === "user"
+                ? messages[idx - 1].content
+                : null;
+
             return (
               <div key={msg.id} className="space-y-2.5">
                 {msg.tool_steps && msg.tool_steps.length > 0 && (
@@ -559,16 +664,15 @@ export function AgentChatPanel({
 
                 {msg.content ? (
                   msg.is_error ? (
-                    <div className="p-3 rounded-xl bg-danger-bg border border-danger/20 text-[13px] text-danger leading-relaxed space-y-2">
-                      <div>{msg.content}</div>
-                      <button
-                        type="button"
-                        onClick={onOpenLLMSettings}
-                        className="font-semibold text-danger underline underline-offset-2 hover:opacity-80 cursor-pointer"
-                      >
-                        检查模型设置
-                      </button>
-                    </div>
+                    <ErrorBubbleCard
+                      msg={msg}
+                      retryText={prevUserMsg}
+                      disabled={isStreaming}
+                      onRetry={() => {
+                        if (prevUserMsg) onRetryMessage(prevUserMsg, msg.id);
+                      }}
+                      onOpenLLMSettings={onOpenLLMSettings}
+                    />
                   ) : (
                     <div className="px-0.5">
                       <FormattedMessageBody

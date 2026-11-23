@@ -309,3 +309,144 @@ def test_chat_sse_endpoint_and_persistence(client: TestClient, monkeypatch):
     r_del = client.delete(f"/api/projects/{pid}/chat")
     assert r_del.status_code == 200
     assert client.get(f"/api/projects/{pid}/chat").json()["messages"] == []
+
+
+def test_error_classification_history_filtering_tool_status_and_retry(
+    client: TestClient, monkeypatch
+):
+    from draftboard.llm_config import classify_llm_error
+
+    # 1. Unified error classifier maps common LLM failures to structured Chinese messages
+    assert classify_llm_error(RuntimeError("Error code: 401 - invalid_api_key"))[0] == "AUTH_ERROR"
+    assert classify_llm_error(RuntimeError("Error code: 404 - model not found"), "foo-1")[0] == "MODEL_NOT_FOUND"
+    code_429, _, retry_429 = classify_llm_error(RuntimeError("429 Too Many Requests / rate limit"))
+    assert code_429 == "RATE_LIMIT" and retry_429 is True
+    assert classify_llm_error(RuntimeError("maximum context length exceeded"))[0] == "CONTEXT_TOO_LONG"
+    assert classify_llm_error(TimeoutError("Request timed out"))[0] == "TIMEOUT_OR_NETWORK"
+
+    # 2. Clean history filter strips failed (user, error_assistant) pairs
+    dirty_history = [
+        {"role": "user", "content": "正常提问 1"},
+        {"role": "assistant", "content": "正常回答 1"},
+        {"role": "user", "content": "触发报错的提问"},
+        {"role": "assistant", "content": "处理失败", "is_error": True},
+        {"role": "user", "content": "正常提问 2"},
+        {"role": "assistant", "content": "正常回答 2"},
+    ]
+    clean = chat_agent._filter_clean_history(dirty_history)
+    assert [m["content"] for m in clean] == [
+        "正常提问 1",
+        "正常回答 1",
+        "正常提问 2",
+        "正常回答 2",
+    ]
+
+    # 3. Tool output inspector distinguishes done / warning (layout overflow) / error
+    assert chat_agent._inspect_tool_output("update_slide", "ERROR: 页码越界")[0] == "error"
+    assert (
+        chat_agent._inspect_tool_output(
+            "check_deck_layout", json.dumps({"ok": False, "issues": ["OVERFLOW"]})
+        )[0]
+        == "warning"
+    )
+    assert (
+        chat_agent._inspect_tool_output(
+            "update_slide", json.dumps({"ok": True})
+        )[0]
+        == "done"
+    )
+
+    # 4. Mid-turn error after a partial deck edit preserves changes, notifies user,
+    #    and retrying with replace_last_error=True replaces the failed turn cleanly.
+    pid = _seed_project(client, pid="studio-err-1")
+
+    class _MidTurnFailureStream:
+        def __init__(self, agent):
+            self._agent = agent
+            self.final_output = ""
+
+        async def stream_events(self):
+            create_tool = next(
+                t for t in self._agent.tools if t.name == "create_deck_outline"
+            )
+            yield SimpleNamespace(
+                type="run_item_stream_event",
+                name="tool_called",
+                item=SimpleNamespace(raw_item=SimpleNamespace(name="create_deck_outline")),
+            )
+            out = await _invoke(
+                create_tool,
+                {
+                    "slides": [
+                        SlideDraftInput(
+                            title="半途改动测试",
+                            summary="内容要点",
+                            layout="cover",
+                            source_ids=[],
+                            evidence_status="unsupported",
+                        ).model_dump()
+                    ]
+                },
+            )
+            yield SimpleNamespace(
+                type="run_item_stream_event",
+                name="tool_output",
+                item=SimpleNamespace(
+                    raw_item=SimpleNamespace(name="create_deck_outline"),
+                    output=out,
+                ),
+            )
+            raise RuntimeError("429 Rate limit reached on second step")
+
+    monkeypatch.setattr(
+        chat_agent.Runner,
+        "run_streamed",
+        staticmethod(lambda agent, *args, **kwargs: _MidTurnFailureStream(agent)),
+    )
+
+    r_fail = client.post(
+        f"/api/projects/{pid}/chat",
+        json={"message": "帮我建个封面"},
+    )
+    assert r_fail.status_code == 200
+    fail_events = [
+        json.loads(b.strip()[5:].strip())
+        for b in r_fail.text.split("\n\n")
+        if b.strip().startswith("data:")
+    ]
+    err_ev = fail_events[-1]
+    assert err_ev["type"] == "error"
+    assert err_ev["code"] == "RATE_LIMIT"
+    assert err_ev["retryable"] is True
+    assert "429" in err_ev["error"]
+    assert "撤回" in err_ev["error"]
+    assert err_ev["message"]["changes"]["after_outline_version"] is not None
+    assert err_ev["message"]["error_detail"]
+
+    # Now retry cleanly with replace_last_error=True
+    class _SuccessRetryStream:
+        def __init__(self, agent):
+            self.final_output = "重试成功。"
+
+        async def stream_events(self):
+            yield SimpleNamespace(
+                type="raw_response_event",
+                data=SimpleNamespace(type="response.output_text.delta", delta="重试成功。"),
+            )
+
+    monkeypatch.setattr(
+        chat_agent.Runner,
+        "run_streamed",
+        staticmethod(lambda agent, *args, **kwargs: _SuccessRetryStream(agent)),
+    )
+
+    r_retry = client.post(
+        f"/api/projects/{pid}/chat",
+        json={"message": "帮我建个封面", "replace_last_error": True},
+    )
+    assert r_retry.status_code == 200
+    msgs = client.get(f"/api/projects/{pid}/chat").json()["messages"]
+    # Failed turn was cleanly replaced -> only 2 messages (user + success assistant)
+    assert len(msgs) == 2
+    assert msgs[1]["content"] == "重试成功。"
+    assert not msgs[1].get("is_error")

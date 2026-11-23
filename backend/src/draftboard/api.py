@@ -1250,6 +1250,7 @@ class ChatMessageRequest(BaseModel):
     selected_slide_index: int = 0
     theme_id: str = "keynote_light"
     auto_fit: bool = True
+    replace_last_error: bool = False
 
 
 @app.get("/api/projects/{project_id}/chat")
@@ -1282,6 +1283,7 @@ async def post_chat_message(project_id: str, req: ChatMessageRequest):
             selected_slide_index=req.selected_slide_index,
             theme_id=req.theme_id,
             auto_fit=req.auto_fit,
+            replace_last_error=req.replace_last_error,
         ):
             yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 

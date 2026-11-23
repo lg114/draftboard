@@ -973,7 +973,10 @@ export default function ProjectWorkspacePage() {
     }
   }
 
-  async function sendChatMessage(text: string) {
+  async function sendChatMessage(
+    text: string,
+    opts?: { replaceLastError?: boolean }
+  ) {
     const clean = text.trim();
     if (!clean || isChatStreaming) return;
     if (llmSettings && !llmSettings.configured) {
@@ -1019,6 +1022,7 @@ export default function ProjectWorkspacePage() {
           selected_slide_index: selectedIndex,
           theme_id: selectedThemeId,
           auto_fit: autoFit,
+          replace_last_error: Boolean(opts?.replaceLastError),
         }),
         signal: controller.signal,
       });
@@ -1103,14 +1107,23 @@ export default function ProjectWorkspacePage() {
             setChatMessages((prev) =>
               prev.map((m) => (m.id === tempAsstId ? errMsg : m))
             );
+            if (errMsg.changes) {
+              await applyDeckChangesFromChat(errMsg.changes, targetPid);
+            }
           } else {
             setChatMessages((prev) =>
               prev.map((m) =>
                 m.id === tempAsstId
                   ? {
                       ...m,
-                      content: `处理请求时出错：${String(ev.error || "未知错误")}`,
+                      content: String(ev.error || "处理请求时发生未知错误"),
                       is_error: true,
+                      error_code: String(ev.code || "AGENT_ERROR"),
+                      error_detail: ev.error_detail
+                        ? String(ev.error_detail)
+                        : undefined,
+                      retryable:
+                        typeof ev.retryable === "boolean" ? ev.retryable : true,
                     }
                   : m
               )
@@ -1173,6 +1186,20 @@ export default function ProjectWorkspacePage() {
 
   function stopChatStreaming() {
     chatAbortRef.current?.abort();
+  }
+
+  function retryChatMessage(text: string, failedAsstId: string) {
+    if (isChatStreaming) return;
+    const curIdx = chatMessages.findIndex((m) => m.id === failedAsstId);
+    const isTrailingFailed = curIdx >= 0 && curIdx === chatMessages.length - 1;
+    setChatMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === failedAsstId);
+      if (idx < 0) return prev;
+      const dropStart =
+        idx > 0 && prev[idx - 1].role === "user" ? idx - 1 : idx;
+      return [...prev.slice(0, dropStart), ...prev.slice(idx + 1)];
+    });
+    void sendChatMessage(text, { replaceLastError: isTrailingFailed });
   }
 
   async function clearChat() {
@@ -1500,6 +1527,7 @@ export default function ProjectWorkspacePage() {
                     setShowLLMModal(true);
                   }}
                   onSendMessage={(msg) => void sendChatMessage(msg)}
+                  onRetryMessage={retryChatMessage}
                   onStopStreaming={stopChatStreaming}
                   onJumpToSlide={setSelectedIndex}
                   onRevertVersion={(v) => void revertToOutlineVersion(v)}
@@ -1604,6 +1632,7 @@ export default function ProjectWorkspacePage() {
                   setShowLLMModal(true);
                 }}
                 onSendMessage={(msg) => void sendChatMessage(msg)}
+                onRetryMessage={retryChatMessage}
                 onStopStreaming={stopChatStreaming}
                 onJumpToSlide={setSelectedIndex}
                 onRevertVersion={(v) => void revertToOutlineVersion(v)}
