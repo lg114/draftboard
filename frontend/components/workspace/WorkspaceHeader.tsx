@@ -106,8 +106,8 @@ export function WorkspaceHeader({
             title={leftOpen ? "收起幻灯片缩略轨" : "展开幻灯片缩略轨"}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
               leftOpen
-                ? "text-[#1d1d1f] bg-black/[0.06] hover:bg-black/[0.1]"
-                : "text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.06]"
+                ? "text-ink bg-black/[0.06] hover:bg-black/[0.1]"
+                : "text-ink-muted hover:text-ink hover:bg-black/[0.06]"
             }`}
           >
             <svg
@@ -153,7 +153,7 @@ export function WorkspaceHeader({
                   }
                 }}
                 autoFocus
-                className="text-[14px] font-semibold bg-white border border-[#1d1d1f] rounded-lg px-2 py-0.5 text-[#1d1d1f] outline-none w-44"
+                className="text-[14px] font-semibold bg-white border border-ink rounded-lg px-2 py-0.5 text-ink outline-none w-44"
               />
             </form>
           ) : (
@@ -165,7 +165,7 @@ export function WorkspaceHeader({
                 setIsEditingName(true);
               }}
               title="点击重命名文稿"
-              className="text-[14.5px] font-semibold tracking-[-0.015em] text-[#1d1d1f] hover:opacity-70 truncate cursor-pointer transition-opacity"
+              className="text-[14.5px] font-semibold tracking-[-0.015em] text-ink hover:opacity-70 truncate cursor-pointer transition-opacity"
             >
               {project?.name || pid}
             </button>
@@ -175,25 +175,25 @@ export function WorkspaceHeader({
           {hasOutline && (
             <div className="relative flex items-center gap-1.5 shrink-0">
               {isSaving ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/[0.05] text-[#52525b] text-[12px] font-medium whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#1d1d1f] animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/[0.05] text-ink-secondary text-[12px] font-medium whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-ink animate-pulse" />
                   <span>自动保存中…</span>
                 </span>
               ) : isStale ? (
                 <button
                   type="button"
                   onClick={onSaveOutline}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ff9500]/14 hover:bg-[#ff9500]/22 text-[#b25000] text-[12px] font-medium transition-colors cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-warning-dot/15 hover:bg-warning-dot/25 text-warning text-[12px] font-medium transition-colors cursor-pointer whitespace-nowrap"
                   title="立即保存修改 (Ctrl/⌘+S，或停顿 1.2 秒自动保存)"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff9500]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-warning-dot" />
                   <span>未保存 · 保存</span>
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => setIsVersionOpen(!isVersionOpen)}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-black/[0.05] text-[12px] text-[#86868b] hover:text-[#1d1d1f] transition-colors cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-black/[0.05] text-[12px] text-ink-muted hover:text-ink transition-colors cursor-pointer whitespace-nowrap"
                   title="查看与切换历史大纲版本"
                 >
                   <span>已保存 · 第 {versionOrdinal} 版</span>
@@ -212,7 +212,7 @@ export function WorkspaceHeader({
                     onClick={() => setIsVersionOpen(false)}
                   />
                   <div className="absolute left-0 top-full mt-2 z-50 w-72 apple-glass dock-shadow rounded-2xl p-2 space-y-1">
-                    <div className="px-2.5 py-1 text-[11.5px] font-semibold text-[#86868b]">
+                    <div className="px-2.5 py-1 text-[11.5px] font-semibold text-ink-muted">
                       大纲版本历史 ({sortedOutlines.length})
                     </div>
                     <div className="max-h-60 overflow-y-auto clean-scroll space-y-0.5">
@@ -231,32 +231,32 @@ export function WorkspaceHeader({
                             }}
                             className={`w-full text-left px-2.5 py-2 rounded-xl text-[12.5px] flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                               isSelected
-                                ? "bg-black/[0.06] text-[#1d1d1f] font-medium"
-                                : "text-[#424245] hover:bg-black/[0.04]"
+                                ? "bg-black/[0.06] text-ink font-medium"
+                                : "text-ink-secondary hover:bg-black/[0.04]"
                             }`}
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-[#1d1d1f]">
+                                <span className="font-semibold text-ink">
                                   第 {num} 版
                                 </span>
-                                <span className="font-mono text-[11px] text-[#71717a]">
+                                <span className="font-mono text-[11px] text-ink-muted">
                                   {o.outline_version}
                                 </span>
                               </div>
-                              <div className="text-[11px] text-[#71717a] flex items-center gap-1.5 mt-0.5">
+                              <div className="text-[11px] text-ink-muted flex items-center gap-1.5 mt-0.5">
                                 <span>{o.item_count} 页</span>
                                 <span>·</span>
                                 <span>{o.is_confirmed ? "已确认" : "草稿"}</span>
                                 {isExported && (
-                                  <span className="text-[#1d1d1f] font-medium">
+                                  <span className="text-ink font-medium">
                                     · 当前 PPT
                                   </span>
                                 )}
                               </div>
                             </div>
                             {isSelected && (
-                              <Check className="w-3.5 h-3.5 text-[#1d1d1f] shrink-0" />
+                              <Check className="w-3.5 h-3.5 text-ink shrink-0" />
                             )}
                           </button>
                         );
@@ -287,12 +287,12 @@ export function WorkspaceHeader({
               <span
                 key={idx}
                 className={`h-[3px] flex-1 rounded-full transition-colors ${
-                  idx <= stageMeta.step ? "bg-[#1d1d1f]" : "bg-black/[0.12]"
+                  idx <= stageMeta.step ? "bg-ink" : "bg-black/[0.12]"
                 }`}
               />
             ))}
           </div>
-          <span className="text-[12.5px] font-medium text-[#1d1d1f] tabular-nums whitespace-nowrap">
+          <span className="text-[12.5px] font-medium text-ink tabular-nums whitespace-nowrap">
             {stageMeta.step}/4 {stageMeta.label}
           </span>
         </div>
@@ -303,8 +303,8 @@ export function WorkspaceHeader({
             onClick={onToggleMaterialsDrawer}
             className={`px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
               showMaterialsDrawer
-                ? "bg-black/[0.08] text-[#1d1d1f]"
-                : "text-[#1d1d1f] hover:bg-black/[0.05]"
+                ? "bg-black/[0.08] text-ink"
+                : "text-ink hover:bg-black/[0.05]"
             }`}
           >
             素材 · {materialsCount}
@@ -314,7 +314,7 @@ export function WorkspaceHeader({
         {project?.download_available && (
           <Link
             href={`/p/${pid}/preview`}
-            className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-[#1d1d1f] hover:bg-black/[0.05] transition-colors flex items-center gap-1 whitespace-nowrap"
+            className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-ink hover:bg-black/[0.05] transition-colors flex items-center gap-1 whitespace-nowrap"
             title="全屏查看高清预览"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
@@ -329,7 +329,7 @@ export function WorkspaceHeader({
             type="button"
             onClick={onConfirmGenerate}
             disabled={isGenerating || !version}
-            className="px-4 py-1.5 rounded-full text-[12.5px] font-medium bg-[#1d1d1f] hover:bg-[#323236] text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45"
+            className="px-4 py-1.5 rounded-full text-[12.5px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45"
           >
             {isGenerating ? "编译中…" : "确认并生成 PPTX"}
           </button>
@@ -343,7 +343,7 @@ export function WorkspaceHeader({
                   type="button"
                   onClick={onConfirmGenerate}
                   disabled={isGenerating}
-                  className="px-3.5 py-1.5 rounded-full text-[12.5px] font-medium bg-[#1d1d1f] hover:bg-[#323236] text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-full text-[12.5px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 flex items-center gap-1.5"
                 >
                   <RefreshCw
                     className={`w-3 h-3 ${isGenerating ? "animate-spin" : ""}`}
@@ -353,7 +353,7 @@ export function WorkspaceHeader({
                 <a
                   href={`/api/projects/${pid}/download`}
                   download
-                  className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-[#1d1d1f] bg-black/[0.06] hover:bg-black/[0.1] transition-colors flex items-center gap-1 whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-ink bg-black/[0.06] hover:bg-black/[0.1] transition-colors flex items-center gap-1 whitespace-nowrap"
                   title="下载上一版已导出的 PPTX"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -366,7 +366,7 @@ export function WorkspaceHeader({
                   type="button"
                   onClick={onConfirmGenerate}
                   disabled={isGenerating}
-                  className="p-1.5 rounded-full text-[#52525b] hover:text-[#1d1d1f] hover:bg-black/[0.06] transition-colors cursor-pointer disabled:opacity-45"
+                  className="p-1.5 rounded-full text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer disabled:opacity-45"
                   title="重新生成 PPTX"
                 >
                   <RefreshCw
@@ -376,7 +376,7 @@ export function WorkspaceHeader({
                 <a
                   href={`/api/projects/${pid}/download/pdf`}
                   download
-                  className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-[#1d1d1f] bg-black/[0.06] hover:bg-black/[0.1] transition-colors flex items-center gap-1 whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-ink bg-black/[0.06] hover:bg-black/[0.1] transition-colors flex items-center gap-1 whitespace-nowrap"
                   title="下载同源渲染的 PDF 文件"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -385,7 +385,7 @@ export function WorkspaceHeader({
                 <a
                   href={`/api/projects/${pid}/download`}
                   download
-                  className="px-4 py-1.5 rounded-full text-[12.5px] font-medium bg-[#1d1d1f] hover:bg-[#323236] text-white transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-4 py-1.5 rounded-full text-[12.5px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>下载 PPTX</span>
@@ -402,8 +402,8 @@ export function WorkspaceHeader({
             title={rightOpen ? "收起右侧编辑检查器" : "展开右侧编辑检查器"}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ml-0.5 ${
               rightOpen
-                ? "text-[#1d1d1f] bg-black/[0.06] hover:bg-black/[0.1]"
-                : "text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.06]"
+                ? "text-ink bg-black/[0.06] hover:bg-black/[0.1]"
+                : "text-ink-muted hover:text-ink hover:bg-black/[0.06]"
             }`}
           >
             <svg

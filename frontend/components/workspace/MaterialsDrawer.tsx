@@ -114,10 +114,10 @@ export function MaterialsDrawer({
     <div className="border-b border-black/[0.07] bg-white px-5 py-3.5 shrink-0 space-y-3">
       <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <span className="text-[13px] font-semibold text-[#1d1d1f] mr-1 whitespace-nowrap">
+          <span className="text-[13px] font-semibold text-ink mr-1 whitespace-nowrap">
             素材库
             {sourceFragments.length > 0 && (
-              <span className="font-normal text-[#86868b] ml-1.5">
+              <span className="font-normal text-ink-muted ml-1.5">
                 {sourceFragments.length} 处切片 · 点击预览或引用
               </span>
             )}
@@ -140,20 +140,20 @@ export function MaterialsDrawer({
                   title={`点击查看「${m.asset_id}」内容`}
                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12.5px] font-medium transition-all cursor-pointer ${
                     isSelected
-                      ? "bg-[#1d1d1f] text-white shadow-2xs"
-                      : "bg-[#f5f5f7] text-[#1d1d1f] hover:bg-black/[0.08]"
+                      ? "bg-ink text-white shadow-2xs"
+                      : "bg-canvas text-ink hover:bg-black/[0.08]"
                   }`}
                 >
                   {isImg ? (
                     <ImageIcon
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isSelected ? "text-white" : "text-[#52525b]"
+                        isSelected ? "text-white" : "text-ink-secondary"
                       }`}
                     />
                   ) : (
                     <FileText
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isSelected ? "text-white" : "text-[#52525b]"
+                        isSelected ? "text-white" : "text-ink-secondary"
                       }`}
                     />
                   )}
@@ -164,7 +164,7 @@ export function MaterialsDrawer({
               );
             })
           ) : (
-            <span className="text-[13px] text-[#71717a]">暂无材料</span>
+            <span className="text-[13px] text-ink-muted">暂无材料</span>
           )}
         </div>
 
@@ -178,8 +178,8 @@ export function MaterialsDrawer({
             }}
             className={`inline-flex items-center gap-1 font-medium cursor-pointer whitespace-nowrap ${
               pasteOpen
-                ? "text-[#1d1d1f] underline underline-offset-2"
-                : "text-[#1d1d1f] hover:opacity-70"
+                ? "text-ink underline underline-offset-2"
+                : "text-ink hover:opacity-70"
             }`}
           >
             <ClipboardPaste className="w-3.5 h-3.5" />
@@ -189,7 +189,7 @@ export function MaterialsDrawer({
           <button
             type="button"
             onClick={onUploadClick}
-            className="inline-flex items-center gap-1 text-[#1d1d1f] hover:opacity-70 font-medium cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center gap-1 text-ink hover:opacity-70 font-medium cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>上传文件/图片</span>
@@ -206,8 +206,8 @@ export function MaterialsDrawer({
               disabled={isGenerating}
               className={`font-medium cursor-pointer disabled:opacity-40 whitespace-nowrap ${
                 regenOpen
-                  ? "text-[#1d1d1f] underline underline-offset-2"
-                  : "text-[#52525b] hover:text-[#1d1d1f]"
+                  ? "text-ink underline underline-offset-2"
+                  : "text-ink-secondary hover:text-ink"
               }`}
             >
               {isGenerating ? "提炼中…" : "重新提炼大纲"}
@@ -216,7 +216,7 @@ export function MaterialsDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="text-[#86868b] hover:text-[#1d1d1f] cursor-pointer whitespace-nowrap"
+            className="text-ink-muted hover:text-ink cursor-pointer whitespace-nowrap"
           >
             收起
           </button>
@@ -231,16 +231,16 @@ export function MaterialsDrawer({
             setRegenOpen(false);
             onGenerateOutline(regenPrompt.trim() || undefined);
           }}
-          className="max-w-6xl mx-auto p-4 rounded-2xl bg-[#f5f5f7] border border-black/[0.07] space-y-3"
+          className="max-w-6xl mx-auto p-4 rounded-2xl bg-canvas border border-black/[0.07] space-y-3"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#1d1d1f]" />
-              <span className="text-[13px] font-semibold text-[#1d1d1f]">
+              <Sparkles className="w-4 h-4 text-ink" />
+              <span className="text-[13px] font-semibold text-ink">
                 按当前素材库重新提炼大纲
               </span>
               {outline && outline.items.length > 0 && (
-                <span className="text-[11.5px] text-[#52525b] bg-white px-2.5 py-0.5 rounded-full border border-black/[0.06]">
+                <span className="text-[11.5px] text-ink-secondary bg-white px-2.5 py-0.5 rounded-full border border-black/[0.06]">
                   将生成全新大纲版本，当前版本仍保留在顶栏历史版本列表中可随时切回
                 </span>
               )}
@@ -248,7 +248,7 @@ export function MaterialsDrawer({
             <button
               type="button"
               onClick={() => setRegenOpen(false)}
-              className="text-[#71717a] hover:text-[#1d1d1f] cursor-pointer"
+              className="text-ink-muted hover:text-ink cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -260,13 +260,13 @@ export function MaterialsDrawer({
               value={regenPrompt}
               onChange={(e) => setRegenPrompt(e.target.value)}
               placeholder="可选：输入提炼要求（例如：控制在 6 页以内，重点突出性能对比与落地结论）"
-              className="flex-1 text-[13px] text-[#1d1d1f] placeholder-[#71717a] bg-white rounded-xl px-3.5 py-2 border border-black/[0.1] focus:border-[#1d1d1f] outline-none"
+              className="flex-1 text-[13px] text-ink placeholder:text-ink-muted bg-white rounded-xl px-3.5 py-2 border border-black/[0.1] focus:border-ink outline-none"
               autoFocus
             />
             <button
               type="submit"
               disabled={isGenerating}
-              className="px-4 py-2 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap"
+              className="px-4 py-2 rounded-full bg-ink hover:bg-ink-hover text-white text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap"
             >
               {isGenerating ? "正在提炼…" : "开始提炼新版本"}
             </button>
@@ -278,16 +278,16 @@ export function MaterialsDrawer({
       {pasteOpen && (
         <form
           onSubmit={(e) => void handleSaveNote(e)}
-          className="max-w-6xl mx-auto p-4 rounded-2xl bg-[#f5f5f7] border border-black/[0.07] space-y-3"
+          className="max-w-6xl mx-auto p-4 rounded-2xl bg-canvas border border-black/[0.07] space-y-3"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[13px] font-semibold text-[#1d1d1f]">
+            <span className="text-[13px] font-semibold text-ink">
               直接粘贴文本或 Markdown 笔记
             </span>
             <button
               type="button"
               onClick={() => setPasteOpen(false)}
-              className="text-[#71717a] hover:text-[#1d1d1f] cursor-pointer"
+              className="text-ink-muted hover:text-ink cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -299,14 +299,14 @@ export function MaterialsDrawer({
               value={noteTitle}
               onChange={(e) => setNoteTitle(e.target.value)}
               placeholder="素材名称（选填，如：架构纪要）"
-              className="sm:col-span-1 text-[13px] text-[#1d1d1f] placeholder-[#71717a] bg-white rounded-xl px-3 py-2 border border-black/[0.1] focus:border-[#1d1d1f] outline-none"
+              className="sm:col-span-1 text-[13px] text-ink placeholder:text-ink-muted bg-white rounded-xl px-3 py-2 border border-black/[0.1] focus:border-ink outline-none"
             />
             <textarea
               rows={3}
               value={noteContent}
               onChange={(e) => setNoteContent(e.target.value)}
               placeholder="在此直接粘贴会议纪要、技术文档、产品需求或核心数据段落，保存后将自动切分为可溯源的原始素材切片…"
-              className="sm:col-span-3 text-[13px] text-[#1d1d1f] placeholder-[#71717a] bg-white rounded-xl px-3 py-2 border border-black/[0.1] focus:border-[#1d1d1f] outline-none resize-y leading-relaxed"
+              className="sm:col-span-3 text-[13px] text-ink placeholder:text-ink-muted bg-white rounded-xl px-3 py-2 border border-black/[0.1] focus:border-ink outline-none resize-y leading-relaxed"
               autoFocus
             />
           </div>
@@ -315,14 +315,14 @@ export function MaterialsDrawer({
             <button
               type="button"
               onClick={() => setPasteOpen(false)}
-              className="px-3.5 py-1.5 rounded-full text-[12.5px] font-medium text-[#52525b] hover:text-[#1d1d1f] cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full text-[12.5px] font-medium text-ink-secondary hover:text-ink cursor-pointer"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={savingNote || !noteContent.trim()}
-              className="px-4 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+              className="px-4 py-1.5 rounded-full bg-ink hover:bg-ink-hover text-white text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
             >
               {savingNote ? "正在保存…" : "保存为项目素材"}
             </button>
@@ -332,18 +332,18 @@ export function MaterialsDrawer({
 
       {/* Selected Material Inspector Panel */}
       {activeMaterial && (
-        <div className="max-w-6xl mx-auto p-4 rounded-2xl bg-[#f5f5f7] border border-black/[0.07] space-y-2.5">
+        <div className="max-w-6xl mx-auto p-4 rounded-2xl bg-canvas border border-black/[0.07] space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {activeMaterial.asset_type === "image" ? (
-                <ImageIcon className="w-4 h-4 text-[#52525b] shrink-0" />
+                <ImageIcon className="w-4 h-4 text-ink-secondary shrink-0" />
               ) : (
-                <FileText className="w-4 h-4 text-[#52525b] shrink-0" />
+                <FileText className="w-4 h-4 text-ink-secondary shrink-0" />
               )}
-              <span className="text-[13px] font-semibold text-[#1d1d1f] truncate">
+              <span className="text-[13px] font-semibold text-ink truncate">
                 {activeMaterial.asset_id}
               </span>
-              <span className="text-[11.5px] text-[#86868b] shrink-0">
+              <span className="text-[11.5px] text-ink-muted shrink-0">
                 {activeMaterial.asset_type === "image"
                   ? "图片素材"
                   : `共 ${activeFragments.length} 个文本切片`}
@@ -352,8 +352,8 @@ export function MaterialsDrawer({
 
             <div className="flex items-center gap-2.5 shrink-0">
               {confirmDeleteAsset === activeMaterial.asset_id ? (
-                <div className="flex items-center gap-2 bg-[#fff2f2] border border-[#ff3b30]/20 px-2.5 py-1 rounded-full text-[12px]">
-                  <span className="text-[#d70015] font-medium">
+                <div className="flex items-center gap-2 bg-danger-bg border border-danger/20 px-2.5 py-1 rounded-full text-[12px]">
+                  <span className="text-danger font-medium">
                     {affectedSlides.length > 0
                       ? `第 ${affectedSlides.join("、")} 页正引用此素材，确认删除？`
                       : "确认从项目删除此素材？"}
@@ -364,14 +364,14 @@ export function MaterialsDrawer({
                     onClick={() =>
                       void handleConfirmDelete(activeMaterial.asset_id)
                     }
-                    className="px-2.5 py-0.5 rounded-full bg-[#ff3b30] text-white font-medium cursor-pointer disabled:opacity-40"
+                    className="px-2.5 py-0.5 rounded-full bg-danger text-white font-medium cursor-pointer disabled:opacity-40"
                   >
                     {deletingAsset ? "删除中…" : "确认删除"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteAsset(null)}
-                    className="text-[#6e6e73] hover:text-[#1d1d1f] cursor-pointer"
+                    className="text-ink-secondary hover:text-ink cursor-pointer"
                   >
                     取消
                   </button>
@@ -380,7 +380,7 @@ export function MaterialsDrawer({
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteAsset(activeMaterial.asset_id)}
-                  className="inline-flex items-center gap-1 text-[12px] text-[#86868b] hover:text-[#d70015] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[12px] text-ink-muted hover:text-danger transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>删除素材</span>
@@ -390,7 +390,7 @@ export function MaterialsDrawer({
               <button
                 type="button"
                 onClick={() => setSelectedAssetId(null)}
-                className="text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
+                className="text-ink-muted hover:text-ink cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -399,7 +399,7 @@ export function MaterialsDrawer({
 
           {activeMaterial.asset_type === "image" ? (
             <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-3 rounded-xl border border-black/[0.06]">
-              <div className="w-44 aspect-[16/10] rounded-lg bg-[#f5f5f7] overflow-hidden flex items-center justify-center shrink-0">
+              <div className="w-44 aspect-[16/10] rounded-lg bg-canvas overflow-hidden flex items-center justify-center shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={`/api/projects/${pid}/assets/${encodeURIComponent(
@@ -410,10 +410,10 @@ export function MaterialsDrawer({
                 />
               </div>
               <div className="flex-1 space-y-2 text-center sm:text-left">
-                <div className="text-[13px] font-medium text-[#1d1d1f]">
+                <div className="text-[13px] font-medium text-ink">
                   原始图片素材：{activeMaterial.asset_id}
                 </div>
-                <p className="text-[12px] text-[#6e6e73]">
+                <p className="text-[12px] text-ink-secondary">
                   可将此图片直接设为当前选中幻灯片（第 {currentSlideIndex + 1}{" "}
                   页）的右侧配图，或关联为该页的材料出处。
                 </p>
@@ -428,7 +428,7 @@ export function MaterialsDrawer({
                             activeFragments[0]?.source_id
                           )
                         }
-                        className="px-3.5 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12px] font-medium transition-colors cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-full bg-ink hover:bg-ink-hover text-white text-[12px] font-medium transition-colors cursor-pointer"
                       >
                         设为第 {currentSlideIndex + 1} 页配图（切为图文页）
                       </button>
@@ -439,7 +439,7 @@ export function MaterialsDrawer({
                         onClick={() =>
                           onToggleSourceId(activeFragments[0].source_id)
                         }
-                        className="px-3.5 py-1.5 rounded-full bg-[#f5f5f7] hover:bg-black/[0.08] text-[#1d1d1f] text-[12px] font-medium transition-colors cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-full bg-canvas hover:bg-black/[0.08] text-ink text-[12px] font-medium transition-colors cursor-pointer"
                       >
                         {currentSlide.source_ids.includes(
                           activeFragments[0].source_id
@@ -465,17 +465,17 @@ export function MaterialsDrawer({
                   >
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11.5px]">
-                        <span className="font-mono font-semibold text-[#1d1d1f]">
+                        <span className="font-mono font-semibold text-ink">
                           {frag.location.replace(/^L/, "第 ")}
                         </span>
                         {bound && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#248a3d]">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
                             <Check className="w-3 h-3" />
                             <span>已关联第 {currentSlideIndex + 1} 页</span>
                           </span>
                         )}
                       </div>
-                      <p className="text-[12.5px] text-[#424245] leading-relaxed whitespace-pre-wrap max-h-[110px] overflow-y-auto clean-scroll">
+                      <p className="text-[12.5px] text-ink-secondary leading-relaxed whitespace-pre-wrap max-h-[110px] overflow-y-auto clean-scroll">
                         {excerpt || activeMaterial.content}
                       </p>
                     </div>
@@ -486,7 +486,7 @@ export function MaterialsDrawer({
                           <button
                             type="button"
                             onClick={() => onToggleSourceId(frag.source_id)}
-                            className="text-[#1d1d1f] underline underline-offset-2 hover:opacity-70 font-medium cursor-pointer"
+                            className="text-ink underline underline-offset-2 hover:opacity-70 font-medium cursor-pointer"
                           >
                             {bound
                               ? `解除与第 ${currentSlideIndex + 1} 页关联`
@@ -501,7 +501,7 @@ export function MaterialsDrawer({
                               onClick={() =>
                                 onInsertExcerptToSlide(frag.source_id, excerpt)
                               }
-                              className="text-[#52525b] hover:text-[#1d1d1f] font-medium cursor-pointer"
+                              className="text-ink-secondary hover:text-ink font-medium cursor-pointer"
                             >
                               填入第 {currentSlideIndex + 1} 页正文
                             </button>

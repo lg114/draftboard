@@ -87,19 +87,19 @@ export default function PreviewPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#dcdce1] text-[#1d1d1f]">
+    <div className="min-h-screen flex flex-col bg-stage text-ink">
       {/* Monochrome Translucent Cinema Top Bar */}
       <header className="h-[52px] apple-glass border-b border-black/[0.08] px-5 flex items-center justify-between gap-3 sticky top-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href={`/p/${pid}`}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#52525b] hover:text-[#1d1d1f] transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-secondary hover:text-ink transition-colors whitespace-nowrap"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>返回工作台</span>
           </Link>
           <span className="text-black/20">/</span>
-          <span className="text-[14.5px] font-semibold text-[#1d1d1f] truncate">
+          <span className="text-[14.5px] font-semibold text-ink truncate">
             {projectName || pid} · 放映预览
           </span>
         </div>
@@ -110,7 +110,7 @@ export default function PreviewPage() {
               type="button"
               onClick={renderNow}
               disabled={rendering}
-              className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-[#1d1d1f] hover:bg-black/[0.06] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap"
+              className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-ink hover:bg-black/[0.06] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${rendering ? "animate-spin" : ""}`}
@@ -121,7 +121,7 @@ export default function PreviewPage() {
           <a
             href={`/api/projects/${pid}/download/pdf`}
             download
-            className="px-3.5 py-1.5 rounded-full bg-black/[0.06] hover:bg-black/[0.1] text-[#1d1d1f] text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
+            className="px-3.5 py-1.5 rounded-full bg-black/[0.06] hover:bg-black/[0.1] text-ink text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             <span>下载 PDF</span>
@@ -129,7 +129,7 @@ export default function PreviewPage() {
           <a
             href={`/api/projects/${pid}/download`}
             download
-            className="px-4 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
+            className="ui-btn-primary px-4 py-1.5 text-[12.5px] flex items-center gap-1.5 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             <span>下载 PPTX</span>
@@ -142,7 +142,7 @@ export default function PreviewPage() {
           <>
             {/* Large 16:9 Stage */}
             <div className="w-full max-w-[1040px] relative group">
-              <div className="aspect-[16/9] w-full rounded-[14px] bg-white overflow-hidden slide-shadow flex items-center justify-center">
+              <div className="aspect-[16/9] w-full rounded-[14px] bg-surface overflow-hidden slide-shadow flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={preview.pages[selected]}
@@ -155,7 +155,7 @@ export default function PreviewPage() {
                 type="button"
                 disabled={selected === 0}
                 onClick={() => setSelected((s) => Math.max(0, s - 1))}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-[#1d1d1f] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-ink flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
                 aria-label="上一页"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -166,7 +166,7 @@ export default function PreviewPage() {
                 onClick={() =>
                   setSelected((s) => Math.min(preview.pages.length - 1, s + 1))
                 }
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-[#1d1d1f] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-ink flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
                 aria-label="下一页"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -181,7 +181,7 @@ export default function PreviewPage() {
                     key={src}
                     type="button"
                     onClick={() => setSelected(idx)}
-                    className={`w-28 aspect-[16/9] rounded-[8px] bg-white overflow-hidden shrink-0 transition-all cursor-pointer ${
+                    className={`w-28 aspect-[16/9] rounded-[8px] bg-surface overflow-hidden shrink-0 transition-all cursor-pointer ${
                       idx === selected
                         ? "thumb-selected"
                         : "thumb-idle opacity-75 hover:opacity-100"
@@ -196,17 +196,17 @@ export default function PreviewPage() {
                   </button>
                 ))}
               </div>
-              <div className="text-[12px] text-[#6e6e73] tabular-nums">
+              <div className="text-[12px] text-ink-secondary tabular-nums">
                 第 {selected + 1} / {preview.pages.length} 页 · 支持键盘 ← / → 翻页 · 最终效果以 PowerPoint 打开为准
               </div>
             </div>
           </>
         ) : (
-          <div className="bg-white rounded-[18px] p-10 slide-shadow max-w-md w-full text-center space-y-4">
-            <div className="text-[16px] font-semibold text-[#1d1d1f]">
-              {notice || "尚未生成 Office 渲染预览"}
+          <div className="bg-surface rounded-[18px] p-10 slide-shadow max-w-md w-full text-center space-y-4">
+            <div className="text-[16px] font-semibold text-ink">
+              {notice || "尚未生成预览"}
             </div>
-            <p className="text-[13.5px] text-[#52525b] leading-relaxed">
+            <p className="text-[13.5px] text-ink-secondary leading-relaxed">
               {report?.success
                 ? "点击下方按钮立即生成逐页高清预览图与矢量 PDF。"
                 : "请先回到工作台确认大纲并导出 PPTX。"}
@@ -216,14 +216,14 @@ export default function PreviewPage() {
                 type="button"
                 onClick={renderNow}
                 disabled={rendering}
-                className="px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13.5px] font-medium transition-colors disabled:opacity-45 cursor-pointer"
+                className="ui-btn-primary px-5 py-2.5 text-[13.5px]"
               >
                 {rendering ? "正在渲染…" : "生成高清预览图"}
               </button>
             ) : (
               <Link
                 href={`/p/${pid}`}
-                className="inline-block px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13.5px] font-medium transition-colors"
+                className="ui-btn-primary inline-block px-5 py-2.5 text-[13.5px]"
               >
                 返回工作台
               </Link>

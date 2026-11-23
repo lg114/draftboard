@@ -191,7 +191,7 @@ export function SlideNavigator({
   const total = outline.items.length;
 
   return (
-    <aside className="w-[180px] xl:w-[224px] shrink-0 bg-[#f5f5f7] border-r border-black/[0.08] flex flex-col min-h-0">
+    <aside className="w-[180px] xl:w-[224px] shrink-0 bg-canvas border-r border-black/[0.08] flex flex-col min-h-0">
       <div className="flex-1 px-3 py-3.5 space-y-3 overflow-y-auto clean-scroll">
         {outline.items.map((item, idx) => {
           const active = idx === selectedIndex;
@@ -210,8 +210,8 @@ export function SlideNavigator({
               <span
                 className={`w-4 text-right pt-1 text-[11.5px] tabular-nums shrink-0 ${
                   active
-                    ? "text-[#1d1d1f] font-bold"
-                    : "text-[#71717a] font-medium"
+                    ? "text-ink font-bold"
+                    : "text-ink-muted font-medium"
                 }`}
               >
                 {idx + 1}
@@ -229,7 +229,7 @@ export function SlideNavigator({
                   {(hasError || needsEvidence) && (
                     <span
                       className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ring-2 ring-white/80 group-hover:opacity-0 transition-opacity ${
-                        hasError ? "bg-[#ff3b30]" : "bg-[#ff9500]"
+                        hasError ? "bg-danger" : "bg-warning-dot"
                       }`}
                       title={hasError ? "该页存在排版或校验问题" : "待补充出处"}
                     />
@@ -253,7 +253,7 @@ export function SlideNavigator({
                     disabled={idx === 0}
                     onClick={() => onMoveItem(idx, -1)}
                     title="上移"
-                    className="px-1 py-0.5 text-[#1d1d1f] hover:bg-black/[0.06] rounded disabled:opacity-25 cursor-pointer text-[10px] leading-none"
+                    className="px-1 py-0.5 text-ink hover:bg-black/[0.06] rounded disabled:opacity-25 cursor-pointer text-[10px] leading-none"
                   >
                     ↑
                   </button>
@@ -262,7 +262,7 @@ export function SlideNavigator({
                     disabled={idx === total - 1}
                     onClick={() => onMoveItem(idx, 1)}
                     title="下移"
-                    className="px-1 py-0.5 text-[#1d1d1f] hover:bg-black/[0.06] rounded disabled:opacity-25 cursor-pointer text-[10px] leading-none"
+                    className="px-1 py-0.5 text-ink hover:bg-black/[0.06] rounded disabled:opacity-25 cursor-pointer text-[10px] leading-none"
                   >
                     ↓
                   </button>
@@ -271,7 +271,7 @@ export function SlideNavigator({
                       type="button"
                       onClick={() => onDeleteItem(idx)}
                       title="删除此页"
-                      className="px-1 py-0.5 text-[#1d1d1f] hover:text-[#d70015] hover:bg-black/[0.06] rounded cursor-pointer text-[10px] leading-none"
+                      className="px-1 py-0.5 text-ink hover:text-danger hover:bg-black/[0.06] rounded cursor-pointer text-[10px] leading-none"
                     >
                       ×
                     </button>
@@ -287,7 +287,7 @@ export function SlideNavigator({
         <button
           type="button"
           onClick={onAddItem}
-          className="w-full py-1.5 rounded-[10px] bg-white hover:bg-black/[0.02] text-[12.5px] font-medium text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.08)] transition-all cursor-pointer whitespace-nowrap"
+          className="w-full py-1.5 rounded-[10px] bg-surface hover:bg-black/[0.02] text-[12.5px] font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.08)] transition-all cursor-pointer whitespace-nowrap"
         >
           + 新建幻灯片
         </button>

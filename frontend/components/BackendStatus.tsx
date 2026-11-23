@@ -56,9 +56,9 @@ export function BackendStatus() {
           ? `连接异常 · ${latency}ms`
           : "未检测到后端服务，请启动 draftboard serve"
       }
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#fff2f2] border border-[#ff3b30]/20 text-[12px] font-medium text-[#c02620] select-none"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger-bg border border-danger/20 text-[12px] font-medium text-danger select-none"
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-[#d70015]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-danger" />
       <span>服务离线</span>
     </div>
   );

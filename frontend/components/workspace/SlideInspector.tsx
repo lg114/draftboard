@@ -201,9 +201,9 @@ export function SlideInspector({
   const isPartial =
     item.evidence_status === "partial" && item.source_ids.length > 0;
 
-  // Primary editable field surface: crisp white with hairline border & monochrome focus ring
+  // Primary editable field surface: canonical design-system field primitive
   const primaryInputBase =
-    "text-[14.5px] text-[#1d1d1f] placeholder-[#a1a1aa] bg-white rounded-xl px-3.5 py-2.5 border border-black/[0.12] hover:border-black/[0.22] focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.06] outline-none leading-relaxed transition-all";
+    "ui-field text-[14.5px] px-3.5 py-2.5 leading-relaxed";
 
   function fillFromExcerpt(targetField: "summary" | "column_right", text: string) {
     const cleaned = text.trim();
@@ -221,20 +221,20 @@ export function SlideInspector({
   }
 
   return (
-    <aside className="w-[320px] xl:w-[376px] shrink-0 bg-[#fafafa] border-l border-black/[0.08] flex flex-col min-h-0 overflow-y-auto clean-scroll">
+    <aside className="w-[320px] xl:w-[376px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0 overflow-y-auto clean-scroll">
       {/* Sticky Monochrome Inspector Header */}
-      <div className="px-5 py-3 border-b border-black/[0.07] flex items-center justify-between sticky top-0 bg-[#fafafa]/95 backdrop-blur-sm z-10">
+      <div className="px-5 py-3 border-b border-black/[0.07] flex items-center justify-between sticky top-0 bg-surface-subtle/95 backdrop-blur-sm z-10">
         <div className="flex items-center gap-2 whitespace-nowrap">
-          <span className="text-[13.5px] font-semibold text-[#1d1d1f]">
+          <span className="text-[13.5px] font-semibold text-ink">
             第 {slideIndex + 1} 页
           </span>
           <span className="text-black/20">·</span>
-          <span className="text-[13px] font-medium text-[#52525b]">
+          <span className="text-[13px] font-medium text-ink-secondary">
             {LAYOUT_LABELS[layout] || "正文"}
           </span>
         </div>
 
-        <span className="text-[11.5px] text-[#71717a] tabular-nums">
+        <span className="text-[11.5px] text-ink-muted tabular-nums">
           {slideIndex + 1} / {totalSlides}
         </span>
       </div>
@@ -242,16 +242,16 @@ export function SlideInspector({
       <div className="p-5 space-y-6 flex-1">
         {/* In-place Slide QA Issues */}
         {slideIssues.length > 0 && (
-          <div className="p-3.5 rounded-2xl bg-[#fff2f2] border border-[#ff3b30]/20 space-y-2">
+          <div className="p-3.5 rounded-2xl bg-danger-bg border border-danger/20 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[12.5px] font-semibold text-[#c02620]">
+              <div className="text-[12.5px] font-semibold text-danger">
                 本页排版校验未通过
               </div>
               <button
                 type="button"
                 disabled={Boolean(refiningMode)}
                 onClick={() => void triggerRefine("concise")}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#d70015] hover:bg-[#b80012] text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-danger hover:bg-danger-hover text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Sparkles className="w-3 h-3" />
                 <span>
@@ -264,7 +264,7 @@ export function SlideInspector({
             {slideIssues.map((iss, i) => (
               <p
                 key={i}
-                className="text-[12px] text-[#9b1c1c] leading-relaxed font-mono break-all"
+                className="text-[12px] text-danger leading-relaxed font-mono break-all"
               >
                 {iss.message}
               </p>
@@ -277,7 +277,7 @@ export function SlideInspector({
           className={`rounded-2xl border overflow-hidden transition-colors ${
             isSupported
               ? "bg-white border-black/[0.09] shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
-              : "bg-[#fffaf0] border-[#d97706]/25"
+              : "bg-warning-bg border-warning-dot/25"
           }`}
         >
           <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
@@ -288,10 +288,10 @@ export function SlideInspector({
             >
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
-                  isSupported ? "bg-[#248a3d]" : "bg-[#d97706]"
+                  isSupported ? "bg-success" : "bg-warning-dot"
                 }`}
               />
-              <span className="text-[12.5px] font-semibold text-[#1d1d1f] truncate">
+              <span className="text-[12.5px] font-semibold text-ink truncate">
                 {isSupported
                   ? `依据充分 · ${matchedFragments.length} 处素材`
                   : isPartial
@@ -299,7 +299,7 @@ export function SlideInspector({
                   : "待补素材出处"}
               </span>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-[#71717a] shrink-0 transition-transform ${
+                className={`w-3.5 h-3.5 text-ink-muted shrink-0 transition-transform ${
                   provenanceOpen ? "rotate-180" : ""
                 }`}
               />
@@ -311,7 +311,7 @@ export function SlideInspector({
                 setProvenanceOpen(true);
                 setSourcePickerOpen((v) => !v);
               }}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[11.5px] font-medium text-[#1d1d1f] cursor-pointer transition-colors shrink-0"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[11.5px] font-medium text-ink cursor-pointer transition-colors shrink-0"
             >
               <Link2 className="w-3 h-3" />
               <span>{sourcePickerOpen ? "收起" : "关联素材"}</span>
@@ -322,13 +322,13 @@ export function SlideInspector({
             <div className="px-3.5 pb-3.5 pt-1 border-t border-black/[0.06] space-y-2.5">
               {/* Inline Source Binding Picker */}
               {sourcePickerOpen && (
-                <div className="p-2.5 rounded-xl bg-[#f5f5f7] border border-black/[0.07] space-y-2">
-                  <div className="flex items-center justify-between text-[11.5px] text-[#52525b]">
+                <div className="p-2.5 rounded-xl bg-canvas border border-black/[0.07] space-y-2">
+                  <div className="flex items-center justify-between text-[11.5px] text-ink-secondary">
                     <span>勾选本页引用的原始素材切片</span>
                     <button
                       type="button"
                       onClick={() => setSourcePickerOpen(false)}
-                      className="text-[#1d1d1f] font-medium hover:underline cursor-pointer"
+                      className="text-ink font-medium hover:underline cursor-pointer"
                     >
                       完成
                     </button>
@@ -350,14 +350,14 @@ export function SlideInspector({
                             onClick={() => onToggleSourceId(frag.source_id)}
                             className={`w-full text-left p-2 rounded-xl transition-all flex items-start gap-2.5 cursor-pointer ${
                               bound
-                                ? "bg-white ring-1.5 ring-[#1d1d1f] shadow-2xs"
+                                ? "bg-white ring-1.5 ring-ink shadow-2xs"
                                 : "bg-white/75 hover:bg-white ring-1 ring-black/[0.07]"
                             }`}
                           >
                             <div
                               className={`mt-0.5 w-4 h-4 rounded-md flex items-center justify-center shrink-0 transition-colors ${
                                 bound
-                                  ? "bg-[#1d1d1f] text-white"
+                                  ? "bg-ink text-white"
                                   : "border border-black/25 bg-white"
                               }`}
                             >
@@ -368,7 +368,7 @@ export function SlideInspector({
 
                             {isImg ? (
                               <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                <div className="w-10 h-7 rounded bg-[#f5f5f7] overflow-hidden shrink-0 flex items-center justify-center border border-black/[0.07]">
+                                <div className="w-10 h-7 rounded bg-canvas overflow-hidden shrink-0 flex items-center justify-center border border-black/[0.07]">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
                                     src={`/api/projects/${pid}/assets/${encodeURIComponent(
@@ -380,12 +380,12 @@ export function SlideInspector({
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div
-                                    className="text-[12px] font-medium text-[#1d1d1f] truncate"
+                                    className="text-[12px] font-medium text-ink truncate"
                                     title={frag.asset_id}
                                   >
                                     {formatAssetLabel(frag.asset_id)}
                                   </div>
-                                  <div className="text-[11px] text-[#71717a]">
+                                  <div className="text-[11px] text-ink-muted">
                                     图片素材
                                   </div>
                                 </div>
@@ -394,16 +394,16 @@ export function SlideInspector({
                               <div className="min-w-0 flex-1 space-y-0.5">
                                 <div className="flex items-center justify-between gap-1 text-[11.5px]">
                                   <span
-                                    className="font-medium text-[#1d1d1f] truncate"
+                                    className="font-medium text-ink truncate"
                                     title={frag.asset_id}
                                   >
                                     {formatAssetLabel(frag.asset_id)}
                                   </span>
-                                  <span className="text-[10.5px] text-[#71717a] shrink-0">
+                                  <span className="text-[10.5px] text-ink-muted shrink-0">
                                     {frag.location}
                                   </span>
                                 </div>
-                                <p className="text-[11.5px] text-[#52525b] line-clamp-2 leading-snug">
+                                <p className="text-[11.5px] text-ink-secondary line-clamp-2 leading-snug">
                                   {excerpt || "文本切片"}
                                 </p>
                               </div>
@@ -413,7 +413,7 @@ export function SlideInspector({
                       })}
                     </div>
                   ) : (
-                    <div className="text-[12px] text-[#71717a] py-2 text-center">
+                    <div className="text-[12px] text-ink-muted py-2 text-center">
                       项目暂无素材切片，请先上传文件或粘贴笔记。
                     </div>
                   )}
@@ -436,13 +436,13 @@ export function SlideInspector({
                       return (
                         <div
                           key={frag.source_id}
-                          className="p-2.5 rounded-xl bg-[#f5f5f7] space-y-2 group"
+                          className="p-2.5 rounded-xl bg-canvas space-y-2 group"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <ImageIcon className="w-3.5 h-3.5 text-[#52525b] shrink-0" />
+                              <ImageIcon className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
                               <span
-                                className="text-[12px] font-semibold text-[#1d1d1f] truncate"
+                                className="text-[12px] font-semibold text-ink truncate"
                                 title={frag.asset_id}
                               >
                                 {formatAssetLabel(frag.asset_id)}
@@ -452,7 +452,7 @@ export function SlideInspector({
                               type="button"
                               onClick={() => onToggleSourceId(frag.source_id)}
                               title="解除关联"
-                              className="text-[#71717a] hover:text-[#d70015] p-0.5 rounded opacity-65 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              className="text-ink-muted hover:text-danger p-0.5 rounded opacity-65 group-hover:opacity-100 transition-opacity cursor-pointer"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
@@ -471,7 +471,7 @@ export function SlideInspector({
                             </div>
                             <div className="min-w-0 flex-1">
                               {isCurrentSlideImage ? (
-                                <span className="text-[11.5px] font-medium text-[#248a3d] flex items-center gap-1">
+                                <span className="text-[11.5px] font-medium text-success flex items-center gap-1">
                                   <Check className="w-3.5 h-3.5" />
                                   <span>已设为本页配图</span>
                                 </span>
@@ -484,7 +484,7 @@ export function SlideInspector({
                                       frag.source_id
                                     )
                                   }
-                                  className="text-[12px] font-medium text-[#1d1d1f] underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                                  className="text-[12px] font-medium text-ink underline underline-offset-2 hover:opacity-70 cursor-pointer"
                                 >
                                   设为本页配图
                                 </button>
@@ -498,18 +498,18 @@ export function SlideInspector({
                     return (
                       <div
                         key={frag.source_id}
-                        className="p-2.5 rounded-xl bg-[#f5f5f7] space-y-1.5 group"
+                        className="p-2.5 rounded-xl bg-canvas space-y-1.5 group"
                       >
                         <div className="flex items-center justify-between gap-2 text-[11.5px]">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <FileText className="w-3.5 h-3.5 text-[#52525b] shrink-0" />
+                            <FileText className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
                             <span
-                              className="font-semibold text-[#1d1d1f] truncate"
+                              className="font-semibold text-ink truncate"
                               title={frag.asset_id}
                             >
                               {formatAssetLabel(frag.asset_id)}
                             </span>
-                            <span className="text-[#71717a] shrink-0">
+                            <span className="text-ink-muted shrink-0">
                               · {frag.location.replace(/^L/, "第 ")} 行
                             </span>
                           </div>
@@ -517,13 +517,13 @@ export function SlideInspector({
                             type="button"
                             onClick={() => onToggleSourceId(frag.source_id)}
                             title="解除关联"
-                            className="text-[#71717a] hover:text-[#d70015] p-0.5 rounded opacity-65 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                            className="text-ink-muted hover:text-danger p-0.5 rounded opacity-65 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        <p className="text-[12px] text-[#3f3f46] leading-relaxed whitespace-pre-wrap line-clamp-3">
+                        <p className="text-[12px] text-ink-secondary leading-relaxed whitespace-pre-wrap line-clamp-3">
                           {excerpt || "（该文本切片为空）"}
                         </p>
 
@@ -532,7 +532,7 @@ export function SlideInspector({
                             <button
                               type="button"
                               onClick={() => fillFromExcerpt("summary", excerpt)}
-                              className="text-[#1d1d1f] font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                              className="text-ink font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
                             >
                               {layout === "two_column" ? "填入左栏" : "填入正文"}
                             </button>
@@ -544,7 +544,7 @@ export function SlideInspector({
                                   onClick={() =>
                                     fillFromExcerpt("column_right", excerpt)
                                   }
-                                  className="text-[#1d1d1f] font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                                  className="text-ink font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
                                 >
                                   填入右栏
                                 </button>
@@ -558,7 +558,7 @@ export function SlideInspector({
                 </div>
               ) : (
                 <div className="space-y-2 pt-0.5">
-                  <p className="text-[12px] text-[#52525b] leading-relaxed">
+                  <p className="text-[12px] text-ink-secondary leading-relaxed">
                     {item.source_ids.length > 0
                       ? "未检索到对应素材切片，可重新选择关联。"
                       : "关联原始素材切片或配图后，随时对照原文并标记为「依据充分」。"}
@@ -567,7 +567,7 @@ export function SlideInspector({
                     <button
                       type="button"
                       onClick={() => setSourcePickerOpen(true)}
-                      className="px-3 py-1 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12px] font-medium transition-colors cursor-pointer"
+                      className="px-3 py-1 rounded-full bg-ink hover:bg-ink-hover text-white text-[12px] font-medium transition-colors cursor-pointer"
                     >
                       选择关联素材
                     </button>
@@ -584,7 +584,7 @@ export function SlideInspector({
           <div className="space-y-1.5">
             <label
               htmlFor="input-title"
-              className="block text-[12px] font-semibold text-[#27272a]"
+              className="block text-[12px] font-semibold text-ink"
             >
               幻灯片标题
             </label>
@@ -594,14 +594,14 @@ export function SlideInspector({
               value={item.title}
               onChange={(e) => onUpdateField("title", e.target.value)}
               placeholder="输入本页主标题…"
-              className={`w-full text-[18px] font-semibold tracking-[-0.02em] text-[#1d1d1f] placeholder-[#a1a1aa] bg-white rounded-xl px-3.5 py-2.5 border outline-none transition-all leading-snug ${
+              className={`w-full text-[18px] font-semibold tracking-[-0.02em] text-ink placeholder:text-ink-muted bg-white rounded-xl px-3.5 py-2.5 border outline-none transition-all leading-snug ${
                 missingTitle
-                  ? "border-[#ff3b30]/70 focus:border-[#d70015]"
-                  : "border-black/[0.12] hover:border-black/[0.22] focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.06]"
+                  ? "border-danger/70 focus:border-danger"
+                  : "border-black/[0.12] hover:border-black/[0.22] focus:border-ink focus:ring-4 focus:ring-black/[0.06]"
               }`}
             />
             {missingTitle && (
-              <p className="text-[12px] text-[#c02620]">标题不能为空</p>
+              <p className="text-[12px] text-danger">标题不能为空</p>
             )}
           </div>
 
@@ -611,7 +611,7 @@ export function SlideInspector({
               <div className="space-y-1.5">
                 <label
                   htmlFor="input-summary"
-                  className="block text-[12px] font-semibold text-[#27272a]"
+                  className="block text-[12px] font-semibold text-ink"
                 >
                   左栏内容
                 </label>
@@ -628,7 +628,7 @@ export function SlideInspector({
                 <div className="flex items-center justify-between gap-2">
                   <label
                     htmlFor="input-col-right"
-                    className="block text-[12px] font-semibold text-[#27272a]"
+                    className="block text-[12px] font-semibold text-ink"
                   >
                     右栏内容
                   </label>
@@ -636,7 +636,7 @@ export function SlideInspector({
                     <button
                       type="button"
                       onClick={onSplitTwoColumn}
-                      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-[#1d1d1f] underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink underline underline-offset-2 hover:opacity-70 cursor-pointer"
                     >
                       <Columns2 className="w-3 h-3" />
                       <span>从左栏拆分后半段</span>
@@ -650,19 +650,19 @@ export function SlideInspector({
                   placeholder="输入右栏对比内容…"
                   onChange={(val) => onUpdateField("column_right", val)}
                   className={`${primaryInputBase} ${
-                    missingColRight ? "!border-[#d97706]/70" : ""
+                    missingColRight ? "!border-warning-dot/70" : ""
                   }`}
                 />
                 {missingColRight && (
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                    <p className="text-[12px] text-[#b45309]">
+                    <p className="text-[12px] text-warning">
                       双栏版式需填写右栏内容
                     </p>
                     {canSplitSummary && (
                       <button
                         type="button"
                         onClick={onSplitTwoColumn}
-                        className="px-2.5 py-1 rounded-full bg-[#1d1d1f] text-white text-[11.5px] font-medium hover:bg-[#323236] transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-full bg-ink text-white text-[11.5px] font-medium hover:bg-ink-hover transition-colors cursor-pointer"
                       >
                         一键拆入右栏
                       </button>
@@ -676,7 +676,7 @@ export function SlideInspector({
               <div className="space-y-1.5">
                 <label
                   htmlFor="input-summary"
-                  className="block text-[12px] font-semibold text-[#27272a]"
+                  className="block text-[12px] font-semibold text-ink"
                 >
                   左侧说明文案
                 </label>
@@ -693,13 +693,13 @@ export function SlideInspector({
               {/* Visual Thumbnail Image Picker */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[12px] font-semibold text-[#27272a]">
+                  <span className="text-[12px] font-semibold text-ink">
                     右侧配图
                   </span>
                   <button
                     type="button"
                     onClick={onUploadClick}
-                    className="text-[12px] text-[#1d1d1f] underline underline-offset-2 hover:opacity-70 font-medium cursor-pointer"
+                    className="text-[12px] text-ink underline underline-offset-2 hover:opacity-70 font-medium cursor-pointer"
                   >
                     + 上传图片
                   </button>
@@ -719,11 +719,11 @@ export function SlideInspector({
                           title={img.asset_id}
                           className={`group rounded-xl overflow-hidden bg-white p-1.5 text-left transition-all cursor-pointer ${
                             selected
-                              ? "ring-2 ring-[#1d1d1f]"
+                              ? "ring-2 ring-ink"
                               : "ring-1 ring-black/[0.1] hover:ring-black/25"
                           }`}
                         >
-                          <div className="aspect-[16/10] rounded-lg bg-[#f5f5f7] overflow-hidden flex items-center justify-center mb-1">
+                          <div className="aspect-[16/10] rounded-lg bg-canvas overflow-hidden flex items-center justify-center mb-1">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={`/api/projects/${pid}/assets/${encodeURIComponent(
@@ -733,7 +733,7 @@ export function SlideInspector({
                               className="w-full h-full object-contain"
                             />
                           </div>
-                          <div className="text-[11px] text-[#1d1d1f] truncate px-0.5 font-medium">
+                          <div className="text-[11px] text-ink truncate px-0.5 font-medium">
                             {formatAssetLabel(img.asset_id)}
                           </div>
                         </button>
@@ -744,9 +744,9 @@ export function SlideInspector({
                   <button
                     type="button"
                     onClick={onUploadClick}
-                    className="w-full py-5 px-3 rounded-2xl border border-dashed border-black/[0.18] hover:border-[#1d1d1f] bg-white flex flex-col items-center justify-center gap-1.5 text-[#52525b] hover:text-[#1d1d1f] transition-colors cursor-pointer"
+                    className="w-full py-5 px-3 rounded-2xl border border-dashed border-black/[0.18] hover:border-ink bg-white flex flex-col items-center justify-center gap-1.5 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-full bg-[#f5f5f7] flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full bg-canvas flex items-center justify-center">
                       <Plus className="w-4 h-4" />
                     </div>
                     <span className="text-[12.5px] font-medium">
@@ -756,7 +756,7 @@ export function SlideInspector({
                 )}
 
                 {missingImage && (
-                  <p className="text-[12px] text-[#b45309] flex items-center gap-1">
+                  <p className="text-[12px] text-warning flex items-center gap-1">
                     <ImageIcon className="w-3.5 h-3.5 shrink-0" />
                     <span>请选择一张项目配图后保存</span>
                   </p>
@@ -767,7 +767,7 @@ export function SlideInspector({
             <div className="space-y-1.5">
               <label
                 htmlFor="input-summary"
-                className="block text-[12px] font-semibold text-[#27272a]"
+                className="block text-[12px] font-semibold text-ink"
               >
                 {layout === "bullets"
                   ? "分点要点（每行一条）"
@@ -788,11 +788,11 @@ export function SlideInspector({
                 }
                 onChange={(val) => onUpdateField("summary", val)}
                 className={`${primaryInputBase} ${
-                  missingSummary ? "!border-[#ff3b30]/70" : ""
+                  missingSummary ? "!border-danger/70" : ""
                 }`}
               />
               {missingSummary && (
-                <p className="text-[12px] text-[#c02620]">正文内容不能为空</p>
+                <p className="text-[12px] text-danger">正文内容不能为空</p>
               )}
             </div>
           )}
@@ -800,7 +800,7 @@ export function SlideInspector({
           {/* Lightweight Inline AI Refine Action Strip (layout-aware, only relevant actions) */}
           <div className="space-y-2 pt-0.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-[#71717a] mr-0.5">
+              <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-muted mr-0.5">
                 <Sparkles className="w-3 h-3" />
                 <span>精修</span>
               </span>
@@ -808,7 +808,7 @@ export function SlideInspector({
                 type="button"
                 disabled={Boolean(refiningMode)}
                 onClick={() => void triggerRefine("concise")}
-                className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+                className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-ink text-ink hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
               >
                 {refiningMode === "concise"
                   ? "处理中…"
@@ -821,7 +821,7 @@ export function SlideInspector({
                   type="button"
                   disabled={Boolean(refiningMode)}
                   onClick={() => void triggerRefine("bullets")}
-                  className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+                  className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-ink text-ink hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
                 >
                   {refiningMode === "bullets" ? "提炼中…" : "转分点"}
                 </button>
@@ -831,7 +831,7 @@ export function SlideInspector({
                   type="button"
                   disabled={Boolean(refiningMode)}
                   onClick={() => void triggerRefine("two_column")}
-                  className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-[#1d1d1f] text-[#27272a] hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
+                  className="px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-ink text-ink hover:text-white text-[11.5px] font-medium transition-colors cursor-pointer disabled:opacity-40"
                 >
                   {refiningMode === "two_column" ? "拆分中…" : "转双栏"}
                 </button>
@@ -841,8 +841,8 @@ export function SlideInspector({
                 onClick={() => setCustomOpen((v) => !v)}
                 className={`px-2.5 py-1 rounded-full text-[11.5px] font-medium transition-colors cursor-pointer ${
                   customOpen
-                    ? "bg-[#1d1d1f] text-white"
-                    : "bg-black/[0.05] hover:bg-black/[0.1] text-[#27272a]"
+                    ? "bg-ink text-white"
+                    : "bg-black/[0.05] hover:bg-black/[0.1] text-ink"
                 }`}
               >
                 自定义
@@ -850,7 +850,7 @@ export function SlideInspector({
             </div>
 
             {refineNotice && (
-              <div className="text-[12px] text-[#52525b] px-1">
+              <div className="text-[12px] text-ink-secondary px-1">
                 {refineNotice}
               </div>
             )}
@@ -869,13 +869,13 @@ export function SlideInspector({
                   value={customInstruction}
                   onChange={(e) => setCustomInstruction(e.target.value)}
                   placeholder="输入修改要求（如：更专业简洁、突出关键数据）…"
-                  className="flex-1 min-w-0 text-[12.5px] text-[#1d1d1f] placeholder-[#a1a1aa] bg-white rounded-xl px-3 py-1.5 border border-black/[0.12] focus:border-[#1d1d1f] outline-none"
+                  className="flex-1 min-w-0 text-[12.5px] text-ink placeholder:text-ink-muted bg-white rounded-xl px-3 py-1.5 border border-black/[0.12] focus:border-ink outline-none"
                   autoFocus
                 />
                 <button
                   type="submit"
                   disabled={!customInstruction.trim() || Boolean(refiningMode)}
-                  className="px-3 py-1.5 rounded-xl bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12px] font-medium cursor-pointer disabled:opacity-40 shrink-0"
+                  className="px-3 py-1.5 rounded-xl bg-ink hover:bg-ink-hover text-white text-[12px] font-medium cursor-pointer disabled:opacity-40 shrink-0"
                 >
                   {refiningMode === "custom" ? "生成中…" : "生成"}
                 </button>
@@ -884,9 +884,9 @@ export function SlideInspector({
 
             {/* Non-Destructive Diff Candidate Card */}
             {refineCandidate && (
-              <div className="p-3.5 rounded-2xl bg-white border border-[#1d1d1f]/20 shadow-[0_4px_16px_rgba(0,0,0,0.06)] space-y-2.5">
+              <div className="p-3.5 rounded-2xl bg-white border border-ink/20 shadow-[0_4px_16px_rgba(0,0,0,0.06)] space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1">
+                  <span className="text-[12px] font-semibold text-ink flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>
                       {refineCandidate.source === "fallback"
@@ -895,31 +895,31 @@ export function SlideInspector({
                     </span>
                   </span>
                   {refineCandidate.layout && refineCandidate.layout !== layout && (
-                    <span className="text-[11px] font-medium text-[#27272a] bg-[#f5f5f7] px-2 py-0.5 rounded-full border border-black/[0.08]">
+                    <span className="text-[11px] font-medium text-ink bg-canvas px-2 py-0.5 rounded-full border border-black/[0.08]">
                       切为：{LAYOUT_LABELS[refineCandidate.layout] || refineCandidate.layout}
                     </span>
                   )}
                 </div>
 
                 {refineCandidate.rationale && (
-                  <p className="text-[11.5px] text-[#52525b] leading-snug">
+                  <p className="text-[11.5px] text-ink-secondary leading-snug">
                     {refineCandidate.rationale}
                   </p>
                 )}
 
-                <div className="p-2.5 rounded-xl bg-[#fafafa] border border-black/[0.07] space-y-1.5 text-[12.5px]">
+                <div className="p-2.5 rounded-xl bg-surface-subtle border border-black/[0.07] space-y-1.5 text-[12.5px]">
                   {refineCandidate.title !== item.title && (
-                    <div className="font-semibold text-[#1d1d1f] pb-1 border-b border-black/[0.06]">
+                    <div className="font-semibold text-ink pb-1 border-b border-black/[0.06]">
                       标题：{refineCandidate.title}
                     </div>
                   )}
-                  <div className="text-[#1d1d1f] whitespace-pre-wrap leading-relaxed">
+                  <div className="text-ink whitespace-pre-wrap leading-relaxed">
                     {refineCandidate.summary}
                   </div>
                   {refineCandidate.layout === "two_column" &&
                     refineCandidate.column_right && (
-                      <div className="pt-1.5 border-t border-black/[0.06] text-[#1d1d1f] whitespace-pre-wrap leading-relaxed">
-                        <span className="text-[11px] font-semibold text-[#52525b] block mb-0.5">
+                      <div className="pt-1.5 border-t border-black/[0.06] text-ink whitespace-pre-wrap leading-relaxed">
+                        <span className="text-[11px] font-semibold text-ink-secondary block mb-0.5">
                           右栏对比：
                         </span>
                         {refineCandidate.column_right}
@@ -931,7 +931,7 @@ export function SlideInspector({
                   <button
                     type="button"
                     onClick={() => setRefineCandidate(null)}
-                    className="px-3 py-1 rounded-full text-[12px] font-medium text-[#52525b] hover:text-[#1d1d1f] cursor-pointer"
+                    className="px-3 py-1 rounded-full text-[12px] font-medium text-ink-secondary hover:text-ink cursor-pointer"
                   >
                     放弃
                   </button>
@@ -941,7 +941,7 @@ export function SlideInspector({
                       onApplyRefineCandidate(refineCandidate);
                       setRefineCandidate(null);
                     }}
-                    className="px-3.5 py-1 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[12px] font-medium transition-colors cursor-pointer"
+                    className="px-3.5 py-1 rounded-full bg-ink hover:bg-ink-hover text-white text-[12px] font-medium transition-colors cursor-pointer"
                   >
                     确认应用
                   </button>
@@ -959,17 +959,17 @@ export function SlideInspector({
             className="w-full flex items-center justify-between gap-2 text-left group cursor-pointer"
           >
             <div className="min-w-0 flex items-center gap-2">
-              <span className="text-[12px] font-medium text-[#71717a] group-hover:text-[#1d1d1f] transition-colors shrink-0">
+              <span className="text-[12px] font-medium text-ink-muted group-hover:text-ink transition-colors shrink-0">
                 演讲者备注
               </span>
               {!notesOpen && item.speaker_notes && (
-                <span className="text-[11.5px] text-[#a1a1aa] truncate">
+                <span className="text-[11.5px] text-ink-muted truncate">
                   {item.speaker_notes}
                 </span>
               )}
             </div>
             <ChevronDown
-              className={`w-3.5 h-3.5 text-[#a1a1aa] group-hover:text-[#1d1d1f] shrink-0 transition-transform ${
+              className={`w-3.5 h-3.5 text-ink-muted group-hover:text-ink shrink-0 transition-transform ${
                 notesOpen ? "rotate-180" : ""
               }`}
             />
@@ -981,7 +981,7 @@ export function SlideInspector({
               minRows={2}
               placeholder="写下有实质补充的口播提示，导出时将写入 PowerPoint 备注栏…"
               onChange={(val) => onUpdateField("speaker_notes", val)}
-              className="text-[13px] text-[#27272a] placeholder-[#a1a1aa] bg-white rounded-xl px-3 py-2 border border-black/[0.1] focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.05] outline-none leading-relaxed transition-all"
+              className="text-[13px] text-ink placeholder:text-ink-muted bg-white rounded-xl px-3 py-2 border border-black/[0.1] focus:border-ink focus:ring-4 focus:ring-black/[0.05] outline-none leading-relaxed transition-all"
             />
           )}
         </section>

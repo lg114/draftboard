@@ -1,13 +1,80 @@
 @import "tailwindcss";
 
+@theme {
+  /* ── Surface Hierarchy ──────────────────────────────────────────── */
+  --color-canvas: #f5f5f7;
+  --color-stage: #dcdce1;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #fafafa;
+  --color-surface-muted: #f4f4f5;
+  --color-disabled-bg: #e4e4e7;
+
+  /* ── Ink & Chrome Hierarchy ─────────────────────────────────────── */
+  --color-ink: #1d1d1f;
+  --color-ink-hover: #323236;
+  --color-ink-secondary: #48484a;
+  --color-ink-muted: #71717a;
+  --color-border-dashed: #8e9099;
+
+  /* ── Semantic Status Tokens (1 restrained family each) ──────────── */
+  --color-success: #248a3d;
+  --color-warning: #b45309;
+  --color-warning-dot: #d97706;
+  --color-warning-bg: #fffaf0;
+  --color-danger: #d70015;
+  --color-danger-hover: #b80012;
+  --color-danger-bg: #fff2f2;
+}
+
 @layer base {
   body {
-    background-color: #f5f5f7;
-    color: #1d1d1f;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+}
+
+@layer components {
+  /* Canonical pill input: 12% -> 30% -> full ink focus progression */
+  .ui-pill-input {
+    @apply h-11 rounded-full bg-canvas border border-black/[0.12] px-5 text-ink placeholder:text-ink-muted outline-none
+      transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none
+      hover:border-black/30
+      focus:bg-surface focus:border-ink focus:ring-4 focus:ring-black/[0.08]
+      disabled:opacity-60;
+  }
+
+  /* Canonical box input / textarea for inspector & forms */
+  .ui-field {
+    @apply rounded-xl bg-surface border border-black/[0.12] text-ink placeholder:text-ink-muted outline-none
+      transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none
+      hover:border-black/30
+      focus:border-ink focus:ring-4 focus:ring-black/[0.08]
+      disabled:opacity-60;
+  }
+
+  /* Primary solid monochrome CTA with readable disabled state */
+  .ui-btn-primary {
+    @apply rounded-full bg-ink hover:bg-ink-hover text-white font-medium
+      transition-colors duration-200 motion-reduce:transition-none cursor-pointer
+      disabled:bg-disabled-bg disabled:text-ink-secondary disabled:cursor-not-allowed;
+  }
+
+  /* Secondary outline CTA */
+  .ui-btn-outline {
+    @apply rounded-full bg-surface border border-black/25 hover:border-ink hover:bg-black/[0.04] text-ink font-medium
+      transition-colors duration-200 motion-reduce:transition-none cursor-pointer
+      disabled:bg-surface-muted disabled:border-black/[0.1] disabled:text-ink-muted disabled:cursor-not-allowed;
+  }
+
+  /* Subtle neutral pill button */
+  .ui-btn-subtle {
+    @apply rounded-full bg-canvas hover:bg-black/[0.08] text-ink font-medium
+      transition-colors duration-200 motion-reduce:transition-none cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed;
   }
 }
 
@@ -32,7 +99,7 @@
 }
 
 .thumb-selected {
-  box-shadow: 0 0 0 2px #1d1d1f, 0 4px 14px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 0 0 2px var(--color-ink), 0 4px 14px rgba(0, 0, 0, 0.14);
 }
 
 .thumb-idle {

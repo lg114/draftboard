@@ -810,7 +810,7 @@ export default function ProjectWorkspacePage() {
   const currentItem = outline?.items[selectedIndex];
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-[#f5f5f7] text-[#1d1d1f]">
+    <div className="h-screen overflow-hidden flex flex-col bg-canvas text-ink">
       <input
         ref={fileInputRef}
         type="file"
@@ -872,17 +872,17 @@ export default function ProjectWorkspacePage() {
 
       {/* Calm Floating Toast */}
       {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-[#1d1d1f] whitespace-nowrap">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap">
           {toast}
         </div>
       )}
 
       {/* Quiet Inline Error Strip (Apple-restrained, dismissible, expandable tech log) */}
       {humanizedError && (
-        <div className="border-b border-[#ff3b30]/20 bg-[#fff5f5] px-5 py-2.5 text-[13px] text-[#9b1c1c] shrink-0">
+        <div className="border-b border-danger/20 bg-danger-bg px-5 py-2.5 text-[13px] text-danger shrink-0">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-[#ff3b30] shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-danger shrink-0" />
               <span className="font-medium truncate">{humanizedError}</span>
             </div>
             <div className="flex items-center gap-3 shrink-0 text-[12.5px]">
@@ -890,7 +890,7 @@ export default function ProjectWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => setShowErrorDetail((v) => !v)}
-                  className="text-[#9b1c1c]/80 hover:text-[#9b1c1c] underline cursor-pointer"
+                  className="text-danger/80 hover:text-danger underline cursor-pointer"
                 >
                   {showErrorDetail ? "收起详情" : "详情"}
                 </button>
@@ -901,14 +901,14 @@ export default function ProjectWorkspacePage() {
                   setRawError(null);
                   setShowErrorDetail(false);
                 }}
-                className="text-[#9b1c1c]/70 hover:text-[#9b1c1c] cursor-pointer"
+                className="text-danger/70 hover:text-danger cursor-pointer"
               >
                 关闭
               </button>
             </div>
           </div>
           {showErrorDetail && rawError && (
-            <pre className="max-w-6xl mx-auto mt-2 p-2.5 rounded-xl bg-white/80 text-[11.5px] font-mono text-[#7f1d1d] whitespace-pre-wrap overflow-x-auto">
+            <pre className="max-w-6xl mx-auto mt-2 p-2.5 rounded-xl bg-surface/80 text-[11.5px] font-mono text-danger whitespace-pre-wrap overflow-x-auto">
               {rawError}
             </pre>
           )}

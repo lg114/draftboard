@@ -112,7 +112,7 @@ function SlideCardPreview({
   // Tier 1: Real rendered cover PNG (when exported & synced)
   if (project.preview_cover_url && !imgFailed) {
     return (
-      <div className="w-full h-full bg-[#f5f5f7] relative">
+      <div className="w-full h-full bg-canvas relative">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={project.preview_cover_url}
@@ -320,27 +320,27 @@ function SlideCardPreview({
   // Tier 3: Materials uploaded, outline not generated yet
   if (project.materials_count > 0) {
     return (
-      <div className="w-full h-full bg-[#f7f7f8] p-4 flex flex-col justify-center select-none">
-        <div className="border border-dashed border-black/[0.12] rounded-xl bg-white/70 px-4 py-3.5 space-y-2">
-          <div className="text-[11px] font-medium text-[#52525b]">
+      <div className="w-full h-full bg-surface-subtle p-4 flex flex-col justify-center select-none">
+        <div className="border border-dashed border-black/[0.12] rounded-xl bg-surface/70 px-4 py-3.5 space-y-2">
+          <div className="text-[11px] font-medium text-ink-secondary">
             已导入素材 · 等待生成大纲
           </div>
           <div className="space-y-1.5">
             {project.material_names.slice(0, 3).map((fname) => (
               <div
                 key={fname}
-                className="flex items-center gap-2 text-[12px] text-[#27272a]"
+                className="flex items-center gap-2 text-[12px] text-ink"
               >
                 {isImageFilename(fname) ? (
-                  <ImageIcon className="w-3.5 h-3.5 text-[#52525b] shrink-0" />
+                  <ImageIcon className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
                 ) : (
-                  <FileText className="w-3.5 h-3.5 text-[#52525b] shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
                 )}
                 <span className="truncate">{fname}</span>
               </div>
             ))}
             {project.materials_count > 3 && (
-              <div className="text-[11px] text-[#52525b] pl-5">
+              <div className="text-[11px] text-ink-secondary pl-5">
                 另有 {project.materials_count - 3} 份素材
               </div>
             )}
@@ -352,11 +352,11 @@ function SlideCardPreview({
 
   // Tier 4: Empty blank canvas
   return (
-    <div className="w-full h-full bg-[#f7f7f8] p-5 flex items-center justify-center select-none">
+    <div className="w-full h-full bg-surface-subtle p-5 flex items-center justify-center select-none">
       <div className="w-full h-full border border-dashed border-black/[0.12] rounded-xl flex flex-col items-center justify-center gap-2">
         <div className="w-12 h-1.5 rounded-full bg-black/[0.08]" />
         <div className="w-20 h-1.5 rounded-full bg-black/[0.05]" />
-        <span className="text-[12px] text-[#52525b] pt-1">空白画布</span>
+        <span className="text-[12px] text-ink-secondary pt-1">空白画布</span>
       </div>
     </div>
   );
@@ -546,7 +546,7 @@ export default function ProjectsPage() {
   }, [projects, search]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f5f5f7] text-[#1d1d1f]">
+    <div className="min-h-screen flex flex-col bg-canvas text-ink">
       {/* Monochrome Translucent Header */}
       <header className="h-[52px] apple-glass border-b border-black/[0.07] px-6 flex items-center justify-between gap-4 sticky top-0 z-30">
         <div className="flex items-center gap-2.5">
@@ -557,7 +557,7 @@ export default function ProjectsPage() {
           >
             <BrandLogo className="w-7 h-7" />
           </Link>
-          <span className="font-semibold text-[15px] tracking-[-0.015em] text-[#1d1d1f]">
+          <span className="font-semibold text-[15px] tracking-[-0.015em] text-ink">
             Draftboard
           </span>
         </div>
@@ -573,8 +573,8 @@ export default function ProjectsPage() {
               }}
               className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
                 showCreate
-                  ? "bg-transparent text-[#1d1d1f] ring-1 ring-black/15 hover:bg-black/[0.05]"
-                  : "bg-[#1d1d1f] hover:bg-[#323236] text-white"
+                  ? "bg-transparent text-ink ring-1 ring-black/15 hover:bg-black/[0.05]"
+                  : "bg-ink hover:bg-ink-hover text-white"
               }`}
             >
               {showCreate ? (
@@ -597,11 +597,11 @@ export default function ProjectsPage() {
         {/* Clean Section Heading (no slogan) */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-baseline gap-2.5">
-            <h1 className="text-[28px] font-semibold tracking-[-0.03em] text-[#1d1d1f]">
+            <h1 className="text-[28px] font-semibold tracking-[-0.03em] text-ink">
               文稿
             </h1>
             {projects.length > 0 && (
-              <span className="text-[14px] text-[#52525b] tabular-nums">
+              <span className="text-[14px] text-ink-secondary tabular-nums">
                 {projects.length}
               </span>
             )}
@@ -609,12 +609,12 @@ export default function ProjectsPage() {
 
           {projects.length > 3 && (
             <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3.5 top-2.5 text-[#52525b]" />
+              <Search className="w-4 h-4 absolute left-3.5 top-2.5 text-ink-secondary" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索文稿…"
-                className="w-full text-[13.5px] bg-white border border-black/[0.1] rounded-full pl-9 pr-4 py-1.5 text-[#1d1d1f] placeholder-[#71717a] focus:outline-none focus:border-[#1d1d1f] transition-colors"
+                className="w-full text-[13.5px] bg-surface border border-black/[0.12] rounded-full pl-9 pr-4 py-1.5 text-ink placeholder:text-ink-muted hover:border-black/30 focus:outline-none focus:border-ink transition-colors"
               />
             </div>
           )}
@@ -622,8 +622,8 @@ export default function ProjectsPage() {
 
         {/* Inline Creation Sheet */}
         {showCreate && (
-          <section className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.05)] max-w-2xl space-y-4">
-            <div className="text-[15px] font-semibold text-[#1d1d1f]">
+          <section className="bg-surface rounded-2xl p-6 border border-black/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.05)] max-w-2xl space-y-4">
+            <div className="text-[15px] font-semibold text-ink">
               新建演示文稿
             </div>
             <form onSubmit={handleCreate} className="space-y-3">
@@ -639,13 +639,13 @@ export default function ProjectsPage() {
                   }}
                   disabled={loading}
                   autoFocus
-                  className="flex-1 h-11 rounded-full bg-[#f5f5f7] border border-black/[0.12] px-5 text-[15px] text-[#1d1d1f] placeholder-[#71717a] outline-none transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none hover:border-black/30 focus:bg-white focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.08] disabled:opacity-60"
+                  className="ui-pill-input flex-1 text-[15px]"
                 />
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="submit"
                     disabled={loading || !nameInput.trim()}
-                    className="h-11 px-6 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[14px] font-medium transition-colors duration-200 shrink-0 cursor-pointer disabled:bg-[#e4e4e7] disabled:text-[#52525b] disabled:cursor-not-allowed"
+                    className="ui-btn-primary h-11 px-6 text-[14px] shrink-0"
                   >
                     {loading ? "创建中…" : "创建并打开"}
                   </button>
@@ -655,7 +655,7 @@ export default function ProjectsPage() {
                       setShowCreate(false);
                       setError("");
                     }}
-                    className="h-11 px-3 rounded-full text-[14px] font-medium text-[#52525b] hover:text-[#1d1d1f] hover:bg-black/[0.04] transition-colors shrink-0 cursor-pointer"
+                    className="h-11 px-3 rounded-full text-[14px] font-medium text-ink-secondary hover:text-ink hover:bg-black/[0.04] transition-colors shrink-0 cursor-pointer"
                   >
                     取消
                   </button>
@@ -663,23 +663,23 @@ export default function ProjectsPage() {
               </div>
 
               {nameInput.trim() && (
-                <div className="flex items-center justify-between text-[12.5px] text-[#52525b] px-1">
+                <div className="flex items-center justify-between text-[12.5px] text-ink-secondary px-1">
                   <div className="flex items-center gap-2 font-mono">
                     <span>标识:</span>
                     {isCustomizingId ? (
                       <input
                         value={customId}
                         onChange={(e) => setCustomId(e.target.value)}
-                        className="bg-[#f5f5f7] border border-black/15 rounded-lg px-2 py-0.5 text-[12.5px] text-[#1d1d1f] outline-none focus:border-[#1d1d1f]"
+                        className="bg-canvas border border-black/15 rounded-lg px-2 py-0.5 text-[12.5px] text-ink outline-none focus:border-ink"
                       />
                     ) : (
-                      <span className="text-[#1d1d1f]">{effectiveId}</span>
+                      <span className="text-ink">{effectiveId}</span>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsCustomizingId((v) => !v)}
-                    className="text-[#1d1d1f] underline underline-offset-2 hover:opacity-75 cursor-pointer"
+                    className="text-ink underline underline-offset-2 hover:opacity-75 cursor-pointer"
                   >
                     {isCustomizingId ? "自动生成" : "自定义标识"}
                   </button>
@@ -687,7 +687,7 @@ export default function ProjectsPage() {
               )}
 
               {error && (
-                <div className="text-[13px] text-[#d70015]">{error}</div>
+                <div className="text-[13px] text-danger">{error}</div>
               )}
             </form>
           </section>
@@ -709,7 +709,7 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={p.project_id}
-                  className="group bg-white rounded-[16px] border border-black/[0.1] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
+                  className="group bg-surface rounded-[16px] border border-black/[0.1] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
                 >
                   {/* Top: Pure 16:9 Slide Content Preview */}
                   <Link
@@ -734,11 +734,11 @@ export default function ProjectsPage() {
                             value={editNameValue}
                             onChange={(e) => setEditNameValue(e.target.value)}
                             autoFocus
-                            className="flex-1 min-w-0 text-[14.5px] font-semibold bg-white border border-[#1d1d1f] rounded-lg px-2.5 py-1 text-[#1d1d1f] outline-none"
+                            className="flex-1 min-w-0 text-[14.5px] font-semibold bg-surface border border-ink rounded-lg px-2.5 py-1 text-ink outline-none"
                           />
                           <button
                             type="submit"
-                            className="p-1.5 rounded-lg bg-[#1d1d1f] text-white cursor-pointer"
+                            className="p-1.5 rounded-lg bg-ink text-white cursor-pointer"
                             title="保存名称"
                           >
                             <Check className="w-3.5 h-3.5" />
@@ -746,29 +746,29 @@ export default function ProjectsPage() {
                           <button
                             type="button"
                             onClick={() => setEditingId(null)}
-                            className="p-1.5 rounded-lg bg-black/[0.06] text-[#3f3f46] cursor-pointer"
+                            className="p-1.5 rounded-lg bg-black/[0.06] text-ink-secondary cursor-pointer"
                             title="取消"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </form>
                       ) : confirmDeleteId === p.project_id ? (
-                        <div className="flex items-center justify-between gap-2 py-0.5 px-2 rounded-lg bg-[#fff2f2] border border-[#ff3b30]/20">
-                          <span className="text-[12.5px] font-medium text-[#c02620] truncate">
+                        <div className="flex items-center justify-between gap-2 py-0.5 px-2 rounded-lg bg-danger-bg border border-danger/20">
+                          <span className="text-[12.5px] font-medium text-danger truncate">
                             确认删除此文稿？
                           </span>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
                               onClick={() => void handleDelete(p.project_id)}
-                              className="px-2.5 py-0.5 rounded-full bg-[#d70015] text-white text-[12px] font-medium cursor-pointer"
+                              className="px-2.5 py-0.5 rounded-full bg-danger hover:bg-danger-hover text-white text-[12px] font-medium cursor-pointer"
                             >
                               删除
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="px-2 py-0.5 rounded-full text-[#3f3f46] hover:text-[#1d1d1f] text-[12px] cursor-pointer"
+                              className="px-2 py-0.5 rounded-full text-ink-secondary hover:text-ink text-[12px] cursor-pointer"
                             >
                               取消
                             </button>
@@ -778,7 +778,7 @@ export default function ProjectsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <Link
                             href={`/p/${p.project_id}`}
-                            className="text-[15.5px] font-semibold text-[#1d1d1f] hover:opacity-70 transition-opacity truncate"
+                            className="text-[15.5px] font-semibold text-ink hover:opacity-70 transition-opacity truncate"
                           >
                             {p.name}
                           </Link>
@@ -790,7 +790,7 @@ export default function ProjectsPage() {
                                 setEditingId(p.project_id);
                                 setEditNameValue(p.name);
                               }}
-                              className="text-[#52525b] hover:text-[#1d1d1f] p-1 rounded-full hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
+                              className="text-ink-secondary hover:text-ink p-1 rounded-full hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
                               title="重命名文稿"
                             >
                               <Pencil className="w-3.5 h-3.5" />
@@ -801,7 +801,7 @@ export default function ProjectsPage() {
                                 setEditingId(null);
                                 setConfirmDeleteId(p.project_id);
                               }}
-                              className="text-[#52525b] hover:text-[#d70015] p-1 rounded-full hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
+                              className="text-ink-secondary hover:text-danger p-1 rounded-full hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
                               title="删除文稿"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -810,7 +810,7 @@ export default function ProjectsPage() {
                               <a
                                 href={`/api/projects/${p.project_id}/download`}
                                 download
-                                className="text-[#52525b] hover:text-[#1d1d1f] p-1 rounded-full hover:bg-black/[0.06] transition-colors"
+                                className="text-ink-secondary hover:text-ink p-1 rounded-full hover:bg-black/[0.06] transition-colors"
                                 title="下载 PPTX"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -821,7 +821,7 @@ export default function ProjectsPage() {
                       )}
 
                       {/* Single consolidated high-contrast metadata line */}
-                      <div className="text-[13px] text-[#48484a] tabular-nums truncate">
+                      <div className="text-[13px] text-ink-secondary tabular-nums truncate">
                         {metaParts.join(" · ")}
                         {p.insufficient_evidence_count > 0 && (
                           <span> · {p.insufficient_evidence_count} 页待补依据</span>
@@ -840,7 +840,7 @@ export default function ProjectsPage() {
                             key={idx}
                             className={`h-[3px] flex-1 rounded-full transition-colors ${
                               idx <= stageInfo.step
-                                ? "bg-[#1d1d1f]"
+                                ? "bg-ink"
                                 : "bg-black/[0.11]"
                             }`}
                           />
@@ -849,8 +849,8 @@ export default function ProjectsPage() {
                       <span
                         className={`text-[12.5px] font-medium tabular-nums shrink-0 inline-flex items-center gap-1 ${
                           stageInfo.step === 4
-                            ? "text-[#1d1d1f]"
-                            : "text-[#48484a]"
+                            ? "text-ink"
+                            : "text-ink-secondary"
                         }`}
                       >
                         {stageInfo.step === 4 && (
@@ -867,14 +867,14 @@ export default function ProjectsPage() {
             })}
           </section>
           ) : (
-            <section className="bg-white rounded-2xl border border-black/[0.08] p-10 text-center space-y-3">
-              <div className="text-[14.5px] font-medium text-[#1d1d1f]">
+            <section className="bg-surface rounded-2xl border border-black/[0.08] p-10 text-center space-y-3">
+              <div className="text-[14.5px] font-medium text-ink">
                 未找到包含「{search}」的文稿
               </div>
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="px-4 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13px] font-medium transition-colors cursor-pointer"
+                className="ui-btn-primary px-4 py-1.5 text-[13px]"
               >
                 清除搜索
               </button>
@@ -882,12 +882,12 @@ export default function ProjectsPage() {
           )
         ) : loaded ? (
           /* Clean Monochrome Empty Library State */
-          <section className="bg-white rounded-[20px] p-10 sm:p-14 border border-black/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] max-w-xl mx-auto text-center space-y-6">
+          <section className="bg-surface rounded-[20px] p-10 sm:p-14 border border-black/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] max-w-xl mx-auto text-center space-y-6">
             <div className="space-y-2">
-              <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">
+              <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">
                 创建你的第一份演示文稿
               </h2>
-              <p className="text-[14px] text-[#48484a] leading-relaxed">
+              <p className="text-[14px] text-ink-secondary leading-relaxed">
                 命名一个项目，导入笔记或图片，生成可溯源大纲并导出 PPTX。
               </p>
             </div>
@@ -908,18 +908,18 @@ export default function ProjectsPage() {
                   }}
                   disabled={loading}
                   autoFocus
-                  className="flex-1 h-11 rounded-full bg-[#f5f5f7] border border-black/[0.12] px-5 text-[15px] text-[#1d1d1f] placeholder-[#71717a] outline-none transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none hover:border-black/30 focus:bg-white focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.08] disabled:opacity-60"
+                  className="ui-pill-input flex-1 text-[15px]"
                 />
                 <button
                   type="submit"
                   disabled={loading || !nameInput.trim()}
-                  className="h-11 px-6 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[14px] font-medium transition-colors duration-200 shrink-0 cursor-pointer disabled:bg-[#e4e4e7] disabled:text-[#52525b] disabled:cursor-not-allowed"
+                  className="ui-btn-primary h-11 px-6 text-[14px] shrink-0"
                 >
                   {loading ? "创建中…" : "开始创作"}
                 </button>
               </div>
               {error && (
-                <div className="text-[13px] text-[#d70015]">{error}</div>
+                <div className="text-[13px] text-danger">{error}</div>
               )}
             </form>
           </section>
