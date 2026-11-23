@@ -17,7 +17,6 @@ import draftboard.api as api_module
 import draftboard.storage as storage_module
 import draftboard.tools as tools_module
 from draftboard.chat_agent import StudioTurnState, build_studio_tools
-from draftboard.measure import load_fonts
 from draftboard.models import (
     CanvasElement,
     EvidenceStatus,
@@ -130,8 +129,8 @@ def test_resolve_canvas_hex_all_themes():
         assert resolve_canvas_hex("#12AB34", theme, "#FFFFFF") == "#12AB34"
 
 
-def test_measure_custom_slide_catches_bounds_overlap_overflow():
-    fonts = load_fonts()
+def test_measure_custom_slide_catches_bounds_overlap_overflow(font_pair):
+    fonts = font_pair
 
     # 1. Out-of-bounds
     s_oob = Slide(
