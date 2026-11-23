@@ -11,6 +11,7 @@ from agents.tool_context import ToolContext
 from fastapi.testclient import TestClient
 from PIL import Image
 from pptx import Presentation
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 import draftboard.api as api_module
@@ -19,6 +20,7 @@ import draftboard.tools as tools_module
 from draftboard.chat_agent import StudioTurnState, build_studio_tools
 from draftboard.models import (
     CanvasElement,
+    ChartSeries,
     EvidenceStatus,
     Outline,
     OutlineItem,
@@ -466,3 +468,238 @@ def test_api_edit_outline_and_summary_preserve_custom_canvas(tmp_path, monkeypat
     mine = next(p for p in proj_list if p["project_id"] == "api-custom")
     assert mine["cover_slide"]["custom_bg"] == "theme:cover_bg"
     assert len(mine["cover_slide"]["custom_elements"]) == 2
+
+    # GET /api/themes exposes chart_palette for all themes
+    themes_resp = client.get("/api/themes").json()["themes"]
+    assert all(len(t.get("chart_palette") or []) >= 4 for t in themes_resp)
+
+
+def test_measure_table_and_chart_validation(font_pair):
+    # 1. Table row too cramped + chart mismatched series length
+    s_bad = Slide(
+        slide_id="s-data-bad",
+        layout=SlideLayout.CONTENT,
+        elements=[SlideElement(element_id="e1", type="title", content="Bad Data")],
+        custom_elements=[
+            CanvasElement(
+                id="cramped_tbl",
+                kind="table",
+                x=48,
+                y=40,
+                w=400,
+                h=70,  # 70 / 5 rows = 14pt < 20pt
+                headers=["指标", "数值"],
+                rows=[["A", "1"], ["B", "2"], ["C", "3"], ["D", "4"]],
+            ),
+            CanvasElement(
+                id="bad_chart",
+                kind="chart",
+                x=500,
+                y=40,
+                w=400,
+                h=260,
+                chart_type="bar",
+                chart_categories=["Q1", "Q2", "Q3"],
+                chart_series=[ChartSeries(name="ARR", values=[10, 20])],  # len 2 != 3
+            ),
+        ],
+    )
+    resolved, errors = {}, []
+    _measure_custom_slide(s_bad, font_pair, auto_fit=True, resolved=resolved, errors=errors)
+    assert any("[OVERFLOW]" in e and "cramped_tbl" in e for e in errors)
+    assert any("[INVALID_CHART]" in e and "bad_chart" in e for e in errors)
+
+
+def test_native_table_and_all_four_charts_export_and_pdf(tmp_path, monkeypatch, font_files):
+    storage, outline = _seed_project(tmp_path, monkeypatch, font_files, pid="data-viz-deck")
+    state = StudioTurnState(
+        project_id="data-viz-deck",
+        active_theme_id="nordic_pine",
+        auto_fit=True,
+        before_outline_version=outline.outline_version,
+    )
+    tools = build_studio_tools(state)
+
+    # Slide 2: Native editorial table + Vertical clustered bar chart
+    r2 = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 2,
+            "background": "theme:bg",
+            "title": "季度核心指标对比",
+            "elements": [
+                {
+                    "id": "t2_hdr",
+                    "kind": "text",
+                    "x": 48,
+                    "y": 28,
+                    "w": 864,
+                    "h": 48,
+                    "text": "季度核心指标对比",
+                    "font_size": 28,
+                    "bold": True,
+                    "color": "theme:title",
+                },
+                {
+                    "id": "tbl_metrics",
+                    "kind": "table",
+                    "x": 48,
+                    "y": 100,
+                    "w": 416,
+                    "h": 260,
+                    "headers": ["指标", "Q4", "Q1", "环比"],
+                    "rows": [
+                        ["ARR（亿）", "0.85", "1.20", "+42%"],
+                        ["净留存率", "112%", "118%", "+6%"],
+                        ["毛利率", "76%", "78%", "+2%"],
+                        ["获客成本", "1.30", "1.00", "-23%"],
+                    ],
+                    "header_fill": "theme:accent",
+                    "header_color": "theme:cover_title",
+                    "table_font_size": 13,
+                },
+                {
+                    "id": "chart_bar",
+                    "kind": "chart",
+                    "x": 488,
+                    "y": 100,
+                    "w": 424,
+                    "h": 360,
+                    "chart_type": "bar",
+                    "chart_title": "季度营收与毛利趋势",
+                    "chart_categories": ["Q2", "Q3", "Q4", "Q1"],
+                    "chart_series": [
+                        {"name": "营收", "values": [62, 74, 85, 120]},
+                        {"name": "毛利", "values": [46, 56, 65, 94]},
+                    ],
+                    "show_values": True,
+                    "value_suffix": "M",
+                },
+            ],
+        },
+    )
+    assert r2["ok"] is True
+
+    # Slide 3: Horizontal bar chart + Line trend chart
+    r3 = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 3,
+            "background": "theme:bg",
+            "title": "延迟优化与模块耗时",
+            "elements": [
+                {
+                    "id": "t3_hdr",
+                    "kind": "text",
+                    "x": 48,
+                    "y": 28,
+                    "w": 864,
+                    "h": 48,
+                    "text": "接口性能与模块耗时",
+                    "font_size": 28,
+                    "bold": True,
+                    "color": "theme:title",
+                },
+                {
+                    "id": "chart_hbar",
+                    "kind": "chart",
+                    "x": 48,
+                    "y": 104,
+                    "w": 416,
+                    "h": 360,
+                    "chart_type": "hbar",
+                    "chart_title": "各服务 P95 耗时",
+                    "chart_categories": ["网关", "检索", "推理", "导出"],
+                    "chart_series": [{"name": "耗时", "values": [12, 28, 45, 34]}],
+                    "value_suffix": "ms",
+                },
+                {
+                    "id": "chart_line",
+                    "kind": "chart",
+                    "x": 488,
+                    "y": 104,
+                    "w": 424,
+                    "h": 360,
+                    "chart_type": "line",
+                    "chart_title": "平均响应耗时下降曲线",
+                    "chart_categories": ["10月", "11月", "12月", "1月"],
+                    "chart_series": [{"name": "平均耗时", "values": [180, 120, 72, 45]}],
+                    "value_suffix": "ms",
+                },
+            ],
+        },
+    )
+    assert r3["ok"] is True
+
+    # Slide 4: Donut share chart
+    r4 = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 4,
+            "background": "theme:bg",
+            "title": "区域营收结构占比",
+            "elements": [
+                {
+                    "id": "t4_hdr",
+                    "kind": "text",
+                    "x": 48,
+                    "y": 28,
+                    "w": 864,
+                    "h": 48,
+                    "text": "区域营收结构占比",
+                    "font_size": 28,
+                    "bold": True,
+                    "color": "theme:title",
+                },
+                {
+                    "id": "chart_donut",
+                    "kind": "chart",
+                    "x": 220,
+                    "y": 96,
+                    "w": 520,
+                    "h": 390,
+                    "chart_type": "donut",
+                    "chart_title": "2026 Q1 区域收入占比",
+                    "chart_categories": ["中国区", "北美", "欧洲", "亚太"],
+                    "chart_series": [{"name": "占比", "values": [48, 27, 15, 10]}],
+                    "value_suffix": "%",
+                },
+            ],
+        },
+    )
+    assert r4["ok"] is True
+
+    # Export PPTX + PDF + PNG and verify native editable PowerPoint objects!
+    exp = _invoke_tool(tools, "export_deck_now", {})
+    assert exp["ok"] is True
+    pptx_path = list(storage.root.rglob("*.pptx"))[-1]
+    prs = Presentation(str(pptx_path))
+
+    # Inspect Slide 2: native table + column clustered chart
+    s2_tables = [sh.table for sh in prs.slides[1].shapes if sh.has_table]
+    s2_charts = [sh.chart for sh in prs.slides[1].shapes if sh.has_chart]
+    assert len(s2_tables) == 1
+    assert len(s2_tables[0].rows) == 5 and len(s2_tables[0].columns) == 4
+    assert s2_tables[0].cell(1, 3).text.strip() == "+42%"
+    assert len(s2_charts) == 1
+    assert s2_charts[0].chart_type == XL_CHART_TYPE.COLUMN_CLUSTERED
+    assert len(s2_charts[0].plots[0].series) == 2
+
+    # Inspect Slide 3: horizontal bar + line markers
+    s3_types = {sh.chart.chart_type for sh in prs.slides[2].shapes if sh.has_chart}
+    assert XL_CHART_TYPE.BAR_CLUSTERED in s3_types
+    assert XL_CHART_TYPE.LINE_MARKERS in s3_types
+
+    # Inspect Slide 4: doughnut chart
+    s4_charts = [sh.chart for sh in prs.slides[3].shapes if sh.has_chart]
+    assert len(s4_charts) == 1
+    assert s4_charts[0].chart_type == XL_CHART_TYPE.DOUGHNUT
+
+    # Verify ReportLab vector PDF & pypdfium2 PNGs all rendered cleanly
+    pdf_files = list(storage.root.rglob("deck.pdf"))
+    png_files = [p for p in storage.root.rglob("*.png") if p.parent.name != "assets"]
+    assert pdf_files and pdf_files[-1].stat().st_size > 2000
+    assert len(png_files) == 4 and all(p.stat().st_size > 1000 for p in png_files)

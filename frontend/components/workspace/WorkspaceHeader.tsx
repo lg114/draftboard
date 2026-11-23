@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, ChevronDown, Download, Play, RefreshCw, Settings, Sparkles } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Download,
+  Play,
+  Redo2,
+  RefreshCw,
+  Settings,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
 import { ExportFormatMenu } from "./ExportFormatMenu";
@@ -30,6 +40,10 @@ interface WorkspaceHeaderProps {
   activeModelLabel?: string;
   leftOpen: boolean;
   rightOpen: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onToggleLeft: () => void;
   onToggleRight: () => void;
   onToggleChat: () => void;
@@ -61,6 +75,10 @@ export function WorkspaceHeader({
   activeModelLabel = "",
   leftOpen,
   rightOpen,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
   onToggleLeft,
   onToggleRight,
   onToggleChat,
@@ -217,6 +235,31 @@ export function WorkspaceHeader({
                     }`}
                   />
                 </button>
+              )}
+
+              {(onUndo || onRedo) && (
+                <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-black/[0.08]">
+                  <button
+                    type="button"
+                    disabled={!canUndo}
+                    onClick={onUndo}
+                    aria-label="撤销"
+                    title="撤销 (Ctrl/⌘+Z)"
+                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canRedo}
+                    onClick={onRedo}
+                    aria-label="重做"
+                    title="重做 (Ctrl/⌘+Shift+Z)"
+                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
 
               {isVersionOpen && sortedOutlines.length > 0 && (

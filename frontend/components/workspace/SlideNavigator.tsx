@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Outline, OutlineItem, ThemeOption } from "../../lib/api";
 import { AutoScaledCustomSlide } from "./CustomSlideLayer";
 import { inferEffectiveLayout, normalizeEscapedNewlines } from "./layoutUtils";
@@ -12,6 +13,7 @@ interface SlideNavigatorProps {
   issueSlideIndices: Set<number>;
   onSelectIndex: (idx: number) => void;
   onMoveItem: (idx: number, delta: number) => void;
+  onReorderItem?: (fromIdx: number, toIdx: number) => void;
   onDeleteItem: (idx: number) => void;
   onAddItem: () => void;
 }
@@ -216,11 +218,35 @@ export function SlideNavigator({
   issueSlideIndices,
   onSelectIndex,
   onMoveItem,
+  onReorderItem,
   onDeleteItem,
   onAddItem,
 }: SlideNavigatorProps) {
   const sw = activeTheme.swatches;
   const total = outline.items.length;
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    index: number;
+    position: "before" | "after";
+  } | null>(null);
+
+  const handleDrop = (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault();
+    if (dragIdx === null || !onReorderItem) {
+      setDragIdx(null);
+      setDropTarget(null);
+      return;
+    }
+    const pos = dropTarget?.position ?? "before";
+    let dest = pos === "after" ? targetIdx + 1 : targetIdx;
+    if (dragIdx < dest) dest -= 1;
+    dest = Math.max(0, Math.min(total - 1, dest));
+    if (dest !== dragIdx) {
+      onReorderItem(dragIdx, dest);
+    }
+    setDragIdx(null);
+    setDropTarget(null);
+  };
 
   return (
     <aside className="w-[180px] xl:w-[224px] shrink-0 bg-canvas border-r border-black/[0.08] flex flex-col min-h-0">
@@ -235,13 +261,59 @@ export function SlideNavigator({
           const bg = isHero ? sw.cover_bg : sw.bg;
           const hasError = issueSlideIndices.has(idx);
           const needsEvidence = item.evidence_status !== "supported";
+          const isDragging = dragIdx === idx;
+          const showBeforeLine =
+            dragIdx !== null &&
+            dragIdx !== idx &&
+            dropTarget?.index === idx &&
+            dropTarget.position === "before";
+          const showAfterLine =
+            dragIdx !== null &&
+            dragIdx !== idx &&
+            dropTarget?.index === idx &&
+            dropTarget.position === "after";
 
           return (
             <div
               key={item.outline_item_id}
+              draggable={total > 1 && Boolean(onReorderItem)}
+              onDragStart={(e) => {
+                setDragIdx(idx);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", String(idx));
+              }}
+              onDragOver={(e) => {
+                if (dragIdx === null || dragIdx === idx) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pos =
+                  e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                setDropTarget((prev) =>
+                  prev?.index === idx && prev.position === pos
+                    ? prev
+                    : { index: idx, position: pos }
+                );
+              }}
+              onDrop={(e) => handleDrop(e, idx)}
+              onDragEnd={() => {
+                setDragIdx(null);
+                setDropTarget(null);
+              }}
               onClick={() => onSelectIndex(idx)}
-              className="w-full flex items-start gap-2 group cursor-pointer"
+              title={total > 1 ? "点击切换页面，或拖拽调整页序" : undefined}
+              className={`w-full flex items-start gap-2 group relative transition-opacity ${
+                total > 1 && onReorderItem
+                  ? "cursor-grab active:cursor-grabbing"
+                  : "cursor-pointer"
+              } ${isDragging ? "opacity-40" : "opacity-100"}`}
             >
+              {showBeforeLine && (
+                <div className="absolute -top-2 left-5 right-0 h-[2px] rounded-full bg-ink pointer-events-none z-20" />
+              )}
+              {showAfterLine && (
+                <div className="absolute -bottom-2 left-5 right-0 h-[2px] rounded-full bg-ink pointer-events-none z-20" />
+              )}
               <span
                 className={`w-4 text-right pt-0.5 text-[13px] tabular-nums shrink-0 ${
                   active

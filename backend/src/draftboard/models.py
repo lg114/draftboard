@@ -39,12 +39,23 @@ class SourceFragment(BaseModel):
     )
 
 
+class ChartSeries(BaseModel):
+    name: str = Field(description="Series display name")
+    values: list[float] = Field(
+        description="Numeric values aligned 1-to-1 with chart_categories"
+    )
+    color: Optional[str] = Field(
+        None,
+        description="Optional series color ('theme:accent', 'theme:title', or '#RRGGBB')",
+    )
+
+
 class CanvasElement(BaseModel):
     """Native editable freeform canvas primitive in 960x540 pt coordinates."""
 
     id: str = Field(description="Unique element ID within the slide")
-    kind: Literal["text", "card", "line", "image"] = Field(
-        description="Primitive kind: text, card (rounded rect), line, or image"
+    kind: Literal["text", "card", "line", "image", "table", "chart"] = Field(
+        description="Primitive kind: text, card (rounded rect), line, image, table, or chart"
     )
     x: float = Field(description="Left coordinate in pt (0..960)")
     y: float = Field(description="Top coordinate in pt (0..540)")
@@ -93,6 +104,49 @@ class CanvasElement(BaseModel):
     )
     fit: Optional[Literal["contain", "cover"]] = Field(
         None, description="Image fit mode: contain or cover (center-cropped)"
+    )
+
+    # Table fields (kind='table')
+    headers: Optional[list[str]] = Field(
+        None, description="Column headers for table (1..8 columns)"
+    )
+    rows: Optional[list[list[str]]] = Field(
+        None, description="Data rows for table (1..12 rows, each matching header count)"
+    )
+    header_fill: Optional[str] = Field(
+        None, description="Header row background ('theme:surface', 'theme:accent', or '#RRGGBB')"
+    )
+    header_color: Optional[str] = Field(
+        None, description="Header text color ('theme:title', '#FFFFFF', etc.)"
+    )
+    cell_color: Optional[str] = Field(
+        None, description="Body cell text color (default 'theme:body')"
+    )
+    stripe_fill: Optional[str] = Field(
+        None, description="Alternating row subtle tint (default 'theme:surface' or 'transparent')"
+    )
+    table_font_size: Optional[int] = Field(
+        None, ge=10, le=20, description="Table cell font size in pt (default 14)"
+    )
+
+    # Chart fields (kind='chart')
+    chart_type: Optional[Literal["bar", "hbar", "line", "donut"]] = Field(
+        None, description="Chart type: bar (vertical column), hbar (horizontal bar), line, or donut"
+    )
+    chart_title: Optional[str] = Field(
+        None, description="Optional concise title inside the chart box"
+    )
+    chart_categories: Optional[list[str]] = Field(
+        None, description="Category axis / slice labels (1..12 items)"
+    )
+    chart_series: Optional[list[ChartSeries]] = Field(
+        None, description="1..5 numeric data series (donut uses first series)"
+    )
+    show_values: Optional[bool] = Field(
+        None, description="Show data value labels on bars/points/slices (default True)"
+    )
+    value_suffix: Optional[str] = Field(
+        None, description="Optional unit suffix for data labels, e.g. '%', '亿', 'ms'"
     )
 
 

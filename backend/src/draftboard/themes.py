@@ -33,6 +33,13 @@ class ThemeSpec:
     muted_hex: str
     divider_hex: str
     surface_hex: str
+    chart_palette: tuple[str, ...] = (
+        "#0071E3",
+        "#1D1D1F",
+        "#34A853",
+        "#E67E22",
+        "#8E8E93",
+    )
     bold_title: bool = True
     decorative: bool = True
     show_page_number: bool = True
@@ -95,6 +102,7 @@ class ThemeSpec:
                 "divider": self.divider_hex,
                 "surface": self.surface_hex,
             },
+            "chart_palette": list(self.chart_palette),
         }
 
 
@@ -113,6 +121,7 @@ THEMES: dict[str, ThemeSpec] = {
         muted_hex="#6E6E73",
         divider_hex="#E5E5EA",
         surface_hex="#FFFFFF",
+        chart_palette=("#0071E3", "#1D1D1F", "#34A853", "#E67E22", "#8E8E93"),
     ),
     "keynote_dark": ThemeSpec(
         id="keynote_dark",
@@ -128,6 +137,7 @@ THEMES: dict[str, ThemeSpec] = {
         muted_hex="#8E8E93",
         divider_hex="#262629",
         surface_hex="#1C1C1F",
+        chart_palette=("#2997FF", "#E5E5EA", "#30D158", "#FF9F0A", "#8E8E93"),
     ),
     "nordic_pine": ThemeSpec(
         id="nordic_pine",
@@ -143,6 +153,7 @@ THEMES: dict[str, ThemeSpec] = {
         muted_hex="#7E948C",
         divider_hex="#E3EAE6",
         surface_hex="#F2F6F4",
+        chart_palette=("#2E7D63", "#10241E", "#6CA68E", "#C48B45", "#7E948C"),
     ),
     "gallery_sand": ThemeSpec(
         id="gallery_sand",
@@ -158,6 +169,7 @@ THEMES: dict[str, ThemeSpec] = {
         muted_hex="#948E84",
         divider_hex="#E3DDD2",
         surface_hex="#ECE7DD",
+        chart_palette=("#B4533C", "#23221F", "#6B7B6E", "#C7924A", "#948E84"),
     ),
     "default": ThemeSpec(
         id="default",
@@ -173,6 +185,7 @@ THEMES: dict[str, ThemeSpec] = {
         muted_hex="#737373",
         divider_hex="#E5E5E5",
         surface_hex="#FFFFFF",
+        chart_palette=("#2563EB", "#1F2937", "#16A34A", "#D97706", "#6B7280"),
         bold_title=False,
         decorative=False,
         show_page_number=False,

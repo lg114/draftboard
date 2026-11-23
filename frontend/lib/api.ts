@@ -8,9 +8,15 @@ export type OutlineLayout =
   | "text_image"
   | "closing";
 
+export interface ChartSeries {
+  name: string;
+  values: number[];
+  color?: string | null;
+}
+
 export interface CanvasElement {
   id: string;
-  kind: "text" | "card" | "line" | "image";
+  kind: "text" | "card" | "line" | "image" | "table" | "chart";
   x: number;
   y: number;
   w: number;
@@ -28,6 +34,21 @@ export interface CanvasElement {
   line_width?: number | null;
   image_asset_id?: string | null;
   fit?: "contain" | "cover" | null;
+  // Table fields
+  headers?: string[] | null;
+  rows?: string[][] | null;
+  header_fill?: string | null;
+  header_color?: string | null;
+  cell_color?: string | null;
+  stripe_fill?: string | null;
+  table_font_size?: number | null;
+  // Chart fields
+  chart_type?: "bar" | "hbar" | "line" | "donut" | null;
+  chart_title?: string | null;
+  chart_categories?: string[] | null;
+  chart_series?: ChartSeries[] | null;
+  show_values?: boolean | null;
+  value_suffix?: string | null;
 }
 
 export interface OutlineItem {
@@ -62,6 +83,7 @@ export interface ThemeOption {
   name: string;
   description: string;
   swatches: ThemeSwatches;
+  chart_palette?: string[];
 }
 
 export const FALLBACK_THEMES: ThemeOption[] = [
@@ -81,6 +103,7 @@ export const FALLBACK_THEMES: ThemeOption[] = [
       divider: "#E5E5EA",
       surface: "#FFFFFF",
     },
+    chart_palette: ["#0071E3", "#1D1D1F", "#34A853", "#E67E22", "#8E8E93"],
   },
   {
     id: "keynote_dark",
@@ -98,6 +121,7 @@ export const FALLBACK_THEMES: ThemeOption[] = [
       divider: "#262629",
       surface: "#1C1C1F",
     },
+    chart_palette: ["#2997FF", "#E5E5EA", "#30D158", "#FF9F0A", "#8E8E93"],
   },
   {
     id: "nordic_pine",
@@ -115,6 +139,7 @@ export const FALLBACK_THEMES: ThemeOption[] = [
       divider: "#E3EAE6",
       surface: "#F2F6F4",
     },
+    chart_palette: ["#2E7D63", "#10241E", "#6CA68E", "#C48B45", "#7E948C"],
   },
   {
     id: "gallery_sand",
@@ -132,6 +157,7 @@ export const FALLBACK_THEMES: ThemeOption[] = [
       divider: "#E3DDD2",
       surface: "#ECE7DD",
     },
+    chart_palette: ["#B4533C", "#23221F", "#6B7B6E", "#C7924A", "#948E84"],
   },
 ];
 

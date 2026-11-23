@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Trash2, X } from "lucide-react";
 import {
   api,
+  CanvasElement,
   ChatDeckChanges,
   ChatHistoryResponse,
   ChatMessage,
@@ -109,6 +110,9 @@ export default function ProjectWorkspacePage() {
 
   const [outline, setOutline] = useState<Outline | null>(null);
   const [savedOutline, setSavedOutline] = useState<Outline | null>(null);
+  const [undoStack, setUndoStack] = useState<Outline[]>([]);
+  const [redoStack, setRedoStack] = useState<Outline[]>([]);
+  const lastCoalesceRef = useRef<{ key: string; ts: number } | null>(null);
   const [version, setVersion] = useState("");
   const [status, setStatus] = useState("");
   const [rawError, setRawError] = useState<string | null>(null);
@@ -362,6 +366,8 @@ export default function ProjectWorkspacePage() {
       setSourceFragments([]);
       setOutline(null);
       setSavedOutline(null);
+      setUndoStack([]);
+      setRedoStack([]);
       setVersion("");
       setPreview(null);
       setReport(null);
@@ -685,18 +691,81 @@ export default function ProjectWorkspacePage() {
     }
   }
 
-  // ── Outline Editing Helpers (Functional Updates) ──────────────────────────
+  // ── Global Undo / Redo + Outline Editing Helpers ──────────────────────────
+
+  const mutateOutline = useCallback(
+    (
+      updater: (prev: Outline) => Outline | null,
+      opts?: { coalesceKey?: string }
+    ) => {
+      setOutline((prev) => {
+        if (!prev) return prev;
+        const next = updater(prev);
+        if (!next || next === prev) return prev;
+
+        const now = Date.now();
+        const key = opts?.coalesceKey;
+        const lastC = lastCoalesceRef.current;
+        const shouldCoalesce =
+          Boolean(key) &&
+          lastC !== null &&
+          lastC.key === key &&
+          now - lastC.ts < 700;
+
+        if (!shouldCoalesce) {
+          const snap: Outline = JSON.parse(JSON.stringify(prev));
+          setUndoStack((stack) => [...stack.slice(-39), snap]);
+        }
+        setRedoStack([]);
+        lastCoalesceRef.current = key ? { key, ts: now } : null;
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0 || !outline) return;
+    const prevSnap = undoStack[undoStack.length - 1];
+    const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
+    setUndoStack((stack) => stack.slice(0, -1));
+    setRedoStack((stack) => [...stack.slice(-39), currentSnap]);
+    lastCoalesceRef.current = null;
+    setOutline(prevSnap);
+    setSelectedIndex((idx) =>
+      Math.min(idx, Math.max(0, prevSnap.items.length - 1))
+    );
+    flashToast("已撤销");
+  }, [undoStack, outline, flashToast]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0 || !outline) return;
+    const nextSnap = redoStack[redoStack.length - 1];
+    const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
+    setRedoStack((stack) => stack.slice(0, -1));
+    setUndoStack((stack) => [...stack.slice(-39), currentSnap]);
+    lastCoalesceRef.current = null;
+    setOutline(nextSnap);
+    setSelectedIndex((idx) =>
+      Math.min(idx, Math.max(0, nextSnap.items.length - 1))
+    );
+    flashToast("已重做");
+  }, [redoStack, outline, flashToast]);
 
   function patchItem(
     index: number,
     patch: Partial<Record<EditableOutlineField, string>>
   ) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
-      const items = [...prev.items];
-      items[index] = { ...items[index], ...patch };
-      return { ...prev, items };
-    });
+    const fieldKey = Object.keys(patch).sort().join(",");
+    mutateOutline(
+      (prev) => {
+        if (!prev.items[index]) return null;
+        const items = [...prev.items];
+        items[index] = { ...items[index], ...patch };
+        return { ...prev, items };
+      },
+      { coalesceKey: `patch:${index}:${fieldKey}` }
+    );
   }
 
   function handleSelectLayout(nextLayout: OutlineLayout) {
@@ -709,8 +778,8 @@ export default function ProjectWorkspacePage() {
       nextLayout === "text_image" && !item.image_asset_id
         ? materials.find((m) => m.asset_type === "image")
         : undefined;
-    setOutline((prev) => {
-      if (!prev || !prev.items[selectedIndex]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[selectedIndex]) return null;
       const items = [...prev.items];
       const cur = items[selectedIndex];
       items[selectedIndex] = {
@@ -732,41 +801,81 @@ export default function ProjectWorkspacePage() {
     elementId: string,
     nextText: string
   ) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline(
+      (prev) => {
+        if (!prev.items[index]) return null;
+        const items = [...prev.items];
+        const item = items[index];
+        const elems = item.custom_elements;
+        if (!elems || elems.length === 0) return null;
+
+        const textElems = elems.filter((el) => el.kind === "text");
+        let primaryHeadingId: string | null = null;
+        let maxFont = -1;
+        for (const el of textElems) {
+          const fs = el.font_size ?? 18;
+          if (fs > maxFont) {
+            maxFont = fs;
+            primaryHeadingId = el.id;
+          }
+        }
+
+        const nextElements = elems.map((el) =>
+          el.id === elementId ? { ...el, text: nextText } : el
+        );
+        const firstLine = nextText.trim().split(/\r?\n/)[0]?.trim() || "";
+        items[index] = {
+          ...item,
+          custom_elements: nextElements,
+          title:
+            elementId === primaryHeadingId && firstLine ? firstLine : item.title,
+        };
+        return { ...prev, items };
+      },
+      { coalesceKey: `customText:${index}:${elementId}` }
+    );
+  }
+
+  function updateCustomElement(
+    index: number,
+    elementId: string,
+    patch: Partial<CanvasElement>
+  ) {
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const item = items[index];
       const elems = item.custom_elements;
-      if (!elems || elems.length === 0) return prev;
-
-      const textElems = elems.filter((el) => el.kind === "text");
-      let primaryHeadingId: string | null = null;
-      let maxFont = -1;
-      for (const el of textElems) {
-        const fs = el.font_size ?? 18;
-        if (fs > maxFont) {
-          maxFont = fs;
-          primaryHeadingId = el.id;
-        }
-      }
-
+      if (!elems || elems.length === 0) return null;
       const nextElements = elems.map((el) =>
-        el.id === elementId ? { ...el, text: nextText } : el
+        el.id === elementId ? { ...el, ...patch } : el
       );
-      const firstLine = nextText.trim().split(/\r?\n/)[0]?.trim() || "";
-      items[index] = {
-        ...item,
-        custom_elements: nextElements,
-        title:
-          elementId === primaryHeadingId && firstLine ? firstLine : item.title,
-      };
+      items[index] = { ...item, custom_elements: nextElements };
       return { ...prev, items };
     });
   }
 
+  function deleteCustomElement(index: number, elementId: string) {
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
+      const items = [...prev.items];
+      const item = items[index];
+      const elems = item.custom_elements;
+      if (!elems || elems.length === 0) return null;
+      const nextElements = elems.filter((el) => el.id !== elementId);
+      items[index] = {
+        ...item,
+        custom_elements: nextElements.length > 0 ? nextElements : null,
+        custom_bg: nextElements.length > 0 ? item.custom_bg : null,
+      };
+      return { ...prev, items };
+    });
+    flashToast("已删除元素（可按 Ctrl+Z 撤销）");
+  }
+
   function clearCustomLayout(index: number) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const cur = items[index];
       let nextLayout = cur.layout;
@@ -793,8 +902,8 @@ export default function ProjectWorkspacePage() {
   }
 
   function toggleSourceId(index: number, sourceId: string) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const item = items[index];
       const exists = item.source_ids.includes(sourceId);
@@ -820,8 +929,8 @@ export default function ProjectWorkspacePage() {
     imageAssetId: string,
     sourceId?: string
   ) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const item = items[index];
       const nextIds =
@@ -852,8 +961,8 @@ export default function ProjectWorkspacePage() {
   ) {
     const cleaned = text.trim();
     if (!cleaned) return;
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const item = items[index];
       const nextIds = item.source_ids.includes(sourceId)
@@ -877,12 +986,12 @@ export default function ProjectWorkspacePage() {
   }
 
   function splitTwoColumn(index: number) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const item = items[index];
       const raw = item.summary.trim();
-      if (!raw) return prev;
+      if (!raw) return null;
       let lines = raw
         .split(/\r?\n/)
         .map((s) => s.trim())
@@ -893,7 +1002,7 @@ export default function ProjectWorkspacePage() {
           .map((s) => s.trim())
           .filter(Boolean);
       }
-      if (lines.length < 2) return prev;
+      if (lines.length < 2) return null;
       const mid = Math.ceil(lines.length / 2);
       const leftText = lines.slice(0, mid).join("\n");
       const rightText = lines.slice(mid).join("\n");
@@ -942,8 +1051,8 @@ export default function ProjectWorkspacePage() {
     index: number,
     candidate: SlideRefineCandidate
   ) {
-    setOutline((prev) => {
-      if (!prev || !prev.items[index]) return prev;
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
       const items = [...prev.items];
       const item = items[index];
       items[index] = {
@@ -962,25 +1071,37 @@ export default function ProjectWorkspacePage() {
   }
 
   function moveItem(index: number, delta: number) {
-    setOutline((prev) => {
-      if (!prev) return prev;
-      const target = index + delta;
-      if (target < 0 || target >= prev.items.length) return prev;
+    const target = index + delta;
+    if (!outline || target < 0 || target >= outline.items.length) return;
+    reorderItem(index, target);
+  }
+
+  function reorderItem(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    mutateOutline((prev) => {
+      if (
+        fromIndex < 0 ||
+        fromIndex >= prev.items.length ||
+        toIndex < 0 ||
+        toIndex >= prev.items.length
+      ) {
+        return null;
+      }
       const items = [...prev.items];
-      const [moved] = items.splice(index, 1);
-      items.splice(target, 0, moved);
+      const [moved] = items.splice(fromIndex, 1);
+      items.splice(toIndex, 0, moved);
       return { ...prev, items };
     });
     setSelectedIndex((prevIdx) => {
-      if (!outline) return prevIdx;
-      const target = index + delta;
-      return target >= 0 && target < outline.items.length ? target : prevIdx;
+      if (prevIdx === fromIndex) return toIndex;
+      if (fromIndex < prevIdx && prevIdx <= toIndex) return prevIdx - 1;
+      if (toIndex <= prevIdx && prevIdx < fromIndex) return prevIdx + 1;
+      return prevIdx;
     });
   }
 
   function addItem() {
-    setOutline((prev) => {
-      if (!prev) return prev;
+    mutateOutline((prev) => {
       const items = [
         ...prev.items,
         {
@@ -1001,8 +1122,8 @@ export default function ProjectWorkspacePage() {
   }
 
   function deleteItem(index: number) {
-    setOutline((prev) => {
-      if (!prev || prev.items.length <= 1) return prev;
+    mutateOutline((prev) => {
+      if (prev.items.length <= 1) return null;
       const items = prev.items.filter((_, i) => i !== index);
       setSelectedIndex(Math.max(0, Math.min(index, items.length - 1)));
       return { ...prev, items };
@@ -1315,7 +1436,7 @@ export default function ProjectWorkspacePage() {
     flashToast("已撤回到修改前的大纲版本");
   }
 
-  // Keyboard shortcuts: Ctrl/⌘+S save, Ctrl/⌘+L toggle AI chat, ↑ / ↓ switch slide
+  // Keyboard shortcuts: Ctrl/⌘+S save, Ctrl/⌘+L toggle AI chat, Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z / Ctrl+Y redo, ↑ / ↓ switch slide
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
@@ -1332,6 +1453,20 @@ export default function ProjectWorkspacePage() {
       if (tag === "INPUT" || tag === "TEXTAREA" || !outline?.items.length) {
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex((i) => Math.max(0, i - 1));
@@ -1342,7 +1477,7 @@ export default function ProjectWorkspacePage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [outline, isStale, saveOutline, handleToggleChat]);
+  }, [outline, isStale, saveOutline, handleToggleChat, handleUndo, handleRedo]);
 
   const currentItem = outline?.items[selectedIndex];
   const headerProject: Project | null =
@@ -1396,6 +1531,10 @@ export default function ProjectWorkspacePage() {
         }
         leftOpen={leftOpen}
         rightOpen={rightOpen}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onToggleLeft={() => setLeftOpen((v) => !v)}
         onToggleRight={() => setRightOpen((v) => !v)}
         onToggleChat={handleToggleChat}
@@ -1504,6 +1643,7 @@ export default function ProjectWorkspacePage() {
               issueSlideIndices={issueSlideIndices}
               onSelectIndex={setSelectedIndex}
               onMoveItem={moveItem}
+              onReorderItem={reorderItem}
               onDeleteItem={deleteItem}
               onAddItem={addItem}
             />
@@ -1526,6 +1666,7 @@ export default function ProjectWorkspacePage() {
             autoFit={autoFit}
             statusText={status}
             isGenerating={isGenerating}
+            materials={materials}
             onSelectIndex={setSelectedIndex}
             onSelectTheme={(themeId) => {
               setSelectedThemeId(themeId);
@@ -1537,6 +1678,12 @@ export default function ProjectWorkspacePage() {
             onSelectLayout={handleSelectLayout}
             onToggleAutoFit={() => setAutoFit((v) => !v)}
             onFocusField={focusInspectorField}
+            onUpdateCustomElement={(elId, patch) =>
+              updateCustomElement(selectedIndex, elId, patch)
+            }
+            onDeleteCustomElement={(elId) =>
+              deleteCustomElement(selectedIndex, elId)
+            }
           />
 
           {rightOpen && (

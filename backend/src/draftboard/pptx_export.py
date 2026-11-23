@@ -16,10 +16,13 @@ from typing import Optional
 
 from PIL import Image, ImageOps
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Pt
 
 from draftboard.measure import FontPair, load_fonts, measure_box
@@ -529,14 +532,91 @@ def _measure_custom_slide(
                         f"(+8% margin) but box height is {el.h:.0f}pt."
                     )
 
-    # Check pairwise text-vs-text overlap (with 2pt tolerance)
+        elif el.kind == "table":
+            headers = el.headers or []
+            rows = el.rows or []
+            if not headers and not rows:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    "[INVALID_TABLE] Table requires non-empty headers or rows."
+                )
+                continue
+            col_count = len(headers) if headers else max((len(r) for r in rows), default=0)
+            if col_count < 1 or col_count > 8:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_TABLE] Column count must be 1..8 (got {col_count})."
+                )
+                continue
+            total_rows = (1 if headers else 0) + len(rows)
+            if total_rows > 13:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[OVERFLOW] Table has {total_rows} rows (max 13 including header)."
+                )
+                continue
+            if el.w < 160 or el.h < 60:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[OVERFLOW] Table box {el.w:.0f}x{el.h:.0f}pt is too small (min 160x60pt)."
+                )
+                continue
+            row_h = el.h / max(1, total_rows)
+            if row_h < 20:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[OVERFLOW] Table row height {row_h:.1f}pt is too cramped for {total_rows} rows (need >=20pt/row; increase height h or reduce rows)."
+                )
+                continue
+            text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
+
+        elif el.kind == "chart":
+            cats = el.chart_categories or []
+            series_list = el.chart_series or []
+            if el.chart_type not in ("bar", "hbar", "line", "donut"):
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_CHART] chart_type must be one of bar/hbar/line/donut (got {el.chart_type!r})."
+                )
+                continue
+            if not cats or len(cats) > 12:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_CHART] chart_categories must have 1..12 items (got {len(cats)})."
+                )
+                continue
+            if not series_list or len(series_list) > 5:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_CHART] chart_series must have 1..5 series (got {len(series_list)})."
+                )
+                continue
+            bad_len = False
+            for s in series_list:
+                if len(s.values) != len(cats):
+                    errors.append(
+                        f"Slide '{slide.slide_id}', element '{el.id}': "
+                        f"[INVALID_CHART] Series '{s.name}' has {len(s.values)} values, expected {len(cats)} to match chart_categories."
+                    )
+                    bad_len = True
+            if bad_len:
+                continue
+            if el.w < 180 or el.h < 120:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[OVERFLOW] Chart box {el.w:.0f}x{el.h:.0f}pt is too small (min 180x120pt)."
+                )
+                continue
+            text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
+
+    # Check pairwise content-vs-content overlap (text/table/chart with 2pt tolerance)
     for i in range(len(text_boxes)):
         id_a, ax1, ay1, ax2, ay2 = text_boxes[i]
         for j in range(i + 1, len(text_boxes)):
             id_b, bx1, by1, bx2, by2 = text_boxes[j]
             if (ax1 + 2 < bx2 - 2) and (ax2 - 2 > bx1 + 2) and (ay1 + 2 < by2 - 2) and (ay2 - 2 > by1 + 2):
                 errors.append(
-                    f"Slide '{slide.slide_id}': [OVERLAP] Text elements '{id_a}' and '{id_b}' overlap."
+                    f"Slide '{slide.slide_id}': [OVERLAP] Content elements '{id_a}' and '{id_b}' overlap."
                 )
 
 
@@ -656,6 +736,253 @@ def _export_custom_slide(
                 _hex_to_rgb(col_hex),
                 bold=bool(el.bold),
             )
+
+        elif el.kind == "table":
+            _export_custom_table(pptx_slide, el, theme, bg_hex)
+
+        elif el.kind == "chart":
+            _export_custom_chart(pptx_slide, el, theme)
+
+
+def _set_table_cell_borders(
+    cell,
+    border_hex: str,
+    *,
+    bottom_pt: float = 0.75,
+    top_pt: float = 0.0,
+) -> None:
+    """Apply clean Swiss editorial horizontal hairlines and suppress vertical clutter."""
+    tcPr = cell._tc.get_or_add_tcPr()
+    for tag in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+        existing = tcPr.find(qn(tag))
+        if existing is not None:
+            tcPr.remove(existing)
+
+    hex_val = border_hex.lstrip("#").upper()
+
+    def _make_ln(tag_name: str, width_pt: float) -> OxmlElement:
+        ln = OxmlElement(tag_name)
+        if width_pt <= 0:
+            ln.append(OxmlElement("a:noFill"))
+        else:
+            ln.set("w", str(int(Pt(width_pt))))
+            ln.set("cap", "flat")
+            solid = OxmlElement("a:solidFill")
+            srgb = OxmlElement("a:srgbClr")
+            srgb.set("val", hex_val)
+            solid.append(srgb)
+            ln.append(solid)
+        return ln
+
+    tcPr.append(_make_ln("a:lnL", 0))
+    tcPr.append(_make_ln("a:lnR", 0))
+    tcPr.append(_make_ln("a:lnT", top_pt))
+    tcPr.append(_make_ln("a:lnB", bottom_pt))
+
+
+def _export_custom_table(
+    pptx_slide,
+    el: CanvasElement,
+    theme: ThemeSpec,
+    slide_bg_hex: str,
+) -> None:
+    """Write a native editable PowerPoint table with editorial theme styling."""
+    headers = list(el.headers or [])
+    body_rows = [list(r) for r in (el.rows or [])]
+    col_count = len(headers) if headers else max((len(r) for r in body_rows), default=0)
+    if col_count < 1:
+        return
+
+    all_rows: list[tuple[bool, list[str]]] = []
+    if headers:
+        all_rows.append((True, (headers + [""] * col_count)[:col_count]))
+    for r in body_rows:
+        all_rows.append((False, (r + [""] * col_count)[:col_count]))
+    row_count = len(all_rows)
+    if row_count < 1:
+        return
+
+    graphic = pptx_slide.shapes.add_table(
+        row_count, col_count, Pt(el.x), Pt(el.y), Pt(el.w), Pt(el.h)
+    )
+    tbl = graphic.table
+
+    # Neutralize default PowerPoint blue banded theme style
+    tblPr = tbl._tbl.tblPr
+    if tblPr is not None:
+        tblPr.set("firstRow", "0")
+        tblPr.set("bandRow", "0")
+
+    col_w = Pt(el.w / col_count)
+    for col in tbl.columns:
+        col.width = col_w
+    row_h = Pt(el.h / row_count)
+    for row in tbl.rows:
+        row.height = row_h
+
+    font_size = int(el.table_font_size or 14)
+    line_pt = max(font_size + 3, int(round(font_size * 1.25)))
+    header_fill_hex = resolve_canvas_hex(el.header_fill, theme, theme.surface_hex) or theme.surface_hex
+    header_col_hex = resolve_canvas_hex(el.header_color, theme, theme.title_hex) or theme.title_hex
+    cell_col_hex = resolve_canvas_hex(el.cell_color, theme, theme.body_hex) or theme.body_hex
+    stripe_hex = resolve_canvas_hex(el.stripe_fill, theme, theme.surface_hex)
+    divider_hex = theme.divider_hex
+
+    for r_idx, (is_header, cells_text) in enumerate(all_rows):
+        for c_idx, raw_val in enumerate(cells_text):
+            cell = tbl.cell(r_idx, c_idx)
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.margin_left = Pt(8)
+            cell.margin_right = Pt(8)
+            cell.margin_top = Pt(4)
+            cell.margin_bottom = Pt(4)
+
+            if is_header:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = _hex_to_rgb(header_fill_hex)
+                _set_table_cell_borders(cell, divider_hex, bottom_pt=1.25, top_pt=0.75)
+                text_hex = header_col_hex
+                is_bold = True
+            else:
+                data_idx = r_idx - (1 if headers else 0)
+                fill_hex = stripe_hex if (data_idx % 2 == 1 and stripe_hex) else slide_bg_hex
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = _hex_to_rgb(fill_hex)
+                _set_table_cell_borders(cell, divider_hex, bottom_pt=0.75, top_pt=0.0)
+                text_hex = cell_col_hex
+                is_bold = c_idx == 0 and col_count >= 2
+
+            tf = cell.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0]
+            # Right-align pure numeric columns (after first label column)
+            val_str = str(raw_val or "").strip()
+            is_numeric = c_idx > 0 and bool(
+                re.fullmatch(r"[+\-¥$€£]?\d[\d,.]*\s*[%倍×xX亿万kKmMbBms]*", val_str)
+            )
+            p.alignment = PP_ALIGN.RIGHT if is_numeric else PP_ALIGN.LEFT
+            _fill_paragraph(
+                p,
+                val_str,
+                font_size,
+                line_pt,
+                _hex_to_rgb(text_hex),
+                bold=is_bold,
+            )
+
+
+def _export_custom_chart(
+    pptx_slide,
+    el: CanvasElement,
+    theme: ThemeSpec,
+) -> None:
+    """Write a native editable PowerPoint chart with embedded Excel data & theme colors."""
+    cats = list(el.chart_categories or [])
+    series_list = list(el.chart_series or [])
+    if not cats or not series_list:
+        return
+
+    chart_type_map = {
+        "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
+        "hbar": XL_CHART_TYPE.BAR_CLUSTERED,
+        "line": XL_CHART_TYPE.LINE_MARKERS,
+        "donut": XL_CHART_TYPE.DOUGHNUT,
+    }
+    xl_type = chart_type_map.get(el.chart_type or "bar", XL_CHART_TYPE.COLUMN_CLUSTERED)
+
+    chart_data = CategoryChartData()
+    chart_data.categories = cats
+    effective_series = series_list[:1] if el.chart_type == "donut" else series_list
+    for s in effective_series:
+        chart_data.add_series(s.name, [float(v) for v in s.values])
+
+    graphic = pptx_slide.shapes.add_chart(
+        xl_type, Pt(el.x), Pt(el.y), Pt(el.w), Pt(el.h), chart_data
+    )
+    chart = graphic.chart
+    palette = theme.chart_palette
+
+    # Title
+    if el.chart_title and el.chart_title.strip():
+        chart.has_title = True
+        title_tf = chart.chart_title.text_frame
+        title_tf.clear()
+        p = title_tf.paragraphs[0]
+        _fill_paragraph(
+            p, el.chart_title.strip(), 14, 18, theme.title_rgb, bold=True
+        )
+    else:
+        chart.has_title = False
+
+    # Legend
+    show_legend = len(effective_series) > 1 or el.chart_type == "donut"
+    chart.has_legend = show_legend
+    if show_legend:
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+        chart.legend.font.size = Pt(10)
+        chart.legend.font.name = FONT_LATIN
+        chart.legend.font.color.rgb = theme.muted_rgb
+
+    # Series & point coloring
+    plot = chart.plots[0]
+    for s_idx, (s_model, pptx_series) in enumerate(zip(effective_series, plot.series)):
+        fallback_hex = palette[s_idx % len(palette)]
+        s_hex = resolve_canvas_hex(s_model.color, theme, fallback_hex) or fallback_hex
+        s_rgb = _hex_to_rgb(s_hex)
+
+        if el.chart_type == "donut":
+            for pt_idx in range(len(cats)):
+                pt_hex = palette[pt_idx % len(palette)]
+                pt = pptx_series.points[pt_idx]
+                pt.format.fill.solid()
+                pt.format.fill.fore_color.rgb = _hex_to_rgb(pt_hex)
+        elif el.chart_type == "line":
+            pptx_series.format.line.color.rgb = s_rgb
+            pptx_series.format.line.width = Pt(2.5)
+            pptx_series.smooth = False
+        else:
+            pptx_series.format.fill.solid()
+            pptx_series.format.fill.fore_color.rgb = s_rgb
+
+    # Data labels
+    show_vals = True if el.show_values is None else bool(el.show_values)
+    plot.has_data_labels = show_vals
+    if show_vals:
+        dl = plot.data_labels
+        dl.font.size = Pt(10)
+        dl.font.name = FONT_LATIN
+        dl.font.color.rgb = theme.body_rgb
+        suffix = (el.value_suffix or "").strip()
+        if suffix:
+            safe_suffix = suffix.replace('"', "")
+            dl.number_format = f'0.##"{safe_suffix}"'
+        if el.chart_type in ("bar", "hbar"):
+            try:
+                dl.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
+            except Exception:
+                pass
+
+    # Clean axes for cartesian charts
+    if el.chart_type in ("bar", "hbar", "line"):
+        try:
+            cat_axis = chart.category_axis
+            cat_axis.tick_labels.font.size = Pt(10)
+            cat_axis.tick_labels.font.name = FONT_LATIN
+            cat_axis.tick_labels.font.color.rgb = theme.muted_rgb
+            cat_axis.format.line.color.rgb = theme.divider_rgb
+        except Exception:
+            pass
+        try:
+            val_axis = chart.value_axis
+            val_axis.tick_labels.font.size = Pt(9)
+            val_axis.tick_labels.font.name = FONT_LATIN
+            val_axis.tick_labels.font.color.rgb = theme.muted_rgb
+            val_axis.has_major_gridlines = True
+            val_axis.major_gridlines.format.line.color.rgb = theme.divider_rgb
+            val_axis.format.line.fill.background()
+        except Exception:
+            pass
 
 
 def _measure_and_resolve(

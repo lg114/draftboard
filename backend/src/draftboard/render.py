@@ -10,6 +10,7 @@ searchable vector text and embedded images from the exact exported PPTX.
 from __future__ import annotations
 
 import io
+import math
 import os
 import pathlib
 import re
@@ -18,6 +19,7 @@ from typing import Optional
 
 import pypdfium2 as pdfium
 from pptx import Presentation
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
@@ -287,6 +289,505 @@ def _paragraph_bullet_info(paragraph) -> tuple[bool, Optional[Color], float]:
     return True, bullet_color, indent_pt
 
 
+def _fmt_chart_num(val: float, suffix: str = "") -> str:
+    if abs(val - round(val)) < 1e-6:
+        s = str(int(round(val)))
+    elif abs(val) >= 100:
+        s = f"{val:.1f}".rstrip("0").rstrip(".")
+    else:
+        s = f"{val:.2f}".rstrip("0").rstrip(".")
+    return f"{s}{suffix}"
+
+
+def _extract_border_style(tcPr, tag: str) -> tuple[Optional[Color], float]:
+    if tcPr is None:
+        return None, 0.0
+    ln = tcPr.find(qn(tag))
+    if ln is None or ln.find(qn("a:noFill")) is not None:
+        return None, 0.0
+    solid = ln.find(qn("a:solidFill"))
+    if solid is None:
+        return None, 0.0
+    srgb = solid.find(qn("a:srgbClr"))
+    if srgb is None or not srgb.get("val"):
+        return None, 0.0
+    w_emu = int(ln.get("w") or "9525")
+    return _rgb_to_color(srgb.get("val")), max(0.25, w_emu / 12700.0)
+
+
+def _render_pptx_table(
+    c: rl_canvas.Canvas,
+    shape,
+    slide_h: float,
+    fonts: _RenderFonts,
+) -> None:
+    """Render a native python-pptx table into crisp ReportLab vector cells & text."""
+    try:
+        tbl = shape.table
+        bx = float(shape.left.pt)
+        by = float(shape.top.pt)
+        bw = float(shape.width.pt)
+        bh = float(shape.height.pt)
+        n_rows = len(tbl.rows)
+        n_cols = len(tbl.columns)
+        if n_rows == 0 or n_cols == 0:
+            return
+
+        col_widths = [float(col.width.pt) for col in tbl.columns]
+        total_cw = sum(col_widths) or bw
+        col_widths = [w * (bw / total_cw) for w in col_widths]
+
+        row_heights = [float(row.height.pt) for row in tbl.rows]
+        total_rh = sum(row_heights) or bh
+        row_heights = [h * (bh / total_rh) for h in row_heights]
+
+        cur_y = by
+        for r_idx in range(n_rows):
+            rh = row_heights[r_idx]
+            cur_x = bx
+            for c_idx in range(n_cols):
+                cw = col_widths[c_idx]
+                cell = tbl.cell(r_idx, c_idx)
+
+                # Fill
+                try:
+                    if cell.fill.type == 1 and cell.fill.fore_color and cell.fill.fore_color.rgb:
+                        c.saveState()
+                        c.setFillColor(_rgb_to_color(cell.fill.fore_color.rgb))
+                        c.rect(cur_x, slide_h - cur_y - rh, cw, rh, stroke=0, fill=1)
+                        c.restoreState()
+                except Exception:
+                    pass
+
+                # Borders (top & bottom hairlines)
+                tcPr = cell._tc.find(qn("a:tcPr"))
+                top_col, top_w = _extract_border_style(tcPr, "a:lnT")
+                if top_col is not None and top_w > 0:
+                    c.saveState()
+                    c.setStrokeColor(top_col)
+                    c.setLineWidth(top_w)
+                    c.line(cur_x, slide_h - cur_y, cur_x + cw, slide_h - cur_y)
+                    c.restoreState()
+
+                bot_col, bot_w = _extract_border_style(tcPr, "a:lnB")
+                if bot_col is not None and bot_w > 0:
+                    c.saveState()
+                    c.setStrokeColor(bot_col)
+                    c.setLineWidth(bot_w)
+                    c.line(cur_x, slide_h - cur_y - rh, cur_x + cw, slide_h - cur_y - rh)
+                    c.restoreState()
+
+                # Text
+                tf = cell.text_frame
+                raw_txt = (tf.text or "").replace("\x0b", "\n").strip()
+                if raw_txt:
+                    pad_l = float(cell.margin_left.pt) if cell.margin_left else 8.0
+                    pad_r = float(cell.margin_right.pt) if cell.margin_right else 8.0
+                    p0 = tf.paragraphs[0]
+                    size_pt = 13.0
+                    bold = False
+                    txt_col = Color(0.2, 0.2, 0.22)
+                    for run in p0.runs:
+                        if run.font.size:
+                            size_pt = float(run.font.size.pt)
+                        if run.font.bold:
+                            bold = True
+                        try:
+                            if run.font.color and run.font.color.rgb:
+                                txt_col = _rgb_to_color(run.font.color.rgb, txt_col)
+                        except Exception:
+                            pass
+                        break
+
+                    avail_w = max(8.0, cw - pad_l - pad_r)
+                    wrapped = _wrap_line(raw_txt.splitlines()[0], avail_w, size_pt, fonts, bold)
+                    line_h = size_pt * 1.2
+                    max_lines = max(1, int((rh - 4) // line_h))
+                    vis_lines = wrapped[:max_lines]
+                    block_h = len(vis_lines) * line_h
+                    start_y = cur_y + max(2.0, (rh - block_h) / 2.0)
+
+                    for li, ln_txt in enumerate(vis_lines):
+                        lw = _measure_dual_width(ln_txt, size_pt, fonts, bold)
+                        if p0.alignment == PP_ALIGN.RIGHT:
+                            tx = cur_x + cw - pad_r - lw
+                        elif p0.alignment == PP_ALIGN.CENTER:
+                            tx = cur_x + (cw - lw) / 2.0
+                        else:
+                            tx = cur_x + pad_l
+                        y_base = slide_h - (start_y + li * line_h + size_pt * 0.82)
+                        _draw_dual_text(c, tx, y_base, ln_txt, size_pt, fonts, bold, txt_col)
+
+                cur_x += cw
+            cur_y += rh
+    except Exception:
+        pass
+
+
+def _render_pptx_chart(
+    c: rl_canvas.Canvas,
+    shape,
+    slide_h: float,
+    fonts: _RenderFonts,
+) -> None:
+    """Render a native python-pptx chart cleanly as ReportLab vector graphics."""
+    try:
+        chart = shape.chart
+        bx = float(shape.left.pt)
+        by = float(shape.top.pt)
+        bw = float(shape.width.pt)
+        bh = float(shape.height.pt)
+
+        plot = chart.plots[0]
+        categories = [str(cat) for cat in plot.categories]
+        if not categories or not plot.series:
+            return
+
+        default_palette = [
+            Color(0.0, 0.443, 0.890),
+            Color(0.114, 0.114, 0.122),
+            Color(0.204, 0.659, 0.325),
+            Color(0.902, 0.494, 0.133),
+            Color(0.557, 0.557, 0.576),
+        ]
+
+        # Extract theme text & divider colors from chart properties
+        title_col = Color(0.12, 0.12, 0.14)
+        muted_col = Color(0.45, 0.45, 0.48)
+        grid_col = Color(0.86, 0.86, 0.89)
+        body_col = Color(0.25, 0.25, 0.28)
+        chart_title = ""
+
+        try:
+            if chart.has_title and chart.chart_title and chart.chart_title.has_text_frame:
+                chart_title = (chart.chart_title.text_frame.text or "").strip()
+                for run in chart.chart_title.text_frame.paragraphs[0].runs:
+                    if run.font.color and run.font.color.rgb:
+                        title_col = _rgb_to_color(run.font.color.rgb, title_col)
+                        break
+        except Exception:
+            pass
+
+        try:
+            if chart.chart_type != XL_CHART_TYPE.DOUGHNUT:
+                if chart.category_axis.tick_labels.font.color.rgb:
+                    muted_col = _rgb_to_color(chart.category_axis.tick_labels.font.color.rgb, muted_col)
+                if chart.value_axis.major_gridlines.format.line.color.rgb:
+                    grid_col = _rgb_to_color(chart.value_axis.major_gridlines.format.line.color.rgb, grid_col)
+        except Exception:
+            pass
+
+        show_values = True
+        value_suffix = ""
+        try:
+            show_values = bool(plot.has_data_labels)
+            if show_values and plot.data_labels:
+                if plot.data_labels.font.color.rgb:
+                    body_col = _rgb_to_color(plot.data_labels.font.color.rgb, body_col)
+                nf = plot.data_labels.number_format or ""
+                m_suf = re.search(r'"([^"]+)"', nf)
+                if m_suf:
+                    value_suffix = m_suf.group(1)
+        except Exception:
+            pass
+
+        series_data: list[tuple[str, list[float], Color, list[Color]]] = []
+        for s_idx, s in enumerate(plot.series):
+            s_col = default_palette[s_idx % len(default_palette)]
+            try:
+                if chart.chart_type in (XL_CHART_TYPE.LINE, XL_CHART_TYPE.LINE_MARKERS):
+                    if s.format.line.color and s.format.line.color.rgb:
+                        s_col = _rgb_to_color(s.format.line.color.rgb, s_col)
+                else:
+                    if s.format.fill.type == 1 and s.format.fill.fore_color.rgb:
+                        s_col = _rgb_to_color(s.format.fill.fore_color.rgb, s_col)
+            except Exception:
+                pass
+
+            pt_cols: list[Color] = []
+            if chart.chart_type in (XL_CHART_TYPE.DOUGHNUT, XL_CHART_TYPE.PIE):
+                for pt_i in range(len(categories)):
+                    pc = default_palette[pt_i % len(default_palette)]
+                    try:
+                        pt = s.points[pt_i]
+                        if pt.format.fill.type == 1 and pt.format.fill.fore_color.rgb:
+                            pc = _rgb_to_color(pt.format.fill.fore_color.rgb, pc)
+                    except Exception:
+                        pass
+                    pt_cols.append(pc)
+            vals = [float(v) if v is not None else 0.0 for v in s.values]
+            series_data.append((str(s.name or f"Series {s_idx + 1}"), vals, s_col, pt_cols))
+
+        # Layout bands inside (bx, by, bw, bh)
+        top_pad = 26.0 if chart_title else 10.0
+        show_legend = len(series_data) > 1 or chart.chart_type in (
+            XL_CHART_TYPE.DOUGHNUT,
+            XL_CHART_TYPE.PIE,
+        )
+        bot_legend_h = 22.0 if show_legend else 4.0
+
+        if chart_title:
+            _draw_dual_text(
+                c,
+                bx + 4,
+                slide_h - (by + 16),
+                chart_title,
+                13.5,
+                fonts,
+                True,
+                title_col,
+            )
+
+        # ── Donut / Pie Chart ──
+        if chart.chart_type in (XL_CHART_TYPE.DOUGHNUT, XL_CHART_TYPE.PIE):
+            _, vals, _, pt_cols = series_data[0]
+            total_v = sum(max(0.0, v) for v in vals) or 1.0
+            area_h = max(40.0, bh - top_pad - bot_legend_h - 8.0)
+            outer_r = min(bw * 0.36, area_h * 0.46)
+            inner_r = outer_r * (0.56 if chart.chart_type == XL_CHART_TYPE.DOUGHNUT else 0.0)
+            cx = bx + bw * 0.5
+            cy_top = by + top_pad + area_h * 0.5
+            cy_pdf = slide_h - cy_top
+
+            angle_deg = 90.0  # start at 12 o'clock, sweep clockwise
+            for idx_v, val in enumerate(vals):
+                v = max(0.0, val)
+                sweep = (v / total_v) * 360.0
+                if sweep <= 0.1:
+                    continue
+                col = pt_cols[idx_v] if idx_v < len(pt_cols) else default_palette[idx_v % len(default_palette)]
+                steps = max(8, int(math.ceil(sweep / 6.0)))
+                p = c.beginPath()
+                a0 = math.radians(angle_deg)
+                p.moveTo(cx + outer_r * math.cos(a0), cy_pdf + outer_r * math.sin(a0))
+                for st in range(1, steps + 1):
+                    ang = math.radians(angle_deg - sweep * (st / steps))
+                    p.lineTo(cx + outer_r * math.cos(ang), cy_pdf + outer_r * math.sin(ang))
+                if inner_r > 1.0:
+                    for st in range(steps, -1, -1):
+                        ang = math.radians(angle_deg - sweep * (st / steps))
+                        p.lineTo(cx + inner_r * math.cos(ang), cy_pdf + inner_r * math.sin(ang))
+                else:
+                    p.lineTo(cx, cy_pdf)
+                p.close()
+                c.saveState()
+                c.setFillColor(col)
+                c.drawPath(p, stroke=0, fill=1)
+                c.restoreState()
+
+                if show_values and sweep >= 18.0:
+                    mid_rad = math.radians(angle_deg - sweep / 2.0)
+                    lr = outer_r + 14.0
+                    lbl = _fmt_chart_num(v, value_suffix)
+                    lw = _measure_dual_width(lbl, 9.5, fonts, True)
+                    lx = cx + lr * math.cos(mid_rad) - lw / 2.0
+                    ly = cy_pdf + lr * math.sin(mid_rad) - 3.5
+                    _draw_dual_text(c, lx, ly, lbl, 9.5, fonts, True, body_col)
+                angle_deg -= sweep
+
+            # Bottom legend for donut categories
+            if show_legend:
+                leg_items = [
+                    (categories[i], pt_cols[i] if i < len(pt_cols) else default_palette[i % len(default_palette)])
+                    for i in range(len(categories))
+                ]
+                _draw_chart_legend(c, bx, by + bh - 14, bw, slide_h, leg_items, fonts, muted_col)
+            return
+
+        # ── Horizontal Bar Chart ──
+        if chart.chart_type == XL_CHART_TYPE.BAR_CLUSTERED:
+            max_val = max((max(vals) for _, vals, _, _ in series_data if vals), default=1.0)
+            max_val = max(max_val, 1e-6)
+            label_w = min(bw * 0.34, max(54.0, max(_measure_dual_width(cat, 10.0, fonts, False) for cat in categories) + 12.0))
+            right_pad = 38.0 if show_values else 12.0
+            px = bx + label_w
+            pw = max(40.0, bw - label_w - right_pad)
+            py = by + top_pad
+            ph = max(40.0, bh - top_pad - bot_legend_h - 8.0)
+
+            n_cat = len(categories)
+            n_ser = len(series_data)
+            slot_h = ph / max(1, n_cat)
+            group_h = slot_h * 0.68
+            bar_h = max(4.0, group_h / max(1, n_ser) - (2.0 if n_ser > 1 else 0.0))
+
+            # Subtle vertical baseline
+            c.saveState()
+            c.setStrokeColor(grid_col)
+            c.setLineWidth(0.75)
+            c.line(px, slide_h - py, px, slide_h - (py + ph))
+            c.restoreState()
+
+            for ci, cat in enumerate(categories):
+                slot_top = py + ci * slot_h
+                lbl_w = _measure_dual_width(cat, 10.0, fonts, False)
+                _draw_dual_text(
+                    c,
+                    px - 8.0 - min(lbl_w, label_w - 10.0),
+                    slide_h - (slot_top + slot_h / 2.0 + 3.5),
+                    cat,
+                    10.0,
+                    fonts,
+                    False,
+                    muted_col,
+                )
+                g_top = slot_top + (slot_h - group_h) / 2.0
+                for si, (_, vals, scol, _) in enumerate(series_data):
+                    v = max(0.0, vals[ci]) if ci < len(vals) else 0.0
+                    bar_w = (v / max_val) * pw
+                    by_bar = g_top + si * (bar_h + 2.0)
+                    c.saveState()
+                    c.setFillColor(scol)
+                    c.roundRect(px, slide_h - by_bar - bar_h, max(1.5, bar_w), bar_h, min(3.0, bar_h / 2.5), stroke=0, fill=1)
+                    c.restoreState()
+                    if show_values:
+                        lbl = _fmt_chart_num(v, value_suffix)
+                        _draw_dual_text(
+                            c,
+                            px + bar_w + 5.0,
+                            slide_h - (by_bar + bar_h / 2.0 + 3.2),
+                            lbl,
+                            9.5,
+                            fonts,
+                            True,
+                            body_col,
+                        )
+
+            if show_legend:
+                leg_items = [(name, scol) for name, _, scol, _ in series_data]
+                _draw_chart_legend(c, bx, by + bh - 14, bw, slide_h, leg_items, fonts, muted_col)
+            return
+
+        # ── Vertical Column (`bar`) or Line (`line`) Chart ──
+        all_vals = [v for _, vals, _, _ in series_data for v in vals]
+        raw_max = max(all_vals, default=1.0)
+        max_val = max(raw_max * 1.12, 1e-6)
+        min_val = min(0.0, min(all_vals, default=0.0))
+        span = max(max_val - min_val, 1e-6)
+
+        y_axis_w = 34.0
+        x_label_h = 20.0
+        px = bx + y_axis_w
+        pw = max(40.0, bw - y_axis_w - 10.0)
+        py = by + top_pad + 8.0
+        ph = max(40.0, bh - top_pad - 8.0 - x_label_h - bot_legend_h)
+
+        # 4 horizontal hairline gridlines + Y ticks
+        ticks = 4
+        for ti in range(ticks + 1):
+            frac = ti / ticks
+            gy = py + ph * (1.0 - frac)
+            c.saveState()
+            c.setStrokeColor(grid_col)
+            c.setLineWidth(0.75 if ti == 0 else 0.5)
+            c.line(px, slide_h - gy, px + pw, slide_h - gy)
+            c.restoreState()
+            tv = min_val + span * frac
+            tlbl = _fmt_chart_num(tv, "")
+            tw = _measure_dual_width(tlbl, 8.5, fonts, False)
+            _draw_dual_text(c, px - 6.0 - tw, slide_h - (gy + 3.0), tlbl, 8.5, fonts, False, muted_col)
+
+        n_cat = len(categories)
+        n_ser = len(series_data)
+        slot_w = pw / max(1, n_cat)
+
+        # X-axis category labels
+        for ci, cat in enumerate(categories):
+            cx = px + (ci + 0.5) * slot_w
+            cw_lbl = _measure_dual_width(cat, 9.5, fonts, False)
+            _draw_dual_text(
+                c,
+                cx - cw_lbl / 2.0,
+                slide_h - (py + ph + 14.0),
+                cat,
+                9.5,
+                fonts,
+                False,
+                muted_col,
+            )
+
+        if chart.chart_type in (XL_CHART_TYPE.LINE, XL_CHART_TYPE.LINE_MARKERS):
+            for _, vals, scol, _ in series_data:
+                pts: list[tuple[float, float, float]] = []
+                for ci in range(n_cat):
+                    v = vals[ci] if ci < len(vals) else 0.0
+                    cx = px + (ci + 0.5) * slot_w
+                    cy = py + ph * (1.0 - (v - min_val) / span)
+                    pts.append((cx, cy, v))
+                c.saveState()
+                c.setStrokeColor(scol)
+                c.setLineWidth(2.2)
+                for i in range(len(pts) - 1):
+                    c.line(pts[i][0], slide_h - pts[i][1], pts[i + 1][0], slide_h - pts[i + 1][1])
+                c.setFillColor(scol)
+                for cx, cy, _ in pts:
+                    c.circle(cx, slide_h - cy, 3.5, stroke=0, fill=1)
+                c.restoreState()
+                if show_values:
+                    for cx, cy, v in pts:
+                        lbl = _fmt_chart_num(v, value_suffix)
+                        lw = _measure_dual_width(lbl, 9.0, fonts, True)
+                        _draw_dual_text(c, cx - lw / 2.0, slide_h - (cy - 7.0), lbl, 9.0, fonts, True, body_col)
+        else:
+            group_w = min(slot_w * 0.64, 56.0 * n_ser)
+            bar_w = max(6.0, (group_w - max(0, n_ser - 1) * 3.0) / max(1, n_ser))
+            base_y = py + ph * (1.0 - (0.0 - min_val) / span)
+            for ci in range(n_cat):
+                g_left = px + (ci + 0.5) * slot_w - group_w / 2.0
+                for si, (_, vals, scol, _) in enumerate(series_data):
+                    v = vals[ci] if ci < len(vals) else 0.0
+                    top_y = py + ph * (1.0 - (v - min_val) / span)
+                    bx_bar = g_left + si * (bar_w + 3.0)
+                    bh_bar = max(1.5, abs(base_y - top_y))
+                    bar_top = min(top_y, base_y)
+                    c.saveState()
+                    c.setFillColor(scol)
+                    c.roundRect(bx_bar, slide_h - bar_top - bh_bar, bar_w, bh_bar, min(3.0, bar_w / 3.0), stroke=0, fill=1)
+                    c.restoreState()
+                    if show_values:
+                        lbl = _fmt_chart_num(v, value_suffix)
+                        lw = _measure_dual_width(lbl, 9.0, fonts, True)
+                        _draw_dual_text(
+                            c,
+                            bx_bar + (bar_w - lw) / 2.0,
+                            slide_h - (bar_top - 4.5),
+                            lbl,
+                            9.0,
+                            fonts,
+                            True,
+                            body_col,
+                        )
+
+        if show_legend:
+            leg_items = [(name, scol) for name, _, scol, _ in series_data]
+            _draw_chart_legend(c, bx, by + bh - 14, bw, slide_h, leg_items, fonts, muted_col)
+    except Exception:
+        pass
+
+
+def _draw_chart_legend(
+    c: rl_canvas.Canvas,
+    bx: float,
+    top_y: float,
+    bw: float,
+    slide_h: float,
+    items: list[tuple[str, Color]],
+    fonts: _RenderFonts,
+    text_col: Color,
+) -> None:
+    widths = [12.0 + _measure_dual_width(lbl, 9.0, fonts, False) for lbl, _ in items]
+    gap = 14.0
+    total_w = sum(widths) + gap * max(0, len(items) - 1)
+    cur_x = bx + max(4.0, (bw - total_w) / 2.0)
+    for (lbl, col), iw in zip(items, widths):
+        c.saveState()
+        c.setFillColor(col)
+        c.roundRect(cur_x, slide_h - (top_y + 7.5), 7.5, 7.5, 2.0, stroke=0, fill=1)
+        c.restoreState()
+        _draw_dual_text(c, cur_x + 11.0, slide_h - (top_y + 7.0), lbl, 9.0, fonts, False, text_col)
+        cur_x += iw + gap
+
+
 def _extract_slide_title(slide) -> str:
     """Extract the primary visible title text from a PPTX slide for PDF bookmarks."""
     for shape in slide.shapes:
@@ -466,6 +967,16 @@ def _render_pptx_to_pdf(pptx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
                 # Only continue if the AutoShape has no text content inside
                 if not shape.has_text_frame or not (shape.text_frame.text or "").strip():
                     continue
+
+            # Native PowerPoint table
+            if shape.has_table:
+                _render_pptx_table(c, shape, slide_h, fonts)
+                continue
+
+            # Native PowerPoint chart
+            if shape.has_chart:
+                _render_pptx_chart(c, shape, slide_h, fonts)
+                continue
 
             # Textbox
             if shape.has_text_frame:

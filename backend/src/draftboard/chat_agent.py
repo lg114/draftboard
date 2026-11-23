@@ -74,12 +74,13 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
    - 严守 Draftboard 事实护栏：**绝不编造数字、指标、引用或图片内容**。凡是来自素材的事实，必须填写来自 `read_project_materials` 的真实 `source_ids`；若用户要求的内容在素材中缺乏依据，明确坦诚告知缺口，并将对应页面标记为 `evidence_status="unsupported"`（`source_ids=[]`），绝不伪造数据。
 2. **双轨排版策略（所说即能改）**：
    - **标准模板轨道**（`create_deck_outline` / `update_slide` / `batch_update_slides` / `manage_slides`）：适合快速构建常规页面，包含 `cover / content / bullets / two_column / text_image / closing`。
-   - **自由画布轨道**（`design_custom_slide`）：当用户不满意固定模板，或需要**便当盒多卡片（Bento Grid）、大数字指标卡（KPI）、横向流程时间轴、左图右文/半屏出血大图、居中金句、章节过渡页、或任意自定义字号/对齐/配色**时，直接用 `design_custom_slide` 在 `960×540` pt 画布上用 4 种原生可编辑元素（`card`、`line`、`image`、`text`）精准构图！
+   - **自由画布轨道**（`design_custom_slide`）：当用户不满意固定模板，或需要**便当盒多卡片（Bento Grid）、大数字指标卡（KPI）、多维对比表格（`table`）、数据可视化图表（`chart`：柱状图 `bar` / 条形图 `hbar` / 折线图 `line` / 环形图 `donut`）、横向流程时间轴、左图右文/半屏出血大图、居中金句、章节过渡页、或任意自定义字号/对齐/配色**时，直接用 `design_custom_slide` 在 `960×540` pt 画布上用 6 种原生可编辑元素（`card`、`line`、`image`、`text`、`table`、`chart`）精准构图！
    - 自由画布设计规范：
      * 画布固定 `960×540` pt，常规留白建议 `48` pt（安全内容区 `x=48..912, y=36..504`）；
-     * **绘制顺序（Z-order）**：先放背景色块和 `card`，再放 `line` 和 `image`，最后放前景 `text`；
-     * **优先使用主题语义色**（`theme:bg`、`theme:cover_bg`、`theme:surface`、`theme:title`、`theme:cover_title`、`theme:body`、`theme:cover_body`、`theme:accent`、`theme:muted`、`theme:divider`），确保切换全局主题时自动换肤；仅在用户点名特定颜色时使用 `#RRGGBB`；
-     * 严禁让任意两个 `text` 框重叠或超出 `960×540` 边界；若工具返回 `[OVERFLOW]` / `[OVERLAP]` / `[OUT_OF_BOUNDS]`，立刻调整坐标或字号重试直至通过。
+     * **绘制顺序（Z-order）**：先放背景色块和 `card`，再放 `line`、`image`、`table`、`chart`，最后放前景 `text`；
+     * **优先使用主题语义色**（`theme:bg`、`theme:cover_bg`、`theme:surface`、`theme:title`、`theme:cover_title`、`theme:body`、`theme:cover_body`、`theme:accent`、`theme:muted`、`theme:divider`），确保切换全局主题时自动换肤；表格和图表默认自动继承当前主题配色，仅在用户点名特定颜色时使用 `#RRGGBB`；
+     * 表格与图表数据**必须 100% 源自项目素材真实数字**，严禁编造或补齐不存在的数据；图表需保证每组 `chart_series.values` 长度与 `chart_categories` 严格一致；表格每行高度至少留足 `24–36` pt；
+     * 严禁让任意 `text` / `table` / `chart` 框互相重叠或超出 `960×540` 边界；若工具返回 `[OVERFLOW]` / `[OVERLAP]` / `[OUT_OF_BOUNDS]` / `[INVALID_TABLE]` / `[INVALID_CHART]`，立刻调整坐标、行高或数据后重试直至通过。
    - 给用户提排版建议时，只推荐工作台**真正支持且能直接代改**的方案；用户问“怎么改好看”时，给出清晰方案并顺手询问是否由你直接代改；用户说“帮我改好看 / 照你说的改”就直接动手改完！
 3. **改完主动自检排版**：
    - 凡是新建大纲或较大幅度改动文字后，主动调用一次 `check_deck_layout` 检查是否超框及全稿节奏。
@@ -933,7 +934,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         source_ids: Optional[list[str]] = None,
         evidence_status: Optional[EvidenceLiteral] = None,
     ) -> str:
-        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 4 种原生可编辑元素：card（圆角矩形卡片）、line（线条）、image（已上传图片）、text（文本框）。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、文本溢出与文本碰撞检测。"""
+        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 6 种原生可编辑元素：card（圆角矩形卡片）、line（线条）、image（已上传图片）、text（文本框）、table（原生可编辑表格：headers + rows）、chart（原生可编辑数据图表：chart_type=bar/hbar/line/donut + chart_categories + chart_series）。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、表格/图表校验、文本溢出与元素碰撞检测。"""
         ver = state.current_outline_version()
         outline = _load_outline(state.project_id, ver)
         if not outline or not outline.items:
