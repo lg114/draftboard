@@ -22,6 +22,7 @@ from typing import Any, AsyncIterator, Literal, Optional
 from agents import Agent, Runner, function_tool
 from pydantic import BaseModel, Field
 
+import draftboard.llm_config as llm_config
 import draftboard.tools as tools_module
 from draftboard.agent import resolve_model
 from draftboard.measure import load_fonts
@@ -1083,6 +1084,15 @@ async def stream_studio_chat(
     model: Any = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one streaming PPT Studio Agent turn and yield structured SSE event dicts."""
+    is_real_runner = getattr(Runner.run_streamed, "__module__", "").startswith("agents")
+    if model is None and is_real_runner and not llm_config.is_llm_configured():
+        yield {
+            "type": "error",
+            "code": "LLM_NOT_CONFIGURED",
+            "error": "尚未配置大模型，请先点击「配置大模型」添加 OpenAI、Gemini、DeepSeek 或本地 Ollama。",
+        }
+        return
+
     history = load_chat_history(project_id)
     before_ver = _latest_outline_version(project_id)
 

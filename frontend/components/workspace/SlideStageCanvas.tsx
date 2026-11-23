@@ -607,7 +607,7 @@ export function SlideStageCanvas({
                       >
                         {normalizeEscapedNewlines(item.summary)}
                       </div>
-                      {/* Expanded 456x372 image visual stage */}
+                      {/* Expanded 456x372 image visual stage (clean borderless integration) */}
                       <div
                         style={{
                           position: "absolute",
@@ -615,9 +615,10 @@ export function SlideStageCanvas({
                           top: 120,
                           width: 456,
                           height: 372,
-                          borderTop: `1px solid ${sw.divider}`,
-                          borderBottom: `1px solid ${sw.divider}`,
-                          backgroundColor: sw.surface,
+                          backgroundColor: item.image_asset_id
+                            ? "transparent"
+                            : sw.surface,
+                          borderRadius: item.image_asset_id ? 0 : 6,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",

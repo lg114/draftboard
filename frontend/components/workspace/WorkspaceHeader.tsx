@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, ChevronDown, Download, Play, RefreshCw, Sparkles } from "lucide-react";
+import { Check, ChevronDown, Download, Play, RefreshCw, Settings, Sparkles } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
 import { ExportFormatMenu } from "./ExportFormatMenu";
@@ -26,11 +26,14 @@ interface WorkspaceHeaderProps {
   autoFit: boolean;
   showMaterialsDrawer: boolean;
   isChatOpen: boolean;
+  llmConfigured?: boolean;
+  activeModelLabel?: string;
   leftOpen: boolean;
   rightOpen: boolean;
   onToggleLeft: () => void;
   onToggleRight: () => void;
   onToggleChat: () => void;
+  onOpenLLMSettings: () => void;
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
@@ -54,11 +57,14 @@ export function WorkspaceHeader({
   autoFit,
   showMaterialsDrawer,
   isChatOpen,
+  llmConfigured = true,
+  activeModelLabel = "",
   leftOpen,
   rightOpen,
   onToggleLeft,
   onToggleRight,
   onToggleChat,
+  onOpenLLMSettings,
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
@@ -321,18 +327,37 @@ export function WorkspaceHeader({
           </button>
         )}
 
+        {(!hasOutline || !rightOpen) && (
+          <button
+            type="button"
+            onClick={onToggleChat}
+            title="打开 PPT 创作 Agent 对话 (Ctrl/⌘+L)"
+            className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+              isChatOpen
+                ? "bg-black/[0.08] text-ink"
+                : "text-ink hover:bg-black/[0.05]"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI 对话</span>
+          </button>
+        )}
+
         <button
           type="button"
-          onClick={onToggleChat}
-          title="打开或切换 PPT 创作 Agent 对话 (Ctrl/⌘+L)"
-          className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-            isChatOpen
-              ? "bg-black/[0.08] text-ink"
-              : "text-ink hover:bg-black/[0.05]"
-          }`}
+          onClick={onOpenLLMSettings}
+          title={
+            llmConfigured && activeModelLabel
+              ? `大模型配置（当前：${activeModelLabel}）`
+              : "尚未配置大模型，点击前往配置"
+          }
+          aria-label="大模型配置"
+          className="relative p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer shrink-0"
         >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>AI 对话</span>
+          <Settings className="w-4 h-4" />
+          {!llmConfigured && (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-warning-dot" />
+          )}
         </button>
 
         {project?.download_available && (

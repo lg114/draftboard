@@ -284,9 +284,6 @@ def _apply_theme_chrome(
                 _add_line(pptx_slide, 480, 126, 480, 476, theme.divider_rgb, width_pt=1.0)
                 _add_line(pptx_slide, 48, 120, 460, 120, theme.divider_rgb, width_pt=1.0)
                 _add_line(pptx_slide, 500, 120, 912, 120, theme.divider_rgb, width_pt=1.0)
-            elif layout == SlideLayout.TEXT_IMAGE:
-                _add_line(pptx_slide, 456, 118, 912, 118, theme.divider_rgb, width_pt=1.0)
-                _add_line(pptx_slide, 456, 494, 912, 494, theme.divider_rgb, width_pt=1.0)
 
     if theme.show_page_number and layout != SlideLayout.COVER:
         x, y, w, h = BOX_PAGE_NUMBER

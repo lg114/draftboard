@@ -269,6 +269,51 @@ export interface ChatHistoryResponse {
   messages: ChatMessage[];
 }
 
+export interface LLMProviderPreset {
+  id: string;
+  name: string;
+  base_url: string;
+  default_model: string;
+  requires_api_key: boolean;
+  suggested_models: string[];
+}
+
+export interface LLMProfilePublic {
+  id: string;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+  api_key_masked: string;
+  usable: boolean;
+}
+
+export interface LLMActiveSummary {
+  name: string;
+  provider: string;
+  model: string;
+  base_url: string;
+  source?: "profile" | "env";
+}
+
+export interface LLMSettingsResponse {
+  configured: boolean;
+  source: "profile" | "env" | "none";
+  active_profile_id: string | null;
+  active_summary: LLMActiveSummary | null;
+  env_detected: LLMActiveSummary | null;
+  profiles: LLMProfilePublic[];
+  presets: LLMProviderPreset[];
+}
+
+export interface LLMConnectionTestResponse {
+  ok: boolean;
+  latency_ms?: number;
+  model?: string;
+  error?: string;
+}
+
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options);
   if (!res.ok) {

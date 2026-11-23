@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from pydantic import BaseModel
 
 import draftboard.chat_agent as chat_agent
+import draftboard.llm_config as llm_config
 import draftboard.tasks as tasks
 import draftboard.tools as tools_module
 from draftboard.models import (
@@ -155,6 +156,72 @@ async def key_error_handler(request, exc):
 @app.exception_handler(tasks.TaskConflictError)
 async def conflict_handler(request, exc):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+# ── Global LLM Settings (Multi-Profile + Connection Test) ────────────────────
+
+
+class LLMProfileUpsertRequest(BaseModel):
+    profile_id: Optional[str] = None
+    name: str = ""
+    provider: str = "openai"
+    base_url: str = ""
+    api_key: Optional[str] = None
+    clear_api_key: bool = False
+    model: str
+    activate: bool = True
+
+
+class LLMActiveProfileRequest(BaseModel):
+    profile_id: Optional[str] = None
+
+
+class LLMConnectionTestRequest(BaseModel):
+    profile_id: Optional[str] = None
+    provider: str = "openai"
+    base_url: str = ""
+    api_key: Optional[str] = None
+    model: str = ""
+
+
+@app.get("/api/settings/llm")
+def get_llm_settings():
+    return llm_config.get_public_llm_settings()
+
+
+@app.post("/api/settings/llm/profiles")
+def save_llm_profile(req: LLMProfileUpsertRequest):
+    return llm_config.upsert_llm_profile(
+        profile_id=req.profile_id,
+        name=req.name,
+        provider=req.provider,
+        base_url=req.base_url,
+        api_key=req.api_key,
+        clear_api_key=req.clear_api_key,
+        model=req.model,
+        activate=req.activate,
+    )
+
+
+@app.post("/api/settings/llm/active")
+def activate_llm_profile(req: LLMActiveProfileRequest):
+    return llm_config.set_active_llm_profile(req.profile_id)
+
+
+@app.delete("/api/settings/llm/profiles/{profile_id}")
+def remove_llm_profile(profile_id: str):
+    return llm_config.delete_llm_profile(profile_id)
+
+
+@app.post("/api/settings/llm/test")
+async def test_llm_settings(req: LLMConnectionTestRequest):
+    return await llm_config.test_llm_connection(
+        profile_id=req.profile_id,
+        provider=req.provider,
+        base_url=req.base_url,
+        api_key=req.api_key,
+        model=req.model,
+    )
 
 
 # ── Projects ─────────────────────────────────────────────────────────────────
@@ -568,6 +635,14 @@ def generate_outline(
     if not materials:
         raise HTTPException(
             400, "项目中暂无可用素材，请先上传文件或输入主题笔记后再生成大纲"
+        )
+    is_default_outline_runner = (
+        getattr(tasks.outline_via_agent, "__module__", "") == "draftboard.tasks"
+    )
+    if is_default_outline_runner and not llm_config.is_llm_configured():
+        raise HTTPException(
+            400,
+            "LLM_NOT_CONFIGURED: 尚未配置大模型，请先点击右上角「模型设置」配置 API Key 或本地 Ollama。",
         )
     record = tasks.submit(
         _root(),

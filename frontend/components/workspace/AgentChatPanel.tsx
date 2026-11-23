@@ -8,9 +8,9 @@ import {
   Download,
   Paperclip,
   RotateCcw,
+  Settings,
   Sparkles,
   Square,
-  Trash2,
   Upload,
 } from "lucide-react";
 import type {
@@ -32,16 +32,39 @@ interface AgentChatPanelProps {
   autoFit: boolean;
   messages: ChatMessage[];
   isStreaming: boolean;
+  llmConfigured: boolean;
+  activeModelLabel?: string;
+  onOpenLLMSettings: () => void;
   onSendMessage: (text: string) => void;
   onStopStreaming: () => void;
-  onClearHistory: () => void;
   onJumpToSlide: (slideIndex: number) => void;
   onRevertVersion: (version: string) => void;
   onUploadClick: () => void;
   onDropFiles: (files: FileList) => void;
 }
 
-/** Render inline markdown bold (**...**), inline code (`...`), and clickable `第 N 页` slide pills. */
+function renderSlideLinkPill(
+  pageNum: number,
+  key: string | number,
+  onJumpToSlide: (idx: number) => void,
+  bold = false
+) {
+  return (
+    <button
+      key={key}
+      type="button"
+      onClick={() => onJumpToSlide(pageNum - 1)}
+      title={`跳转到第 ${pageNum} 页`}
+      className={`inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md bg-canvas hover:bg-black/[0.09] border border-black/[0.1] text-[13px] text-ink transition-colors cursor-pointer align-baseline ${
+        bold ? "font-semibold" : "font-medium"
+      }`}
+    >
+      第 {pageNum} 页
+    </button>
+  );
+}
+
+/** Render inline markdown bold (**...**), inline code (`...`), and clickable `第 N 页` slide pills (including nested inside **...**). */
 function renderInlineWithSlideLinks(
   text: string,
   totalSlides: number,
@@ -52,37 +75,53 @@ function renderInlineWithSlideLinks(
   return parts.map((part, idx) => {
     if (!part) return null;
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      const inner = part.slice(2, -2);
+      const exactPage = /^第\s*(\d+)\s*页$/.exec(inner.trim());
+      if (exactPage) {
+        const pageNum = parseInt(exactPage[1], 10);
+        if (pageNum >= 1 && pageNum <= totalSlides) {
+          return renderSlideLinkPill(pageNum, idx, onJumpToSlide, true);
+        }
+      }
+      // Handle mixed bold content such as **第 1 页：图文版式**
+      if (/第\s*\d+\s*页/.test(inner)) {
+        const subParts = inner.split(/(第\s*\d+\s*页)/g);
+        return (
+          <strong key={idx} className="font-semibold text-ink">
+            {subParts.map((sp, si) => {
+              const m = /^第\s*(\d+)\s*页$/.exec(sp);
+              if (m) {
+                const pn = parseInt(m[1], 10);
+                if (pn >= 1 && pn <= totalSlides) {
+                  return renderSlideLinkPill(pn, `${idx}-${si}`, onJumpToSlide, true);
+                }
+              }
+              return <Fragment key={`${idx}-${si}`}>{sp}</Fragment>;
+            })}
+          </strong>
+        );
+      }
       return (
         <strong key={idx} className="font-semibold text-ink">
-          {part.slice(2, -2)}
+          {inner}
         </strong>
       );
     }
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
       return (
-        <code
+        <span
           key={idx}
-          className="px-1.5 py-0.5 rounded bg-canvas border border-black/[0.08] font-mono text-[13px] text-ink"
+          className="px-1.5 py-0.5 rounded bg-canvas border border-black/[0.08] text-[13px] font-medium text-ink"
         >
           {part.slice(1, -1)}
-        </code>
+        </span>
       );
     }
     const pageMatch = /^第\s*(\d+)\s*页$/.exec(part);
     if (pageMatch) {
       const pageNum = parseInt(pageMatch[1], 10);
       if (pageNum >= 1 && pageNum <= totalSlides) {
-        return (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => onJumpToSlide(pageNum - 1)}
-            title={`跳转到第 ${pageNum} 页`}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md bg-canvas hover:bg-black/[0.09] border border-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer align-baseline"
-          >
-            第 {pageNum} 页
-          </button>
-        );
+        return renderSlideLinkPill(pageNum, idx, onJumpToSlide, false);
       }
     }
     return <Fragment key={idx}>{part}</Fragment>;
@@ -350,9 +389,11 @@ export function AgentChatPanel({
   themes,
   messages,
   isStreaming,
+  llmConfigured,
+  activeModelLabel = "",
+  onOpenLLMSettings,
   onSendMessage,
   onStopStreaming,
-  onClearHistory,
   onJumpToSlide,
   onRevertVersion,
   onUploadClick,
@@ -438,37 +479,59 @@ export function AgentChatPanel({
 
       {/* Scrollable Conversation Thread */}
       <div className="flex-1 min-h-0 overflow-y-auto clean-scroll px-4 py-4 space-y-5">
-        {messages.length === 0 ? (
-          <div className="pt-4 space-y-5">
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink">
-                <Sparkles className="w-4 h-4" />
-                <span>PPT 创作 Agent</span>
-              </div>
-              <p className="text-[13px] text-ink-secondary leading-relaxed">
-                像协作伙伴一样直接告诉我你想改哪一页、调整结构、换主题或检查排版。所有修改都会实时同步到左侧画布并保留可撤回快照。
-              </p>
+        {!llmConfigured && (
+          <div className="p-4 rounded-2xl bg-surface border border-warning-dot/30 space-y-3">
+            <div className="flex items-center gap-2 text-[14px] font-semibold text-ink">
+              <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+              <span>尚未配置大模型</span>
             </div>
-
-            <div className="space-y-2">
-              <div className="text-[13px] font-medium text-ink-muted">
-                试试这样说
-              </div>
-              <div className="space-y-2">
-                {quickPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    disabled={isStreaming}
-                    onClick={() => onSendMessage(prompt)}
-                    className="w-full text-left px-3.5 py-2.5 rounded-xl bg-surface hover:bg-canvas border border-black/[0.08] hover:border-black/[0.18] text-[13px] text-ink transition-colors cursor-pointer leading-snug"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-[13px] text-ink-secondary leading-relaxed">
+              配置 OpenAI、Google Gemini、DeepSeek 或本地 Ollama 后，即可使用 PPT 创作 Agent 对话、自动提炼大纲与单页精修。未配置时仍可正常手动编辑并导出 PPTX / PDF。
+            </p>
+            <button
+              type="button"
+              onClick={onOpenLLMSettings}
+              className="ui-btn-primary h-9 px-4 text-[13px] inline-flex items-center gap-1.5"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>立即配置大模型</span>
+            </button>
           </div>
+        )}
+
+        {messages.length === 0 ? (
+          llmConfigured ? (
+            <div className="pt-4 space-y-5">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink">
+                  <Sparkles className="w-4 h-4" />
+                  <span>PPT 创作 Agent</span>
+                </div>
+                <p className="text-[13px] text-ink-secondary leading-relaxed">
+                  像协作伙伴一样直接告诉我你想改哪一页、调整结构、换主题或检查排版。所有修改都会实时同步到左侧画布并保留可撤回快照。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[13px] font-medium text-ink-muted">
+                  试试这样说
+                </div>
+                <div className="space-y-2">
+                  {quickPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      disabled={isStreaming}
+                      onClick={() => onSendMessage(prompt)}
+                      className="w-full text-left px-3.5 py-2.5 rounded-xl bg-surface hover:bg-canvas border border-black/[0.08] hover:border-black/[0.18] text-[13px] text-ink transition-colors cursor-pointer leading-snug"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null
         ) : (
           messages.map((msg, idx) => {
             const isLastAssistant =
@@ -537,32 +600,7 @@ export function AgentChatPanel({
       </div>
 
       {/* Bottom Composer */}
-      <div className="p-3.5 border-t border-black/[0.08] bg-surface shrink-0 space-y-2">
-        {/* Live Context Strip */}
-        <div className="flex items-center justify-between gap-2 px-1 text-[13px]">
-          <div className="flex items-center gap-2 min-w-0 text-ink-secondary truncate">
-            <span className="truncate">
-              {totalSlides > 0
-                ? `当前焦点 第 ${selectedIndex + 1} 页 ${
-                    LAYOUT_LABELS[currentLayout] || "正文"
-                  }`
-                : `${materialsCount} 份项目素材`}
-            </span>
-          </div>
-
-          {messages.length > 0 && !isStreaming && (
-            <button
-              type="button"
-              onClick={onClearHistory}
-              title="清空本项目的历史对话"
-              className="inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer shrink-0"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>清空</span>
-            </button>
-          )}
-        </div>
-
+      <div className="p-3.5 border-t border-black/[0.08] bg-surface shrink-0">
         {/* Input Box */}
         <div className="rounded-2xl bg-canvas border border-black/[0.12] focus-within:bg-surface focus-within:border-ink focus-within:ring-4 focus-within:ring-black/[0.06] transition-[border-color,background-color,box-shadow] duration-200 px-3 pt-2.5 pb-2">
           <textarea
@@ -580,31 +618,54 @@ export function AgentChatPanel({
                 submitDraft();
               }
             }}
+            disabled={!llmConfigured}
             placeholder={
-              totalSlides > 0
+              !llmConfigured
+                ? "请先点击上方「立即配置大模型」…"
+                : totalSlides > 0
                 ? "告诉 Agent 要修改的内容、版式、主题或导出要求…"
                 : "输入想法，或拖入文档/图片让 Agent 帮你从零搭 PPT…"
             }
-            className="w-full bg-transparent text-[13.5px] text-ink placeholder:text-ink-muted outline-none resize-none leading-relaxed max-h-[160px]"
+            className="w-full bg-transparent text-[13.5px] text-ink placeholder:text-ink-muted outline-none resize-none leading-relaxed max-h-[160px] disabled:opacity-60"
           />
 
           <div className="flex items-center justify-between gap-2 pt-1.5">
-            <button
-              type="button"
-              onClick={onUploadClick}
-              title="上传文档或图片到素材库"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
-            >
-              <Paperclip className="w-3.5 h-3.5" />
-              <span>添素材</span>
-            </button>
+            <div className="flex items-center gap-1 min-w-0">
+              <button
+                type="button"
+                onClick={onUploadClick}
+                title="上传文档或图片到素材库"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>添素材</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenLLMSettings}
+                title="切换或配置大模型"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer min-w-0"
+              >
+                <Settings className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate max-w-[125px]">
+                  {llmConfigured && activeModelLabel
+                    ? activeModelLabel
+                    : "配置模型"}
+                </span>
+              </button>
+              <span className="hidden xl:inline text-[13px] text-ink-muted truncate">
+                {totalSlides > 0
+                  ? `第 ${selectedIndex + 1} 页`
+                  : `${materialsCount} 份素材`}
+              </span>
+            </div>
 
             {isStreaming ? (
               <button
                 type="button"
                 onClick={onStopStreaming}
                 title="停止生成"
-                className="h-8 px-3 rounded-full ui-btn-outline text-[13px] inline-flex items-center gap-1.5"
+                className="h-8 px-3 rounded-full ui-btn-outline text-[13px] inline-flex items-center gap-1.5 shrink-0"
               >
                 <Square className="w-3 h-3 fill-current" />
                 <span>停止</span>
@@ -612,7 +673,7 @@ export function AgentChatPanel({
             ) : (
               <button
                 type="button"
-                disabled={!draft.trim()}
+                disabled={!llmConfigured || !draft.trim()}
                 onClick={submitDraft}
                 title="发送 (Enter)"
                 aria-label="发送消息"

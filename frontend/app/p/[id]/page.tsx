@@ -2,7 +2,7 @@
 
 import { useParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, Trash2, X } from "lucide-react";
 import {
   api,
   ChatDeckChanges,
@@ -13,6 +13,7 @@ import {
   FALLBACK_THEMES,
   Issue,
   jsonOptions,
+  LLMSettingsResponse,
   Material,
   MaterialsResponse,
   Outline,
@@ -24,6 +25,7 @@ import {
   Task,
   ThemeOption,
 } from "../../../lib/api";
+import { LLMSettingsModal } from "../../../components/LLMSettingsModal";
 import { AgentChatPanel } from "../../../components/workspace/AgentChatPanel";
 import { EmptyStageOnboarding } from "../../../components/workspace/EmptyStageOnboarding";
 import {
@@ -121,11 +123,17 @@ export default function ProjectWorkspacePage() {
   const [onboardingChatOpen, setOnboardingChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatStreaming, setIsChatStreaming] = useState(false);
+  const [llmSettings, setLlmSettings] = useState<LLMSettingsResponse | null>(
+    null
+  );
+  const [showLLMModal, setShowLLMModal] = useState(false);
+  const [llmModalReason, setLlmModalReason] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
+  const pendingOutlinePromptRef = useRef<{ prompt?: string } | null>(null);
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -145,6 +153,9 @@ export default function ProjectWorkspacePage() {
       .then((res) => {
         if (res.themes?.length) setThemes(res.themes);
       })
+      .catch(() => {});
+    api<LLMSettingsResponse>("/api/settings/llm")
+      .then(setLlmSettings)
       .catch(() => {});
   }, []);
 
@@ -540,9 +551,15 @@ export default function ProjectWorkspacePage() {
     }
   }
 
-  async function genOutline(userPrompt?: string) {
+  async function genOutline(userPrompt?: string, skipConfigGuard = false) {
     if (materials.length === 0 && !(userPrompt && userPrompt.trim())) {
       setRawError("请先上传素材文件、粘贴笔记，或输入一句话主题要求。");
+      return;
+    }
+    if (!skipConfigGuard && llmSettings && !llmSettings.configured) {
+      pendingOutlinePromptRef.current = { prompt: userPrompt };
+      setLlmModalReason("请先配置大模型，保存并启用后将自动继续生成大纲。");
+      setShowLLMModal(true);
       return;
     }
     setRawError(null);
@@ -560,7 +577,14 @@ export default function ProjectWorkspacePage() {
     } catch (e) {
       setIsGenerating(false);
       setStatus("");
-      setRawError((e as Error).message);
+      const msg = (e as Error).message || "";
+      if (msg.includes("LLM_NOT_CONFIGURED")) {
+        pendingOutlinePromptRef.current = { prompt: userPrompt };
+        setLlmModalReason("请先配置大模型，保存并启用后将自动继续生成大纲。");
+        setShowLLMModal(true);
+        return;
+      }
+      setRawError(msg);
     }
   }
 
@@ -952,6 +976,11 @@ export default function ProjectWorkspacePage() {
   async function sendChatMessage(text: string) {
     const clean = text.trim();
     if (!clean || isChatStreaming) return;
+    if (llmSettings && !llmSettings.configured) {
+      setLlmModalReason("请先配置大模型后再使用 PPT 创作 Agent 对话。");
+      setShowLLMModal(true);
+      return;
+    }
 
     // Flush unsaved manual edits first so the Agent reads exact latest canvas state
     if (isStale && isOutlineReadyForAutoSave(outline)) {
@@ -1061,6 +1090,14 @@ export default function ProjectWorkspacePage() {
             );
           }
         } else if (type === "error") {
+          if (ev.code === "LLM_NOT_CONFIGURED") {
+            setChatMessages((prev) =>
+              prev.filter((m) => m.id !== tempUserId && m.id !== tempAsstId)
+            );
+            setLlmModalReason("尚未配置大模型，请先完成配置后再继续对话。");
+            setShowLLMModal(true);
+            return;
+          }
           const errMsg = ev.message as ChatMessage | undefined;
           if (errMsg) {
             setChatMessages((prev) =>
@@ -1233,11 +1270,21 @@ export default function ProjectWorkspacePage() {
             ? rightOpen && rightPanelTab === "chat"
             : onboardingChatOpen
         }
+        llmConfigured={llmSettings ? llmSettings.configured : true}
+        activeModelLabel={
+          llmSettings?.active_summary
+            ? `${llmSettings.active_summary.name} · ${llmSettings.active_summary.model}`
+            : ""
+        }
         leftOpen={leftOpen}
         rightOpen={rightOpen}
         onToggleLeft={() => setLeftOpen((v) => !v)}
         onToggleRight={() => setRightOpen((v) => !v)}
         onToggleChat={handleToggleChat}
+        onOpenLLMSettings={() => {
+          setLlmModalReason(null);
+          setShowLLMModal(true);
+        }}
         onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
         onSelectVersion={(v) => void showOutline(v)}
         onSaveOutline={() => void saveOutline(false)}
@@ -1394,7 +1441,7 @@ export default function ProjectWorkspacePage() {
                   </button>
                 </div>
 
-                {rightPanelTab === "edit" && (
+                {rightPanelTab === "edit" ? (
                   <div className="flex items-center gap-2 text-[13px] whitespace-nowrap truncate">
                     <span className="font-semibold text-ink">
                       第 {selectedIndex + 1} 页
@@ -1409,6 +1456,19 @@ export default function ProjectWorkspacePage() {
                       ] || "正文"}
                     </span>
                   </div>
+                ) : (
+                  chatMessages.length > 0 &&
+                  !isChatStreaming && (
+                    <button
+                      type="button"
+                      onClick={() => void clearChat()}
+                      title="清空本项目的历史对话"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>清空</span>
+                    </button>
+                  )
                 )}
               </div>
 
@@ -1423,9 +1483,14 @@ export default function ProjectWorkspacePage() {
                   autoFit={autoFit}
                   messages={chatMessages}
                   isStreaming={isChatStreaming}
+                  llmConfigured={llmSettings ? llmSettings.configured : true}
+                  activeModelLabel={llmSettings?.active_summary?.model || ""}
+                  onOpenLLMSettings={() => {
+                    setLlmModalReason(null);
+                    setShowLLMModal(true);
+                  }}
                   onSendMessage={(msg) => void sendChatMessage(msg)}
                   onStopStreaming={stopChatStreaming}
-                  onClearHistory={() => void clearChat()}
                   onJumpToSlide={setSelectedIndex}
                   onRevertVersion={(v) => void revertToOutlineVersion(v)}
                   onUploadClick={() => fileInputRef.current?.click()}
@@ -1478,14 +1543,27 @@ export default function ProjectWorkspacePage() {
                   <Sparkles className="w-4 h-4" />
                   <span>AI 对话</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setOnboardingChatOpen(false)}
-                  aria-label="收起对话面板"
-                  className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {chatMessages.length > 0 && !isChatStreaming && (
+                    <button
+                      type="button"
+                      onClick={() => void clearChat()}
+                      title="清空本项目的历史对话"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>清空</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOnboardingChatOpen(false)}
+                    aria-label="收起对话面板"
+                    className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <AgentChatPanel
                 pid={pid}
@@ -1497,9 +1575,14 @@ export default function ProjectWorkspacePage() {
                 autoFit={autoFit}
                 messages={chatMessages}
                 isStreaming={isChatStreaming}
+                llmConfigured={llmSettings ? llmSettings.configured : true}
+                activeModelLabel={llmSettings?.active_summary?.model || ""}
+                onOpenLLMSettings={() => {
+                  setLlmModalReason(null);
+                  setShowLLMModal(true);
+                }}
                 onSendMessage={(msg) => void sendChatMessage(msg)}
                 onStopStreaming={stopChatStreaming}
-                onClearHistory={() => void clearChat()}
                 onJumpToSlide={setSelectedIndex}
                 onRevertVersion={(v) => void revertToOutlineVersion(v)}
                 onUploadClick={() => fileInputRef.current?.click()}
@@ -1509,6 +1592,29 @@ export default function ProjectWorkspacePage() {
           )}
         </div>
       )}
+
+      <LLMSettingsModal
+        open={showLLMModal}
+        settings={llmSettings}
+        reasonBanner={llmModalReason}
+        onClose={() => {
+          setShowLLMModal(false);
+          setLlmModalReason(null);
+          pendingOutlinePromptRef.current = null;
+        }}
+        onSettingsUpdated={(next) => {
+          setLlmSettings(next);
+          if (next.configured && next.active_summary) {
+            flashToast(`已启用模型：${next.active_summary.model}`);
+            const pending = pendingOutlinePromptRef.current;
+            if (pending) {
+              pendingOutlinePromptRef.current = null;
+              setLlmModalReason(null);
+              void genOutline(pending.prompt, true);
+            }
+          }
+        }}
+      />
     </div>
   );
 }

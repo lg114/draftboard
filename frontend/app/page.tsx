@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings,
   Trash2,
   X,
 } from "lucide-react";
@@ -18,12 +19,14 @@ import {
   CoverSlidePreview,
   FALLBACK_THEMES,
   jsonOptions,
+  LLMSettingsResponse,
   Project,
   ProjectSummary,
   ThemeOption,
 } from "../lib/api";
 import { BackendStatus } from "../components/BackendStatus";
 import { BrandLogo } from "../components/BrandLogo";
+import { LLMSettingsModal } from "../components/LLMSettingsModal";
 import {
   inferEffectiveLayout,
   normalizeEscapedNewlines,
@@ -349,6 +352,8 @@ export default function ProjectsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [llmSettings, setLlmSettings] = useState<LLMSettingsResponse | null>(null);
+  const [showLLMModal, setShowLLMModal] = useState(false);
 
   const themeMap = useMemo(() => {
     const map = new Map<string, ThemeOption>();
@@ -429,6 +434,9 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     load().catch((e) => setError((e as Error).message));
+    api<LLMSettingsResponse>("/api/settings/llm")
+      .then(setLlmSettings)
+      .catch(() => {});
   }, []);
 
   async function handleRename(pid: string) {
@@ -487,8 +495,28 @@ export default function ProjectsPage() {
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <BackendStatus />
+          <button
+            type="button"
+            onClick={() => setShowLLMModal(true)}
+            title={
+              llmSettings?.active_summary
+                ? `当前模型：${llmSettings.active_summary.name}（${llmSettings.active_summary.model}）`
+                : "配置大模型 API Key 或本地 Ollama"
+            }
+            className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Settings className="w-3.5 h-3.5 text-ink-secondary" />
+            <span className="hidden sm:inline">
+              {llmSettings?.active_summary
+                ? llmSettings.active_summary.model
+                : "模型设置"}
+            </span>
+            {llmSettings && !llmSettings.configured && (
+              <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
+            )}
+          </button>
           {projects.length > 0 && (
             <Link
               href="/p/new"
@@ -754,6 +782,13 @@ export default function ProjectsPage() {
           </section>
         ) : null}
       </main>
+
+      <LLMSettingsModal
+        open={showLLMModal}
+        settings={llmSettings}
+        onClose={() => setShowLLMModal(false)}
+        onSettingsUpdated={setLlmSettings}
+      />
     </div>
   );
 }
