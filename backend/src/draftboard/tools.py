@@ -8,6 +8,7 @@ variable (set in tests to redirect writes to a tmp directory).
 """
 
 import pathlib
+import re
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
@@ -259,6 +260,43 @@ def read_materials(
 # ── Tool 2: propose_outline ───────────────────────────────────────────────────
 
 
+def normalize_outline_item_text(item: OutlineItem) -> OutlineItem:
+    """Unescape literal \\n sequences emitted by LLMs and strip duplicate bullet dashes."""
+    def _unescape(text: str) -> str:
+        return text.replace("\\r\\n", "\n").replace("\\n", "\n")
+
+    def _clean_bullets(text: str) -> str:
+        lines = [
+            re.sub(r"^(?:[-*•·]\s+)", "", ln.strip())
+            for ln in text.splitlines()
+            if ln.strip()
+        ]
+        return "\n".join(lines)
+
+    title = _unescape(item.title).replace("\n", " ").strip()
+    summary = _unescape(item.summary).strip()
+    if item.layout == SlideLayout.BULLETS:
+        summary = _clean_bullets(summary)
+    col_right = (
+        _unescape(item.column_right).strip()
+        if item.column_right is not None
+        else None
+    )
+    notes = (
+        _unescape(item.speaker_notes).strip()
+        if item.speaker_notes is not None
+        else None
+    )
+    return item.model_copy(
+        update={
+            "title": title or item.title,
+            "summary": summary or item.summary,
+            "column_right": col_right,
+            "speaker_notes": notes,
+        }
+    )
+
+
 @function_tool
 def propose_outline(
     project_id: str,
@@ -286,14 +324,15 @@ def propose_outline(
             from an outline.  Nothing is saved on failure.
     """
     storage = _get_storage(project_id)
-    errors = validate_outline(items, storage.load_source_ids())
+    cleaned_items = [normalize_outline_item_text(it) for it in items]
+    errors = validate_outline(cleaned_items, storage.load_source_ids())
     if errors:
         raise ValueError("Invalid outline:\n" + "\n".join(errors))
     outline_version = f"v-{uuid.uuid4().hex[:8]}"
     outline = Outline(
         outline_version=outline_version,
         project_id=project_id,
-        items=items,
+        items=cleaned_items,
         is_confirmed=False,
     )
     storage.save_outline(outline)
@@ -354,7 +393,8 @@ def generate_slides(
     # others content.  No model rewriting happens here.
     n = len(outline.items)
     slides: list[Slide] = []
-    for idx, item in enumerate(outline.items):
+    for idx, raw_item in enumerate(outline.items):
+        item = normalize_outline_item_text(raw_item)
         slide_id = f"slide-{idx + 1:03d}"
         source_id = item.source_ids[0] if item.source_ids else None
         layout = item.layout

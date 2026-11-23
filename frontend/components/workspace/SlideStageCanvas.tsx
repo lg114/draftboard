@@ -11,7 +11,11 @@ import type {
   Project,
   ThemeOption,
 } from "../../lib/api";
-import { inferEffectiveLayout, LAYOUT_OPTIONS } from "./layoutUtils";
+import {
+  inferEffectiveLayout,
+  LAYOUT_OPTIONS,
+  normalizeEscapedNewlines,
+} from "./layoutUtils";
 
 interface SlideStageCanvasProps {
   pid: string;
@@ -496,9 +500,9 @@ export function SlideStageCanvas({
                         gap: 16,
                       }}
                     >
-                      {item.summary
+                      {normalizeEscapedNewlines(item.summary)
                         .split("\n")
-                        .map((s) => s.trim())
+                        .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
                         .filter(Boolean)
                         .map((line, i) => (
                           <li

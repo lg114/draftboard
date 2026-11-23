@@ -1,7 +1,7 @@
 "use client";
 
 import type { Outline, OutlineItem, ThemeOption } from "../../lib/api";
-import { inferEffectiveLayout } from "./layoutUtils";
+import { inferEffectiveLayout, normalizeEscapedNewlines } from "./layoutUtils";
 
 interface SlideNavigatorProps {
   pid: string;
@@ -33,6 +33,8 @@ function ThumbSkeleton({
   const isHero = layout === "cover" || layout === "closing";
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
+  const cleanSummary = normalizeEscapedNewlines(item.summary || "");
+  const cleanColRight = normalizeEscapedNewlines(item.column_right || "");
 
   if (layout === "cover") {
     return (
@@ -48,12 +50,12 @@ function ThumbSkeleton({
           >
             {item.title || "未命名"}
           </div>
-          {item.summary && (
+          {cleanSummary && (
             <div
               className="text-[6.5px] leading-snug line-clamp-1 opacity-80"
               style={{ color: bodyCol }}
             >
-              {item.summary}
+              {cleanSummary}
             </div>
           )}
         </div>
@@ -78,12 +80,12 @@ function ThumbSkeleton({
         >
           {item.title || "未命名"}
         </div>
-        {item.summary && (
+        {cleanSummary && (
           <div
             className="text-[6.5px] leading-snug line-clamp-1 opacity-80"
             style={{ color: bodyCol }}
           >
-            {item.summary}
+            {cleanSummary}
           </div>
         )}
       </div>
@@ -101,16 +103,16 @@ function ThumbSkeleton({
         </div>
         <div className="grid grid-cols-2 gap-1.5 flex-1 pt-1 min-h-0 overflow-hidden">
           <div
-            className="text-[6.5px] leading-snug line-clamp-4 pr-1 border-r"
+            className="text-[6.5px] leading-snug line-clamp-4 pr-1 border-r whitespace-pre-wrap"
             style={{ color: bodyCol, borderColor: sw.divider }}
           >
-            {item.summary}
+            {cleanSummary}
           </div>
           <div
-            className="text-[6.5px] leading-snug line-clamp-4"
+            className="text-[6.5px] leading-snug line-clamp-4 whitespace-pre-wrap"
             style={{ color: bodyCol }}
           >
-            {item.column_right || "右栏"}
+            {cleanColRight || "右栏"}
           </div>
         </div>
       </>
@@ -128,10 +130,10 @@ function ThumbSkeleton({
         </div>
         <div className="grid grid-cols-12 gap-1.5 flex-1 pt-1 min-h-0 items-stretch overflow-hidden">
           <div
-            className="col-span-6 text-[6.5px] leading-snug line-clamp-4"
+            className="col-span-6 text-[6.5px] leading-snug line-clamp-4 whitespace-pre-wrap"
             style={{ color: bodyCol }}
           >
-            {item.summary}
+            {cleanSummary}
           </div>
           <div
             className="col-span-6 h-full rounded-[4px] overflow-hidden flex items-center justify-center border"
@@ -158,6 +160,39 @@ function ThumbSkeleton({
     );
   }
 
+  if (layout === "bullets") {
+    const bulletLines = cleanSummary
+      .split("\n")
+      .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    return (
+      <>
+        <div
+          className="text-[8px] font-bold truncate pb-1 border-b"
+          style={{ color: titleCol, borderColor: sw.divider }}
+        >
+          {item.title || "未命名"}
+        </div>
+        <ul className="pt-1 space-y-0.5 flex-1 overflow-hidden">
+          {bulletLines.map((line, i) => (
+            <li
+              key={i}
+              className="flex items-start gap-1 text-[6px] leading-tight"
+              style={{ color: bodyCol }}
+            >
+              <span
+                className="w-1 h-1 rounded-full mt-[2.5px] shrink-0"
+                style={{ backgroundColor: sw.accent }}
+              />
+              <span className="truncate">{line}</span>
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  }
+
   return (
     <>
       <div
@@ -167,10 +202,10 @@ function ThumbSkeleton({
         {item.title || "未命名"}
       </div>
       <div
-        className="text-[6.5px] leading-snug line-clamp-4 pt-1 flex-1 overflow-hidden"
+        className="text-[6.5px] leading-snug line-clamp-4 pt-1 flex-1 overflow-hidden whitespace-pre-wrap"
         style={{ color: bodyCol }}
       >
-        {item.summary}
+        {cleanSummary}
       </div>
     </>
   );

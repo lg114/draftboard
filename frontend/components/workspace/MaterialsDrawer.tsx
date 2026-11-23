@@ -18,6 +18,11 @@ import type {
   SourceFragment,
 } from "../../lib/api";
 import { extractFragmentText, formatAssetLabel } from "./SlideInspector";
+import {
+  formatFragmentLocation,
+  getExcerptTargetLabel,
+  inferEffectiveLayout,
+} from "./layoutUtils";
 
 interface MaterialsDrawerProps {
   pid: string;
@@ -466,7 +471,7 @@ export function MaterialsDrawer({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11.5px]">
                         <span className="font-mono font-semibold text-ink">
-                          {frag.location.replace(/^L/, "第 ")}
+                          {formatFragmentLocation(frag.location)}
                         </span>
                         {bound && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
@@ -503,7 +508,14 @@ export function MaterialsDrawer({
                               }
                               className="text-ink-secondary hover:text-ink font-medium cursor-pointer"
                             >
-                              填入第 {currentSlideIndex + 1} 页正文
+                              填入第 {currentSlideIndex + 1} 页
+                              {getExcerptTargetLabel(
+                                inferEffectiveLayout(
+                                  currentSlide.layout,
+                                  currentSlideIndex,
+                                  outline?.items.length || 1
+                                )
+                              )}
                             </button>
                           </>
                         )}

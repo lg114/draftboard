@@ -5,7 +5,11 @@ import { useState } from "react";
 import { Check, ChevronDown, Download, Play, RefreshCw } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
-import type { WorkspaceStage } from "./layoutUtils";
+import {
+  PROJECT_STAGE_STEPS,
+  resolveWorkspaceStageKey,
+  type WorkspaceStage,
+} from "./layoutUtils";
 
 interface WorkspaceHeaderProps {
   pid: string;
@@ -86,14 +90,7 @@ export function WorkspaceHeader({
       (Boolean(version) && version !== project?.generated_outline_version));
 
   const hasOutline = Boolean(outline && outline.items.length > 0);
-  const stageMeta =
-    currentStage === "no_materials"
-      ? { step: 1, label: "导入素材" }
-      : currentStage === "has_materials_no_outline"
-      ? { step: 2, label: "提炼大纲" }
-      : currentStage === "outline_ready"
-      ? { step: 3, label: "审阅大纲" }
-      : { step: 4, label: "PPT 已就绪" };
+  const stageMeta = PROJECT_STAGE_STEPS[resolveWorkspaceStageKey(currentStage, outline)];
 
   return (
     <header className="h-[52px] apple-glass border-b border-black/[0.07] px-4 flex items-center justify-between gap-3 sticky top-0 z-40 shrink-0">

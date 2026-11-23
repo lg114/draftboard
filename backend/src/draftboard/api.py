@@ -217,10 +217,14 @@ def _project_summary(pid: str) -> dict:
             if items:
                 first = items[0]
                 cover_slide = {
-                    "title": (first.get("title") or "").strip(),
-                    "summary": (first.get("summary") or "").strip(),
+                    "title": (first.get("title") or "").replace("\\n", " ").strip(),
+                    "summary": (first.get("summary") or "").replace("\\r\\n", "\n").replace("\\n", "\n").strip(),
                     "layout": first.get("layout"),
-                    "column_right": first.get("column_right"),
+                    "column_right": (
+                        first["column_right"].replace("\\r\\n", "\n").replace("\\n", "\n")
+                        if isinstance(first.get("column_right"), str)
+                        else first.get("column_right")
+                    ),
                     "image_asset_id": first.get("image_asset_id"),
                 }
         except Exception:
@@ -252,10 +256,10 @@ def _project_summary(pid: str) -> dict:
         stage_label = "大纲待审核"
     elif materials_count > 0:
         stage = "materials_ready"
-        stage_label = "素材已导入"
+        stage_label = "待生成大纲"
     else:
         stage = "empty"
-        stage_label = "待上传素材"
+        stage_label = "待导入素材"
 
     mtime = p_dir.stat().st_mtime
     if outlines:
@@ -536,7 +540,15 @@ def list_outlines(project_id: str):
 @app.get("/api/projects/{project_id}/outlines/{version}")
 def get_outline(project_id: str, version: str):
     _require_project(project_id)
-    return _storage(project_id).load_outline(version).model_dump()
+    outline = _storage(project_id).load_outline(version)
+    cleaned = outline.model_copy(
+        update={
+            "items": [
+                tools_module.normalize_outline_item_text(it) for it in outline.items
+            ]
+        }
+    )
+    return cleaned.model_dump()
 
 
 @app.post("/api/projects/{project_id}/outlines/{version}/confirm")

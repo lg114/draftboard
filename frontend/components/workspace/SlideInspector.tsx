@@ -20,7 +20,10 @@ import type {
   SourceFragment,
 } from "../../lib/api";
 import {
+  cleanMarkdownExcerpt,
   EditableOutlineField,
+  formatFragmentLocation,
+  getExcerptTargetLabel,
   inferEffectiveLayout,
   LAYOUT_LABELS,
 } from "./layoutUtils";
@@ -67,13 +70,13 @@ export function extractFragmentText(
         .slice(start, end)
         .join("\n")
         .trim();
-      if (slice) return slice;
+      if (slice) return cleanMarkdownExcerpt(slice);
     }
-    if (frag.content_preview) return frag.content_preview;
+    if (frag.content_preview) return cleanMarkdownExcerpt(frag.content_preview);
     const trimmed = mat.content.trim();
-    if (trimmed) return trimmed.slice(0, 360);
+    if (trimmed) return cleanMarkdownExcerpt(trimmed.slice(0, 360));
   }
-  return frag.content_preview || "";
+  return cleanMarkdownExcerpt(frag.content_preview || "");
 }
 
 function AutoGrowTextarea({
@@ -180,6 +183,7 @@ export function SlideInspector({
   const matchedFragments = item.source_ids
     .map((sid) => sourceFragments.find((f) => f.source_id === sid))
     .filter((f): f is SourceFragment => Boolean(f));
+  const boundAssetCount = new Set(matchedFragments.map((f) => f.asset_id)).size;
 
   const isImageFragment = (frag: SourceFragment) =>
     frag.source_id.endsWith("-img") || imageAssetIds.has(frag.asset_id);
@@ -293,9 +297,9 @@ export function SlideInspector({
               />
               <span className="text-[12.5px] font-semibold text-ink truncate">
                 {isSupported
-                  ? `依据充分 · ${matchedFragments.length} 处素材`
+                  ? `依据充分 · ${boundAssetCount} 份素材`
                   : isPartial
-                  ? `部分依据 · ${matchedFragments.length} 处素材`
+                  ? `部分依据 · ${boundAssetCount} 份素材`
                   : "待补素材出处"}
               </span>
               <ChevronDown
@@ -400,7 +404,7 @@ export function SlideInspector({
                                     {formatAssetLabel(frag.asset_id)}
                                   </span>
                                   <span className="text-[10.5px] text-ink-muted shrink-0">
-                                    {frag.location}
+                                    {formatFragmentLocation(frag.location)}
                                   </span>
                                 </div>
                                 <p className="text-[11.5px] text-ink-secondary line-clamp-2 leading-snug">
@@ -510,7 +514,7 @@ export function SlideInspector({
                               {formatAssetLabel(frag.asset_id)}
                             </span>
                             <span className="text-ink-muted shrink-0">
-                              · {frag.location.replace(/^L/, "第 ")} 行
+                              · {formatFragmentLocation(frag.location)}
                             </span>
                           </div>
                           <button
@@ -534,7 +538,7 @@ export function SlideInspector({
                               onClick={() => fillFromExcerpt("summary", excerpt)}
                               className="text-ink font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
                             >
-                              {layout === "two_column" ? "填入左栏" : "填入正文"}
+                              填入{getExcerptTargetLabel(layout)}
                             </button>
                             {layout === "two_column" && (
                               <>

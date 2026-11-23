@@ -25,9 +25,14 @@ import {
 } from "../lib/api";
 import { BackendStatus } from "../components/BackendStatus";
 import { BrandLogo } from "../components/BrandLogo";
-import { inferEffectiveLayout } from "../components/workspace/layoutUtils";
+import {
+  inferEffectiveLayout,
+  normalizeEscapedNewlines,
+  PROJECT_STAGE_STEPS,
+  ProjectStageKey,
+} from "../components/workspace/layoutUtils";
 
-type StageKey = "ready" | "confirmed" | "outline_draft" | "materials_ready" | "empty";
+type StageKey = ProjectStageKey;
 
 interface ProjectSummaryItem {
   project_id: string;
@@ -45,13 +50,7 @@ interface ProjectSummaryItem {
   mtime: number;
 }
 
-const STAGE_STEPS: Record<StageKey, { step: number; label: string }> = {
-  empty: { step: 0, label: "待上传素材" },
-  materials_ready: { step: 1, label: "素材已导入" },
-  outline_draft: { step: 2, label: "大纲待审核" },
-  confirmed: { step: 3, label: "大纲已确认" },
-  ready: { step: 4, label: "PPT 已就绪" },
-};
+const STAGE_STEPS = PROJECT_STAGE_STEPS;
 
 function slugifyName(input: string): string {
   const trimmed = input.trim();
@@ -93,7 +92,7 @@ function isImageFilename(name: string): boolean {
 }
 
 function parseBulletLines(summary: string): string[] {
-  return summary
+  return normalizeEscapedNewlines(summary)
     .split(/\n+|[；;]\s*/)
     .map((line) => line.replace(/^[-•·*\d.]+\s*/, "").trim())
     .filter(Boolean)
