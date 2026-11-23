@@ -26,13 +26,15 @@
   --color-danger-bg: #fff2f2;
 }
 
+@theme inline {
+  --font-sans: var(--font-inter), var(--font-noto-sans-sc), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
 @layer base {
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    font-family: var(--font-inter), var(--font-noto-sans-sc), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
     text-rendering: optimizeLegibility;
   }
 }

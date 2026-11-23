@@ -46,6 +46,7 @@ interface SlideInspectorProps {
   ) => Promise<SlideRefineCandidate | null>;
   onApplyRefineCandidate: (candidate: SlideRefineCandidate) => void;
   onUploadClick: () => void;
+  embedded?: boolean;
 }
 
 export function formatAssetLabel(assetId: string): string {
@@ -131,6 +132,7 @@ export function SlideInspector({
   onRefineSlide,
   onApplyRefineCandidate,
   onUploadClick,
+  embedded = false,
 }: SlideInspectorProps) {
   // Speaker notes stay expanded by default to utilize lower inspector space (still collapsible).
   const [notesOpen, setNotesOpen] = useState(true);
@@ -223,19 +225,20 @@ export function SlideInspector({
     onUpdateField(targetField, nextValue);
   }
 
-  return (
-    <aside className="w-[320px] xl:w-[376px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0 overflow-y-auto clean-scroll">
-      {/* Sticky Monochrome Inspector Header (page count lives above stage only) */}
-      <div className="px-5 py-3 border-b border-black/[0.07] flex items-center justify-between sticky top-0 bg-surface-subtle/95 backdrop-blur-sm z-10">
-        <div className="flex items-center gap-2.5 whitespace-nowrap">
-          <span className="text-[14px] font-semibold text-ink">
-            第 {slideIndex + 1} 页
-          </span>
-          <span className="text-[13px] font-medium text-ink-secondary">
-            {LAYOUT_LABELS[layout] || "正文"}
-          </span>
+  const innerContent = (
+    <>
+      {!embedded && (
+        <div className="px-5 py-3 border-b border-black/[0.07] flex items-center justify-between sticky top-0 bg-surface-subtle/95 backdrop-blur-sm z-10">
+          <div className="flex items-center gap-2.5 whitespace-nowrap">
+            <span className="text-[14px] font-semibold text-ink">
+              第 {slideIndex + 1} 页
+            </span>
+            <span className="text-[13px] font-medium text-ink-secondary">
+              {LAYOUT_LABELS[layout] || "正文"}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="p-5 space-y-6 flex-1">
         {/* In-place Slide QA Issues */}
@@ -997,6 +1000,20 @@ export function SlideInspector({
           )}
         </section>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto clean-scroll">
+        {innerContent}
+      </div>
+    );
+  }
+
+  return (
+    <aside className="w-[344px] xl:w-[396px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0 overflow-y-auto clean-scroll">
+      {innerContent}
     </aside>
   );
 }

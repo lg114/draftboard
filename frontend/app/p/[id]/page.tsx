@@ -2,8 +2,13 @@
 
 import { useParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Sparkles, X } from "lucide-react";
 import {
   api,
+  ChatDeckChanges,
+  ChatHistoryResponse,
+  ChatMessage,
+  ChatToolStep,
   ExportReport,
   FALLBACK_THEMES,
   Issue,
@@ -19,10 +24,13 @@ import {
   Task,
   ThemeOption,
 } from "../../../lib/api";
+import { AgentChatPanel } from "../../../components/workspace/AgentChatPanel";
 import { EmptyStageOnboarding } from "../../../components/workspace/EmptyStageOnboarding";
 import {
   EditableOutlineField,
   extractIssueSlideIndices,
+  inferEffectiveLayout,
+  LAYOUT_LABELS,
   WorkspaceStage,
 } from "../../../components/workspace/layoutUtils";
 import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
@@ -109,10 +117,15 @@ export default function ProjectWorkspacePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<"edit" | "chat">("edit");
+  const [onboardingChatOpen, setOnboardingChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatStreaming, setIsChatStreaming] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -338,8 +351,11 @@ export default function ProjectWorkspacePage() {
       setReport(null);
       setRawError(null);
       setIssues([]);
+      setChatMessages([]);
+      setOnboardingChatOpen(false);
       return () => {
         stopPolling();
+        chatAbortRef.current?.abort();
         if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       };
     }
@@ -352,9 +368,18 @@ export default function ProjectWorkspacePage() {
         );
         if (active) startPolling(active.task_id, routePid);
       }
+      try {
+        const hist = await api<ChatHistoryResponse>(
+          `/api/projects/${routePid}/chat`
+        );
+        setChatMessages(hist.messages || []);
+      } catch {
+        setChatMessages([]);
+      }
     })();
     return () => {
       stopPolling();
+      chatAbortRef.current?.abort();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -874,18 +899,278 @@ export default function ProjectWorkspacePage() {
   }
 
   function focusInspectorField(fieldId: string) {
+    setRightPanelTab("edit");
     if (!rightOpen) setRightOpen(true);
     setTimeout(() => {
       document.getElementById(fieldId)?.focus();
-    }, 25);
+    }, 30);
   }
 
-  // Keyboard shortcuts: ↑ / ↓ switch slide, Ctrl/⌘ + S save outline
+  // ── PPT Studio Agent Chat (SSE Streaming + Live Sync) ────────────────────
+
+  const handleToggleChat = useCallback(() => {
+    setShowMaterialsDrawer(false);
+    if (outline && outline.items.length > 0) {
+      if (rightOpen && rightPanelTab === "chat") {
+        setRightPanelTab("edit");
+      } else {
+        setRightOpen(true);
+        setRightPanelTab("chat");
+      }
+    } else {
+      setOnboardingChatOpen((v) => !v);
+    }
+  }, [outline, rightOpen, rightPanelTab]);
+
+  async function applyDeckChangesFromChat(
+    changes: ChatDeckChanges | null | undefined,
+    targetPid: string
+  ) {
+    if (!changes) return;
+    if (changes.theme_id) {
+      setSelectedThemeId(changes.theme_id);
+    }
+    if (typeof changes.auto_fit === "boolean") {
+      setAutoFit(changes.auto_fit);
+    }
+    await refresh(targetPid);
+    if (changes.after_outline_version) {
+      await showOutline(changes.after_outline_version, targetPid);
+      if (!outline || outline.items.length === 0) {
+        // Transitioned from blank onboarding to live 3-column studio: keep chat open!
+        setRightOpen(true);
+        setRightPanelTab("chat");
+        setOnboardingChatOpen(false);
+      }
+    }
+    if (changes.exported) {
+      await loadPreview(targetPid);
+      flashToast("Agent 已完成 PPTX 与 PDF 编译，可直接下载或放映");
+    }
+  }
+
+  async function sendChatMessage(text: string) {
+    const clean = text.trim();
+    if (!clean || isChatStreaming) return;
+
+    // Flush unsaved manual edits first so the Agent reads exact latest canvas state
+    if (isStale && isOutlineReadyForAutoSave(outline)) {
+      await saveOutline(true);
+    }
+
+    const tempUserId = `tmp-u-${Date.now()}`;
+    const tempAsstId = `tmp-a-${Date.now()}`;
+    const userMsg: ChatMessage = {
+      id: tempUserId,
+      role: "user",
+      content: clean,
+      selected_slide: selectedIndex + 1,
+    };
+    const asstPlaceholder: ChatMessage = {
+      id: tempAsstId,
+      role: "assistant",
+      content: "",
+      tool_steps: [],
+      changes: null,
+    };
+
+    setChatMessages((prev) => [...prev, userMsg, asstPlaceholder]);
+    setIsChatStreaming(true);
+
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
+
+    try {
+      const targetPid = await ensureProjectId();
+      const res = await fetch(`/api/projects/${targetPid}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: clean,
+          selected_slide_index: selectedIndex,
+          theme_id: selectedThemeId,
+          auto_fit: autoFit,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        let detail = res.statusText || "对话请求失败";
+        try {
+          detail = (await res.json()).detail || detail;
+        } catch {}
+        throw new Error(detail);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      const handleEvent = async (ev: Record<string, unknown>) => {
+        const type = ev.type as string;
+        if (type === "user_saved" && ev.message) {
+          const savedUser = ev.message as ChatMessage;
+          setChatMessages((prev) =>
+            prev.map((m) => (m.id === tempUserId ? savedUser : m))
+          );
+        } else if (type === "delta") {
+          const chunk = String(ev.delta || "");
+          if (!chunk) return;
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAsstId ? { ...m, content: m.content + chunk } : m
+            )
+          );
+        } else if (type === "tool_start" && ev.step) {
+          const step = ev.step as ChatToolStep;
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, tool_steps: [...(m.tool_steps || []), step] }
+                : m
+            )
+          );
+        } else if (type === "tool_done" && ev.step) {
+          const step = ev.step as ChatToolStep;
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAsstId
+                ? {
+                    ...m,
+                    tool_steps: (m.tool_steps || []).map((s) =>
+                      s.id === step.id ? step : s
+                    ),
+                  }
+                : m
+            )
+          );
+        } else if (type === "deck_updated") {
+          await applyDeckChangesFromChat(
+            ev.changes as ChatDeckChanges | null,
+            targetPid
+          );
+        } else if (type === "done" && ev.message) {
+          const finalMsg = ev.message as ChatMessage;
+          setChatMessages((prev) =>
+            prev.map((m) => (m.id === tempAsstId ? finalMsg : m))
+          );
+          if (ev.changes) {
+            await applyDeckChangesFromChat(
+              ev.changes as ChatDeckChanges,
+              targetPid
+            );
+          }
+        } else if (type === "error") {
+          const errMsg = ev.message as ChatMessage | undefined;
+          if (errMsg) {
+            setChatMessages((prev) =>
+              prev.map((m) => (m.id === tempAsstId ? errMsg : m))
+            );
+          } else {
+            setChatMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAsstId
+                  ? {
+                      ...m,
+                      content: `处理请求时出错：${String(ev.error || "未知错误")}`,
+                      is_error: true,
+                    }
+                  : m
+              )
+            );
+          }
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
+        for (const frame of frames) {
+          const line = frame
+            .split("\n")
+            .find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+          try {
+            const parsed = JSON.parse(payload) as Record<string, unknown>;
+            await handleEvent(parsed);
+          } catch {}
+        }
+      }
+    } catch (e) {
+      if ((e as Error).name === "AbortError") {
+        setChatMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempAsstId
+              ? {
+                  ...m,
+                  content: m.content
+                    ? `${m.content}\n\n（已停止生成）`
+                    : "已停止生成。",
+                }
+              : m
+          )
+        );
+      } else {
+        setChatMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempAsstId
+              ? {
+                  ...m,
+                  content: `连接 Agent 失败：${(e as Error).message}`,
+                  is_error: true,
+                }
+              : m
+          )
+        );
+      }
+    } finally {
+      chatAbortRef.current = null;
+      setIsChatStreaming(false);
+    }
+  }
+
+  function stopChatStreaming() {
+    chatAbortRef.current?.abort();
+  }
+
+  async function clearChat() {
+    const targetPid = createdPidRef.current || pid;
+    if (!targetPid || targetPid === "new") {
+      setChatMessages([]);
+      return;
+    }
+    try {
+      await api(`/api/projects/${targetPid}/chat`, { method: "DELETE" });
+      setChatMessages([]);
+      flashToast("已清空本项目对话记录");
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  async function revertToOutlineVersion(targetVer: string) {
+    const targetPid = createdPidRef.current || pid;
+    if (!targetPid || targetPid === "new") return;
+    await showOutline(targetVer, targetPid);
+    flashToast("已撤回到修改前的大纲版本");
+  }
+
+  // Keyboard shortcuts: Ctrl/⌘+S save, Ctrl/⌘+L toggle AI chat, ↑ / ↓ switch slide
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         if (isStale) void saveOutline();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        handleToggleChat();
         return;
       }
       const tag = (document.activeElement as HTMLElement | null)?.tagName;
@@ -902,7 +1187,7 @@ export default function ProjectWorkspacePage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [outline, isStale, saveOutline]);
+  }, [outline, isStale, saveOutline, handleToggleChat]);
 
   const currentItem = outline?.items[selectedIndex];
   const headerProject: Project | null =
@@ -943,10 +1228,16 @@ export default function ProjectWorkspacePage() {
         selectedThemeId={selectedThemeId}
         autoFit={autoFit}
         showMaterialsDrawer={showMaterialsDrawer}
+        isChatOpen={
+          Boolean(outline && outline.items.length > 0)
+            ? rightOpen && rightPanelTab === "chat"
+            : onboardingChatOpen
+        }
         leftOpen={leftOpen}
         rightOpen={rightOpen}
         onToggleLeft={() => setLeftOpen((v) => !v)}
         onToggleRight={() => setRightOpen((v) => !v)}
+        onToggleChat={handleToggleChat}
         onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
         onSelectVersion={(v) => void showOutline(v)}
         onSaveOutline={() => void saveOutline(false)}
@@ -1074,41 +1365,149 @@ export default function ProjectWorkspacePage() {
           />
 
           {rightOpen && (
-            <SlideInspector
-              pid={pid}
-              item={currentItem}
-              slideIndex={selectedIndex}
-              totalSlides={outline.items.length}
-              materials={materials}
-              sourceFragments={sourceFragments}
-              slideIssues={currentSlideIssues}
-              onUpdateField={(field, val) =>
-                patchItem(selectedIndex, { [field]: val })
-              }
-              onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
-              onApplyImageToSlide={(imgId, sid) =>
-                applyImageToSlide(selectedIndex, imgId, sid)
-              }
-              onSplitTwoColumn={() => splitTwoColumn(selectedIndex)}
-              onRefineSlide={(mode, inst) =>
-                refineSlideItem(selectedIndex, mode, inst)
-              }
-              onApplyRefineCandidate={(cand) =>
-                applyRefineCandidate(selectedIndex, cand)
-              }
-              onUploadClick={() => fileInputRef.current?.click()}
-            />
+            <aside className="w-[344px] xl:w-[396px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0">
+              {/* Dual-Mode Right Sidebar Top Bar: Edit vs AI Chat */}
+              <div className="px-4 py-2.5 border-b border-black/[0.07] bg-surface-subtle flex items-center justify-between gap-2 shrink-0">
+                <div className="inline-flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab("edit")}
+                    className={`px-3 py-1 rounded-[9px] text-[13px] transition-all cursor-pointer whitespace-nowrap ${
+                      rightPanelTab === "edit"
+                        ? "bg-surface text-ink font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]"
+                        : "text-ink-secondary hover:text-ink font-medium"
+                    }`}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab("chat")}
+                    className={`px-3 py-1 rounded-[9px] text-[13px] inline-flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                      rightPanelTab === "chat"
+                        ? "bg-surface text-ink font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]"
+                        : "text-ink-secondary hover:text-ink font-medium"
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>AI 对话</span>
+                  </button>
+                </div>
+
+                {rightPanelTab === "edit" && (
+                  <div className="flex items-center gap-2 text-[13px] whitespace-nowrap truncate">
+                    <span className="font-semibold text-ink">
+                      第 {selectedIndex + 1} 页
+                    </span>
+                    <span className="text-ink-secondary">
+                      {LAYOUT_LABELS[
+                        inferEffectiveLayout(
+                          currentItem.layout,
+                          selectedIndex,
+                          outline.items.length
+                        )
+                      ] || "正文"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {rightPanelTab === "chat" ? (
+                <AgentChatPanel
+                  pid={pid}
+                  outline={outline}
+                  selectedIndex={selectedIndex}
+                  materialsCount={materials.length}
+                  themes={themes}
+                  selectedThemeId={selectedThemeId}
+                  autoFit={autoFit}
+                  messages={chatMessages}
+                  isStreaming={isChatStreaming}
+                  onSendMessage={(msg) => void sendChatMessage(msg)}
+                  onStopStreaming={stopChatStreaming}
+                  onClearHistory={() => void clearChat()}
+                  onJumpToSlide={setSelectedIndex}
+                  onRevertVersion={(v) => void revertToOutlineVersion(v)}
+                  onUploadClick={() => fileInputRef.current?.click()}
+                  onDropFiles={(files) => void uploadFiles(files)}
+                />
+              ) : (
+                <SlideInspector
+                  pid={pid}
+                  item={currentItem}
+                  slideIndex={selectedIndex}
+                  totalSlides={outline.items.length}
+                  materials={materials}
+                  sourceFragments={sourceFragments}
+                  slideIssues={currentSlideIssues}
+                  embedded={true}
+                  onUpdateField={(field, val) =>
+                    patchItem(selectedIndex, { [field]: val })
+                  }
+                  onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
+                  onApplyImageToSlide={(imgId, sid) =>
+                    applyImageToSlide(selectedIndex, imgId, sid)
+                  }
+                  onSplitTwoColumn={() => splitTwoColumn(selectedIndex)}
+                  onRefineSlide={(mode, inst) =>
+                    refineSlideItem(selectedIndex, mode, inst)
+                  }
+                  onApplyRefineCandidate={(cand) =>
+                    applyRefineCandidate(selectedIndex, cand)
+                  }
+                  onUploadClick={() => fileInputRef.current?.click()}
+                />
+              )}
+            </aside>
           )}
         </section>
       ) : (
-        <EmptyStageOnboarding
-          materials={materials}
-          isGenerating={isGenerating}
-          onUploadClick={() => fileInputRef.current?.click()}
-          onDropFiles={(files) => void uploadFiles(files)}
-          onPasteNote={uploadPastedNote}
-          onGenerateOutline={(p) => void genOutline(p)}
-        />
+        <div className="flex-1 min-h-0 flex items-stretch overflow-hidden">
+          <EmptyStageOnboarding
+            materials={materials}
+            isGenerating={isGenerating}
+            onUploadClick={() => fileInputRef.current?.click()}
+            onDropFiles={(files) => void uploadFiles(files)}
+            onPasteNote={uploadPastedNote}
+            onGenerateOutline={(p) => void genOutline(p)}
+          />
+          {onboardingChatOpen && (
+            <aside className="w-[360px] xl:w-[410px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0">
+              <div className="px-4 py-2.5 border-b border-black/[0.07] bg-surface-subtle flex items-center justify-between gap-2 shrink-0">
+                <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink">
+                  <Sparkles className="w-4 h-4" />
+                  <span>AI 对话</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOnboardingChatOpen(false)}
+                  aria-label="收起对话面板"
+                  className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <AgentChatPanel
+                pid={pid}
+                outline={null}
+                selectedIndex={0}
+                materialsCount={materials.length}
+                themes={themes}
+                selectedThemeId={selectedThemeId}
+                autoFit={autoFit}
+                messages={chatMessages}
+                isStreaming={isChatStreaming}
+                onSendMessage={(msg) => void sendChatMessage(msg)}
+                onStopStreaming={stopChatStreaming}
+                onClearHistory={() => void clearChat()}
+                onJumpToSlide={setSelectedIndex}
+                onRevertVersion={(v) => void revertToOutlineVersion(v)}
+                onUploadClick={() => fileInputRef.current?.click()}
+                onDropFiles={(files) => void uploadFiles(files)}
+              />
+            </aside>
+          )}
+        </div>
       )}
     </div>
   );

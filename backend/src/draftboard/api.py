@@ -20,9 +20,10 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+import draftboard.chat_agent as chat_agent
 import draftboard.tasks as tasks
 import draftboard.tools as tools_module
 from draftboard.models import (
@@ -1158,6 +1159,60 @@ def download_speaker_notes(project_id: str):
         headers={
             "Content-Disposition": _content_disposition(f"{stem}_讲稿.md"),
             "Cache-Control": "no-store",
+        },
+    )
+
+
+# ── Studio Agent Chat (SSE Streaming + Per-Project Persistence) ──────────────
+
+
+class ChatMessageRequest(BaseModel):
+    message: str
+    selected_slide_index: int = 0
+    theme_id: str = "keynote_light"
+    auto_fit: bool = True
+
+
+@app.get("/api/projects/{project_id}/chat")
+def get_chat_history(project_id: str):
+    _require_project(project_id)
+    return {
+        "project_id": project_id,
+        "messages": chat_agent.load_chat_history(project_id),
+    }
+
+
+@app.delete("/api/projects/{project_id}/chat")
+def delete_chat_history(project_id: str):
+    _require_project(project_id)
+    chat_agent.clear_chat_history(project_id)
+    return {"cleared": True}
+
+
+@app.post("/api/projects/{project_id}/chat")
+async def post_chat_message(project_id: str, req: ChatMessageRequest):
+    _require_project(project_id)
+    cleaned = (req.message or "").strip()
+    if not cleaned:
+        raise HTTPException(400, "对话内容不能为空")
+
+    async def _event_stream():
+        async for ev in chat_agent.stream_studio_chat(
+            project_id,
+            cleaned,
+            selected_slide_index=req.selected_slide_index,
+            theme_id=req.theme_id,
+            auto_fit=req.auto_fit,
+        ):
+            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
 

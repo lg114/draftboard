@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, ChevronDown, Download, Play, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Download, Play, RefreshCw, Sparkles } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
 import { ExportFormatMenu } from "./ExportFormatMenu";
@@ -25,10 +25,12 @@ interface WorkspaceHeaderProps {
   selectedThemeId: string;
   autoFit: boolean;
   showMaterialsDrawer: boolean;
+  isChatOpen: boolean;
   leftOpen: boolean;
   rightOpen: boolean;
   onToggleLeft: () => void;
   onToggleRight: () => void;
+  onToggleChat: () => void;
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
@@ -51,10 +53,12 @@ export function WorkspaceHeader({
   selectedThemeId,
   autoFit,
   showMaterialsDrawer,
+  isChatOpen,
   leftOpen,
   rightOpen,
   onToggleLeft,
   onToggleRight,
+  onToggleChat,
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
@@ -316,6 +320,20 @@ export function WorkspaceHeader({
             </span>
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={onToggleChat}
+          title="打开或切换 PPT 创作 Agent 对话 (Ctrl/⌘+L)"
+          className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+            isChatOpen
+              ? "bg-black/[0.08] text-ink"
+              : "text-ink hover:bg-black/[0.05]"
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>AI 对话</span>
+        </button>
 
         {project?.download_available && (
           <Link

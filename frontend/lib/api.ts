@@ -235,6 +235,40 @@ export interface SlideRefineCandidate {
   source?: "llm" | "fallback";
 }
 
+export interface ChatToolStep {
+  id: string;
+  name: string;
+  label: string;
+  status: "running" | "done" | "error";
+  summary?: string;
+}
+
+export interface ChatDeckChanges {
+  before_outline_version?: string | null;
+  after_outline_version?: string | null;
+  touched_slides?: number[];
+  theme_id?: string | null;
+  auto_fit?: boolean | null;
+  exported?: boolean;
+  layout_checked_ok?: boolean | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at?: string;
+  selected_slide?: number;
+  tool_steps?: ChatToolStep[];
+  changes?: ChatDeckChanges | null;
+  is_error?: boolean;
+}
+
+export interface ChatHistoryResponse {
+  project_id: string;
+  messages: ChatMessage[];
+}
+
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options);
   if (!res.ok) {
