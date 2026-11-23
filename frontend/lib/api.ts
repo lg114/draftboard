@@ -247,10 +247,53 @@ export interface ProjectSummary {
   mtime?: number;
 }
 
+export interface BrandKit {
+  accent_hex?: string | null;
+  bg_hex?: string | null;
+  footer_text?: string | null;
+  logo_asset_id?: string | null;
+  logo_position?: "top_right" | "bottom_left";
+}
+
+export interface SavedLayoutPreset {
+  id: string;
+  name: string;
+  description?: string | null;
+  custom_bg?: string | null;
+  elements: CanvasElement[];
+  created_at: string;
+}
+
+export interface PreflightFinding {
+  slide_index: number;
+  slide_number: number;
+  category: "layout" | "provenance" | "media" | "notes" | "rhythm";
+  severity: "error" | "warning" | "info";
+  message: string;
+}
+
+export interface PreflightReport {
+  outline_version: string;
+  total_slides: number;
+  ready: boolean;
+  score: number;
+  summary: {
+    layout_ok: boolean;
+    media_ok: boolean;
+    supported_slides: number;
+    notes_slides: number;
+    error_count: number;
+    warning_count: number;
+    info_count: number;
+  };
+  findings: PreflightFinding[];
+}
+
 export interface Project {
   project_id: string;
   name?: string;
   theme_id?: string;
+  brand?: BrandKit | null;
   stage?: string;
   stage_label?: string;
   slide_count?: number;

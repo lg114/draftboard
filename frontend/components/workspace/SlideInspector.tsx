@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  BookmarkPlus,
   Check,
   ChevronDown,
   Columns2,
+  Eye,
   FileText,
   Image as ImageIcon,
   Layers,
@@ -12,12 +14,14 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import type {
   Issue,
   Material,
   OutlineItem,
+  SavedLayoutPreset,
   SlideRefineCandidate,
   SourceFragment,
 } from "../../lib/api";
@@ -42,6 +46,11 @@ interface SlideInspectorProps {
   onUpdateCustomElementText?: (elementId: string, text: string) => void;
   onClearCustomLayout?: () => void;
   onSwitchToChat?: () => void;
+  onInspectFragment?: (frag: SourceFragment) => void;
+  savedLayouts?: SavedLayoutPreset[];
+  onSaveCustomLayout?: (name: string) => Promise<void>;
+  onApplySavedLayout?: (preset: SavedLayoutPreset) => void;
+  onDeleteSavedLayout?: (layoutId: string) => Promise<void>;
   onToggleSourceId: (sourceId: string) => void;
   onApplyImageToSlide: (imageAssetId: string, sourceId?: string) => void;
   onSplitTwoColumn: () => void;
@@ -137,6 +146,11 @@ export function SlideInspector({
   onUpdateCustomElementText,
   onClearCustomLayout,
   onSwitchToChat,
+  onInspectFragment,
+  savedLayouts = [],
+  onSaveCustomLayout,
+  onApplySavedLayout,
+  onDeleteSavedLayout,
   onToggleSourceId,
   onApplyImageToSlide,
   onSplitTwoColumn,
@@ -158,6 +172,9 @@ export function SlideInspector({
   const [refineCandidate, setRefineCandidate] =
     useState<SlideRefineCandidate | null>(null);
   const [refineNotice, setRefineNotice] = useState("");
+  const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
+  const [saveLayoutName, setSaveLayoutName] = useState("");
+  const [savingLayout, setSavingLayout] = useState(false);
 
   useEffect(() => {
     setRefineCandidate(null);
@@ -567,16 +584,28 @@ export function SlideInspector({
                           {excerpt || "（该文本切片为空）"}
                         </p>
 
-                        {excerpt && !isCustomCanvas && (
+                        {excerpt && (
                           <div className="flex flex-wrap items-center gap-3 pt-1.5 border-t border-black/[0.06] text-[13px]">
-                            <button
-                              type="button"
-                              onClick={() => fillFromExcerpt("summary", excerpt)}
-                              className="text-ink font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
-                            >
-                              填入{getExcerptTargetLabel(layout)}
-                            </button>
-                            {layout === "two_column" && (
+                            {onInspectFragment && (
+                              <button
+                                type="button"
+                                onClick={() => onInspectFragment(frag)}
+                                className="inline-flex items-center gap-1 text-ink font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>查看原文</span>
+                              </button>
+                            )}
+                            {!isCustomCanvas && (
+                              <button
+                                type="button"
+                                onClick={() => fillFromExcerpt("summary", excerpt)}
+                                className="text-ink font-medium underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                              >
+                                填入{getExcerptTargetLabel(layout)}
+                              </button>
+                            )}
+                            {!isCustomCanvas && layout === "two_column" && (
                               <button
                                 type="button"
                                 onClick={() =>
@@ -629,18 +658,66 @@ export function SlideInspector({
                     {item.custom_elements?.length || 0} 个元素
                   </span>
                 </div>
-                {onClearCustomLayout && (
-                  <button
-                    type="button"
-                    onClick={onClearCustomLayout}
-                    title="放弃自由画布，恢复使用标准模板版式"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer shrink-0"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>恢复标准版式</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {onSaveCustomLayout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSaveLayoutName(item.title.slice(0, 18) || "常用自由版式");
+                        setSaveLayoutOpen((v) => !v);
+                      }}
+                      title="将当前自由画布结构收藏为常用版式，随时复用到其他页面"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer"
+                    >
+                      <BookmarkPlus className="w-3.5 h-3.5" />
+                      <span>收藏</span>
+                    </button>
+                  )}
+                  {onClearCustomLayout && (
+                    <button
+                      type="button"
+                      onClick={onClearCustomLayout}
+                      title="放弃自由画布，恢复使用标准模板版式"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>恢复标准</span>
+                    </button>
+                  )}
+                </div>
               </div>
+              {saveLayoutOpen && onSaveCustomLayout && (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!saveLayoutName.trim() || savingLayout) return;
+                    setSavingLayout(true);
+                    try {
+                      await onSaveCustomLayout(saveLayoutName.trim());
+                      setSaveLayoutOpen(false);
+                    } finally {
+                      setSavingLayout(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 pt-1"
+                >
+                  <input
+                    type="text"
+                    value={saveLayoutName}
+                    onChange={(e) => setSaveLayoutName(e.target.value)}
+                    placeholder="输入版式名称（如：3卡片KPI页）"
+                    className="flex-1 min-w-0 h-8 px-2.5 rounded-lg bg-canvas border border-black/15 text-[13px] text-ink outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingLayout || !saveLayoutName.trim()}
+                    className="ui-btn-primary h-8 px-3 text-[13px] shrink-0"
+                  >
+                    {savingLayout ? "保存…" : "保存"}
+                  </button>
+                </form>
+              )}
               <p className="text-[13px] text-ink-secondary leading-relaxed">
                 可直接修改下方文本内容；需要调整卡片、配色、布局或配图时，在「AI 对话」中直接说明即可。
               </p>
@@ -1100,6 +1177,46 @@ export function SlideInspector({
             )}
           </div>
         </section>
+        )}
+
+        {/* ── Saved Reusable Custom Layouts Library ── */}
+        {savedLayouts.length > 0 && onApplySavedLayout && (
+          <section className="pt-3 border-t border-black/[0.07] space-y-2">
+            <div className="text-[13px] font-semibold text-ink-secondary">
+              已收藏自由版式（点击套用到本页）
+            </div>
+            <div className="space-y-1.5">
+              {savedLayouts.map((preset) => (
+                <div
+                  key={preset.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-surface border border-black/[0.08] hover:border-black/20 transition-colors"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onApplySavedLayout(preset)}
+                    className="flex-1 min-w-0 text-left cursor-pointer"
+                  >
+                    <div className="text-[13px] font-medium text-ink truncate">
+                      {preset.name}
+                    </div>
+                    <div className="text-[13px] text-ink-muted">
+                      {preset.elements.length} 个原生元素
+                    </div>
+                  </button>
+                  {onDeleteSavedLayout && (
+                    <button
+                      type="button"
+                      onClick={() => void onDeleteSavedLayout(preset.id)}
+                      title="删除收藏版式"
+                      className="p-1 rounded-lg text-ink-muted hover:text-danger cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* ── TIER 3: Expanded-by-Default Speaker Notes (still collapsible) ── */}

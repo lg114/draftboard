@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ClipboardPaste,
   FileText,
+  Globe,
   Image as ImageIcon,
   Settings,
   Sparkles,
@@ -21,6 +22,7 @@ interface EmptyStageOnboardingProps {
   onUploadClick: () => void;
   onDropFiles: (files: FileList) => void;
   onPasteNote: (title: string, content: string) => Promise<void>;
+  onImportUrl?: (url: string, title?: string) => Promise<void>;
   onGenerateOutline: (prompt?: string) => void;
 }
 
@@ -39,13 +41,18 @@ export function EmptyStageOnboarding({
   onUploadClick,
   onDropFiles,
   onPasteNote,
+  onImportUrl,
   onGenerateOutline,
 }: EmptyStageOnboardingProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [pasteMode, setPasteMode] = useState(false);
+  const [urlMode, setUrlMode] = useState(false);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [urlValue, setUrlValue] = useState("");
+  const [urlTitle, setUrlTitle] = useState("");
+  const [fetchingUrl, setFetchingUrl] = useState(false);
   const [outlinePrompt, setOutlinePrompt] = useState("");
 
   async function handleSaveNote(e: React.FormEvent) {
@@ -60,6 +67,74 @@ export function EmptyStageOnboarding({
     } finally {
       setSavingNote(false);
     }
+  }
+
+  async function handleImportUrl(e: React.FormEvent) {
+    e.preventDefault();
+    if (!urlValue.trim() || !onImportUrl) return;
+    setFetchingUrl(true);
+    try {
+      await onImportUrl(urlValue.trim(), urlTitle.trim() || undefined);
+      setUrlValue("");
+      setUrlTitle("");
+      setUrlMode(false);
+    } finally {
+      setFetchingUrl(false);
+    }
+  }
+
+  if (urlMode && onImportUrl) {
+    return (
+      <section className="flex-1 min-h-0 overflow-y-auto bg-stage flex items-center justify-center p-6 sm:p-10">
+        <form
+          onSubmit={(e) => void handleImportUrl(e)}
+          className="w-full max-w-[680px] rounded-[18px] bg-surface border border-black/[0.08] p-7 sm:p-10 space-y-5"
+        >
+          <div>
+            <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
+              从公开网页链接抓取素材
+            </h2>
+            <p className="text-[13.5px] text-ink-secondary mt-0.5">
+              自动提取网页正文并转为可溯源的 Markdown 素材切片（支持公开文章、文档与博客）。
+            </p>
+          </div>
+          <div className="space-y-3">
+            <input
+              type="url"
+              required
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              placeholder="https://example.com/article"
+              className="ui-field w-full h-11 px-4 text-[14px] bg-canvas focus:bg-surface font-mono"
+              autoFocus
+            />
+            <input
+              type="text"
+              value={urlTitle}
+              onChange={(e) => setUrlTitle(e.target.value)}
+              placeholder="素材名称（选填，留空自动使用网页标题）"
+              className="ui-field w-full h-11 px-4 text-[14px] bg-canvas focus:bg-surface"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setUrlMode(false)}
+              className="h-10 px-4 rounded-full bg-transparent hover:bg-black/[0.05] text-ink-secondary hover:text-ink text-[13.5px] font-medium transition-colors cursor-pointer"
+            >
+              返回
+            </button>
+            <button
+              type="submit"
+              disabled={fetchingUrl || !urlValue.trim()}
+              className="ui-btn-primary h-10 px-5 text-[13.5px]"
+            >
+              {fetchingUrl ? "正在抓取正文…" : "抓取并导入素材"}
+            </button>
+          </div>
+        </form>
+      </section>
+    );
   }
 
   if (pasteMode) {
@@ -156,7 +231,7 @@ export function EmptyStageOnboarding({
               导入文档素材，或从一句话主题开始
             </h2>
             <p className="text-[14px] text-ink-secondary leading-relaxed">
-              支持 PDF、Word、Markdown、TXT 和图片。
+              支持 PDF、Word、Excel/CSV、旧 PPTX、Markdown、网页链接与图片（Ctrl+V 直接贴截图）。
               <br />
               缺少依据的数据会标记为「待补出处」，不会编造数字。
             </p>
@@ -178,7 +253,7 @@ export function EmptyStageOnboarding({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
             <button
               type="button"
               onClick={onUploadClick}
@@ -189,11 +264,21 @@ export function EmptyStageOnboarding({
             <button
               type="button"
               onClick={() => setPasteMode(true)}
-              className="ui-btn-subtle h-11 px-5 text-[14px] inline-flex items-center gap-1.5"
+              className="ui-btn-subtle h-11 px-4 text-[14px] inline-flex items-center gap-1.5"
             >
               <ClipboardPaste className="w-4 h-4 text-ink" />
-              <span>直接粘贴长文笔记</span>
+              <span>粘贴笔记</span>
             </button>
+            {onImportUrl && (
+              <button
+                type="button"
+                onClick={() => setUrlMode(true)}
+                className="ui-btn-subtle h-11 px-4 text-[14px] inline-flex items-center gap-1.5"
+              >
+                <Globe className="w-4 h-4 text-ink" />
+                <span>导入网页</span>
+              </button>
+            )}
           </div>
 
           {/* Low-weight fallback path: start from a 1-sentence topic */}

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  BrandKit,
   CanvasElement,
   ExportReport,
   Issue,
@@ -50,6 +51,11 @@ interface SlideStageCanvasProps {
   statusText: string;
   isGenerating: boolean;
   materials?: Material[];
+  brand?: BrandKit | null;
+  diffPreviewActive?: boolean;
+  onExitDiffPreview?: () => void;
+  onRevertFromDiff?: () => void;
+  onUpdateBrand?: (brand: BrandKit) => Promise<void>;
   onSelectIndex: (idx: number) => void;
   onSelectTheme: (themeId: string) => void;
   onSelectLayout: (layout: OutlineLayout) => void;
@@ -206,6 +212,11 @@ export function SlideStageCanvas({
   statusText,
   isGenerating,
   materials = [],
+  brand = null,
+  diffPreviewActive = false,
+  onExitDiffPreview,
+  onRevertFromDiff,
+  onUpdateBrand,
   onSelectIndex,
   onSelectTheme,
   onSelectLayout,
@@ -219,7 +230,20 @@ export function SlideStageCanvas({
   const [scale, setScale] = useState(0.75);
   const [compactDock, setCompactDock] = useState(false);
   const [themePopoverOpen, setThemePopoverOpen] = useState(false);
+  const [themeTab, setThemeTab] = useState<"themes" | "brand">("themes");
+  const [brandDraft, setBrandDraft] = useState<BrandKit>({});
+  const [savingBrand, setSavingBrand] = useState(false);
   const [selectedElId, setSelectedElId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBrandDraft({
+      accent_hex: brand?.accent_hex || "",
+      bg_hex: brand?.bg_hex || "",
+      footer_text: brand?.footer_text || "",
+      logo_asset_id: brand?.logo_asset_id || "",
+      logo_position: brand?.logo_position || "top_right",
+    });
+  }, [brand, themePopoverOpen]);
 
   useEffect(() => {
     setSelectedElId(null);
@@ -280,6 +304,7 @@ export function SlideStageCanvas({
     project?.latest_template_id === selectedThemeId &&
     Boolean(project?.latest_auto_fit) === autoFit;
   const showRenderedImage =
+    !diffPreviewActive &&
     !isStale &&
     settingsInSync &&
     Boolean(version) &&
@@ -296,6 +321,36 @@ export function SlideStageCanvas({
         ref={colRef}
         className="w-full max-w-[min(1080px,max(420px,calc((100vh-172px)*16/9)))] flex flex-col items-center gap-3.5 my-auto"
       >
+        {/* Before/After Visual Diff Banner */}
+        {diffPreviewActive && (
+          <div className="w-full px-3.5 py-2 rounded-xl bg-warning-bg border border-warning-dot/30 flex flex-wrap items-center justify-between gap-2 text-[13px]">
+            <span className="inline-flex items-center gap-2 text-warning font-medium">
+              <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+              <span>正在对比查看「AI 修改前」版本（只读预览）</span>
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              {onRevertFromDiff && (
+                <button
+                  type="button"
+                  onClick={onRevertFromDiff}
+                  className="px-2.5 py-1 rounded-full bg-surface border border-black/15 text-ink font-medium hover:bg-canvas cursor-pointer"
+                >
+                  恢复为此版本
+                </button>
+              )}
+              {onExitDiffPreview && (
+                <button
+                  type="button"
+                  onClick={onExitDiffPreview}
+                  className="px-3 py-1 rounded-full bg-ink text-white font-medium hover:bg-ink-hover cursor-pointer"
+                >
+                  切回改后版本
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Clean 1-line Quiet Status Above Stage */}
         <div className="w-full flex items-center justify-between px-0.5 text-[13px] gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -374,18 +429,55 @@ export function SlideStageCanvas({
               />
             </div>
           ) : item && isCustomCanvas && item.custom_elements ? (
-            <CustomSlideLayer
-              pid={pid}
-              customBg={item.custom_bg}
-              elements={item.custom_elements}
-              theme={activeTheme}
-              scale={scale}
-              interactive={true}
-              selectedElementId={selectedElId}
-              onSelectElement={setSelectedElId}
-              onSelectTextElement={(elId) => onFocusField(`custom-el-${elId}`)}
-              onUpdateElement={onUpdateCustomElement}
-            />
+            <>
+              <CustomSlideLayer
+                pid={pid}
+                customBg={item.custom_bg}
+                elements={item.custom_elements}
+                theme={activeTheme}
+                scale={scale}
+                interactive={!diffPreviewActive}
+                selectedElementId={diffPreviewActive ? null : selectedElId}
+                onSelectElement={setSelectedElId}
+                onSelectTextElement={(elId) => onFocusField(`custom-el-${elId}`)}
+                onUpdateElement={diffPreviewActive ? undefined : onUpdateCustomElement}
+              />
+              {brand && (brand.footer_text || brand.logo_asset_id) && (
+                <div
+                  className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 pointer-events-none"
+                  style={{ transform: `scale(${scale})` }}
+                >
+                  {brand.logo_asset_id && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={`/api/projects/${encodeURIComponent(pid)}/assets/${encodeURIComponent(brand.logo_asset_id)}`}
+                      alt="brand logo"
+                      style={{
+                        position: "absolute",
+                        left: brand.logo_position === "bottom_left" ? 48 : 840,
+                        top: brand.logo_position === "bottom_left" ? 502 : 14,
+                        width: 72,
+                        height: 24,
+                        objectFit: "contain",
+                      }}
+                    />
+                  )}
+                  {brand.footer_text && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: brand.logo_asset_id && brand.logo_position === "bottom_left" ? 128 : 48,
+                        top: 506,
+                        fontSize: 11,
+                        color: sw.muted,
+                      }}
+                    >
+                      {brand.footer_text}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : item ? (
             <div
               className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 transition-colors duration-200"
@@ -747,6 +839,36 @@ export function SlideStageCanvas({
                 </>
               )}
 
+              {layout !== "cover" && brand?.logo_asset_id && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={`/api/projects/${encodeURIComponent(pid)}/assets/${encodeURIComponent(brand.logo_asset_id)}`}
+                  alt="brand logo"
+                  style={{
+                    position: "absolute",
+                    left: brand.logo_position === "bottom_left" ? 48 : 840,
+                    top: brand.logo_position === "bottom_left" ? 502 : 14,
+                    width: 72,
+                    height: 24,
+                    objectFit: "contain",
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
+              {layout !== "cover" && brand?.footer_text && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: brand.logo_asset_id && brand.logo_position === "bottom_left" ? 128 : 48,
+                    bottom: 18,
+                    fontSize: 11,
+                    color: sw.muted,
+                    pointerEvents: "none",
+                  }}
+                >
+                  {brand.footer_text}
+                </div>
+              )}
               {layout !== "cover" && (
                 <div
                   style={{
@@ -1204,10 +1326,185 @@ export function SlideStageCanvas({
                 className="fixed inset-0 z-40"
                 onClick={() => setThemePopoverOpen(false)}
               />
-              <div className="absolute bottom-full left-0 mb-2.5 w-[328px] apple-glass dock-shadow rounded-2xl p-3 z-50">
-                <div className="text-[13px] font-semibold text-ink-secondary px-1 pb-2.5">
-                  选择演示主题
+              <div className="absolute bottom-full left-0 mb-2.5 w-[348px] apple-glass dock-shadow rounded-2xl p-3 z-50 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setThemeTab("themes")}
+                      className={`px-3 py-1 rounded-[9px] text-[13px] cursor-pointer transition-all ${
+                        themeTab === "themes"
+                          ? "bg-surface text-ink font-semibold shadow-2xs"
+                          : "text-ink-secondary hover:text-ink font-medium"
+                      }`}
+                    >
+                      预设主题
+                    </button>
+                    {onUpdateBrand && (
+                      <button
+                        type="button"
+                        onClick={() => setThemeTab("brand")}
+                        className={`px-3 py-1 rounded-[9px] text-[13px] cursor-pointer transition-all ${
+                          themeTab === "brand"
+                            ? "bg-surface text-ink font-semibold shadow-2xs"
+                            : "text-ink-secondary hover:text-ink font-medium"
+                        }`}
+                      >
+                        品牌定制
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {themeTab === "brand" && onUpdateBrand ? (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setSavingBrand(true);
+                      try {
+                        await onUpdateBrand({
+                          accent_hex: brandDraft.accent_hex || null,
+                          bg_hex: brandDraft.bg_hex || null,
+                          footer_text: brandDraft.footer_text || null,
+                          logo_asset_id: brandDraft.logo_asset_id || null,
+                          logo_position: brandDraft.logo_position || "top_right",
+                        });
+                        setThemePopoverOpen(false);
+                      } finally {
+                        setSavingBrand(false);
+                      }
+                    }}
+                    className="space-y-3 text-[13px]"
+                  >
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <label className="space-y-1 block">
+                        <span className="text-ink-secondary font-medium">品牌强调色</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={brandDraft.accent_hex || sw.accent}
+                            onChange={(e) =>
+                              setBrandDraft((d) => ({ ...d, accent_hex: e.target.value }))
+                            }
+                            className="w-8 h-8 rounded-lg border border-black/15 cursor-pointer bg-surface p-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={brandDraft.accent_hex || ""}
+                            onChange={(e) =>
+                              setBrandDraft((d) => ({ ...d, accent_hex: e.target.value }))
+                            }
+                            placeholder={sw.accent}
+                            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-surface border border-black/15 font-mono text-[13px] text-ink outline-none"
+                          />
+                        </div>
+                      </label>
+                      <label className="space-y-1 block">
+                        <span className="text-ink-secondary font-medium">画布底色</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={brandDraft.bg_hex || sw.bg}
+                            onChange={(e) =>
+                              setBrandDraft((d) => ({ ...d, bg_hex: e.target.value }))
+                            }
+                            className="w-8 h-8 rounded-lg border border-black/15 cursor-pointer bg-surface p-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={brandDraft.bg_hex || ""}
+                            onChange={(e) =>
+                              setBrandDraft((d) => ({ ...d, bg_hex: e.target.value }))
+                            }
+                            placeholder={sw.bg}
+                            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-surface border border-black/15 font-mono text-[13px] text-ink outline-none"
+                          />
+                        </div>
+                      </label>
+                    </div>
+
+                    <label className="space-y-1 block">
+                      <span className="text-ink-secondary font-medium">统一页脚文案（非封面页）</span>
+                      <input
+                        type="text"
+                        value={brandDraft.footer_text || ""}
+                        onChange={(e) =>
+                          setBrandDraft((d) => ({ ...d, footer_text: e.target.value }))
+                        }
+                        placeholder="例如：2026 内部汇报 · 机密"
+                        className="w-full h-8 px-2.5 rounded-lg bg-surface border border-black/15 text-[13px] text-ink outline-none"
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="space-y-1 block">
+                        <span className="text-ink-secondary font-medium">角落 Logo</span>
+                        <select
+                          value={brandDraft.logo_asset_id || ""}
+                          onChange={(e) =>
+                            setBrandDraft((d) => ({ ...d, logo_asset_id: e.target.value }))
+                          }
+                          className="w-full h-8 px-2 rounded-lg bg-surface border border-black/15 text-[13px] text-ink outline-none"
+                        >
+                          <option value="">不使用 Logo</option>
+                          {imageAssets.map((img) => (
+                            <option key={img.asset_id} value={img.asset_id}>
+                              {img.asset_id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1 block">
+                        <span className="text-ink-secondary font-medium">Logo 位置</span>
+                        <select
+                          value={brandDraft.logo_position || "top_right"}
+                          onChange={(e) =>
+                            setBrandDraft((d) => ({
+                              ...d,
+                              logo_position: e.target.value as "top_right" | "bottom_left",
+                            }))
+                          }
+                          className="w-full h-8 px-2 rounded-lg bg-surface border border-black/15 text-[13px] text-ink outline-none"
+                        >
+                          <option value="top_right">右上角</option>
+                          <option value="bottom_left">左下角</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        disabled={savingBrand}
+                        onClick={async () => {
+                          setSavingBrand(true);
+                          try {
+                            await onUpdateBrand({
+                              accent_hex: null,
+                              bg_hex: null,
+                              footer_text: null,
+                              logo_asset_id: null,
+                              logo_position: "top_right",
+                            });
+                            setThemePopoverOpen(false);
+                          } finally {
+                            setSavingBrand(false);
+                          }
+                        }}
+                        className="text-[13px] text-ink-secondary hover:text-ink cursor-pointer"
+                      >
+                        恢复主题默认
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingBrand}
+                        className="ui-btn-primary px-4 h-8 text-[13px]"
+                      >
+                        {savingBrand ? "保存中…" : "应用品牌"}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
                 <div className="grid grid-cols-2 gap-2.5">
                   {themes.map((th) => {
                     const active = th.id === selectedThemeId;
@@ -1260,6 +1557,7 @@ export function SlideStageCanvas({
                     );
                   })}
                 </div>
+                )}
               </div>
             </>
           )}

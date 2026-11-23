@@ -3,9 +3,13 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  AtSign,
   Check,
   ChevronDown,
   Download,
+  Eye,
+  FileText,
+  Layers,
   Paperclip,
   RotateCcw,
   Settings,
@@ -17,6 +21,7 @@ import type {
   ChatDeckChanges,
   ChatMessage,
   ChatToolStep,
+  Material,
   Outline,
   ThemeOption,
 } from "../../lib/api";
@@ -26,6 +31,7 @@ interface AgentChatPanelProps {
   pid: string;
   outline: Outline | null;
   selectedIndex: number;
+  materials?: Material[];
   materialsCount: number;
   themes: ThemeOption[];
   selectedThemeId: string;
@@ -34,6 +40,8 @@ interface AgentChatPanelProps {
   isStreaming: boolean;
   llmConfigured: boolean;
   activeModelLabel?: string;
+  diffPreviewVersion?: string | null;
+  onToggleDiffPreview?: (beforeVersion: string | null) => void;
   onOpenLLMSettings: () => void;
   onSendMessage: (text: string) => void;
   onRetryMessage: (text: string, failedMessageId: string) => void;
@@ -378,6 +386,8 @@ function ChangeReceiptCard({
   changes,
   totalSlides,
   themes,
+  diffPreviewVersion,
+  onToggleDiffPreview,
   onJumpToSlide,
   onRevertVersion,
 }: {
@@ -385,6 +395,8 @@ function ChangeReceiptCard({
   changes: ChatDeckChanges;
   totalSlides: number;
   themes: ThemeOption[];
+  diffPreviewVersion?: string | null;
+  onToggleDiffPreview?: (beforeVersion: string | null) => void;
   onJumpToSlide: (idx: number) => void;
   onRevertVersion: (version: string) => void;
 }) {
@@ -465,14 +477,40 @@ function ChangeReceiptCard({
           </div>
 
           {canRevert && changes.before_outline_version && (
-            <button
-              type="button"
-              onClick={() => onRevertVersion(changes.before_outline_version!)}
-              className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-secondary hover:text-ink transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>撤回本次修改</span>
-            </button>
+            <div className="flex items-center gap-3">
+              {onToggleDiffPreview && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onToggleDiffPreview(
+                      diffPreviewVersion === changes.before_outline_version
+                        ? null
+                        : changes.before_outline_version!
+                    )
+                  }
+                  className={`inline-flex items-center gap-1 text-[13px] font-medium transition-colors cursor-pointer ${
+                    diffPreviewVersion === changes.before_outline_version
+                      ? "text-warning font-semibold"
+                      : "text-ink-secondary hover:text-ink"
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>
+                    {diffPreviewVersion === changes.before_outline_version
+                      ? "退出改前对比"
+                      : "对比改前"}
+                  </span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onRevertVersion(changes.before_outline_version!)}
+                className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-secondary hover:text-ink transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>撤回修改</span>
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -484,12 +522,15 @@ export function AgentChatPanel({
   pid,
   outline,
   selectedIndex,
+  materials = [],
   materialsCount,
   themes,
   messages,
   isStreaming,
   llmConfigured,
   activeModelLabel = "",
+  diffPreviewVersion = null,
+  onToggleDiffPreview,
   onOpenLLMSettings,
   onSendMessage,
   onRetryMessage,
@@ -501,6 +542,8 @@ export function AgentChatPanel({
 }: AgentChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -695,6 +738,8 @@ export function AgentChatPanel({
                     changes={msg.changes}
                     totalSlides={totalSlides}
                     themes={themes}
+                    diffPreviewVersion={diffPreviewVersion}
+                    onToggleDiffPreview={onToggleDiffPreview}
                     onJumpToSlide={onJumpToSlide}
                     onRevertVersion={onRevertVersion}
                   />
@@ -706,22 +751,129 @@ export function AgentChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      {/* Bottom Composer (seamless surface, no hard divider line) */}
-      <div className="px-3.5 pb-3.5 pt-1 bg-surface-subtle shrink-0">
+      {/* Bottom Composer (with @ Mention Autocomplete & Contextual Quick Actions) */}
+      <div className="px-3.5 pb-3.5 pt-1 bg-surface-subtle shrink-0 relative space-y-2">
+        {/* Contextual Quick Action Chips */}
+        {llmConfigured && totalSlides > 0 && !isStreaming && (
+          <div className="flex items-center gap-1.5 overflow-x-auto clean-scroll pb-0.5">
+            {(outline?.items[selectedIndex]?.custom_elements?.length
+              ? [
+                  `第 ${selectedIndex + 1} 页精简文字留白更多`,
+                  `给第 ${selectedIndex + 1} 页补一张柱状趋势图`,
+                  "按 10 分钟汇报节奏补全全稿演讲者备注",
+                ]
+              : [
+                  `把第 ${selectedIndex + 1} 页改成 3 张核心指标卡`,
+                  `把第 ${selectedIndex + 1} 页做成对比表格+图表`,
+                  "按 10 分钟汇报节奏补全全稿演讲者备注",
+                ]
+            ).map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => onSendMessage(chip)}
+                className="px-2.5 py-1 rounded-full bg-surface hover:bg-canvas border border-black/[0.08] hover:border-black/20 text-[13px] text-ink-secondary hover:text-ink transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* @ Mention Autocomplete Popover */}
+        {mentionQuery !== null && (() => {
+          const q = mentionQuery.toLowerCase();
+          const mentionItems: Array<{ kind: "slide" | "material"; label: string; sub: string; insert: string }> = [
+            ...(outline?.items || []).map((it, i) => ({
+              kind: "slide" as const,
+              label: `第 ${i + 1} 页`,
+              sub: it.title || "未命名",
+              insert: `@第 ${i + 1} 页 `,
+            })),
+            ...materials.map((m) => ({
+              kind: "material" as const,
+              label: m.asset_id,
+              sub: m.asset_type === "image" ? "图片素材" : "文档素材",
+              insert: `@${m.asset_id} `,
+            })),
+          ].filter(
+            (item) =>
+              !q ||
+              item.label.toLowerCase().includes(q) ||
+              item.sub.toLowerCase().includes(q)
+          );
+
+          if (mentionItems.length === 0) return null;
+          const applyMention = (ins: string) => {
+            const next = draft.replace(/@([^\s@]*)$/, ins);
+            setDraft(next);
+            setMentionQuery(null);
+            setMentionIdx(0);
+            inputRef.current?.focus();
+          };
+
+          return (
+            <div className="absolute bottom-full left-3.5 right-3.5 mb-1.5 z-30 apple-glass dock-shadow rounded-xl p-1.5 max-h-52 overflow-y-auto clean-scroll space-y-0.5">
+              <div className="px-2 py-1 text-[13px] font-medium text-ink-muted">
+                引用页面或素材
+              </div>
+              {mentionItems.slice(0, 10).map((it, i) => (
+                <button
+                  key={`${it.kind}-${it.label}-${i}`}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applyMention(it.insert);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-[13px] cursor-pointer transition-colors ${
+                    i === mentionIdx
+                      ? "bg-black/[0.07] text-ink font-medium"
+                      : "text-ink hover:bg-black/[0.04]"
+                  }`}
+                >
+                  {it.kind === "slide" ? (
+                    <Layers className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                  )}
+                  <span className="font-medium shrink-0">{it.label}</span>
+                  <span className="text-ink-muted truncate">{it.sub}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+
         {/* Input Box */}
         <div className="rounded-2xl bg-surface border border-black/[0.12] hover:border-black/25 focus-within:border-ink focus-within:ring-4 focus-within:ring-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] duration-200 px-3 pt-2.5 pb-2">
           <textarea
             ref={inputRef}
             rows={2}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setDraft(val);
+              const m = /@([^\s@]*)$/.exec(val);
+              if (m) {
+                setMentionQuery(m[1]);
+                setMentionIdx(0);
+              } else {
+                setMentionQuery(null);
+              }
+            }}
             onKeyDown={(e) => {
+              if (mentionQuery !== null && e.key === "Escape") {
+                e.preventDefault();
+                setMentionQuery(null);
+                return;
+              }
               if (
                 e.key === "Enter" &&
                 !e.shiftKey &&
                 !e.nativeEvent.isComposing
               ) {
                 e.preventDefault();
+                setMentionQuery(null);
                 submitDraft();
               }
             }}
@@ -730,8 +882,8 @@ export function AgentChatPanel({
               !llmConfigured
                 ? "请先点击上方「立即配置大模型」…"
                 : totalSlides > 0
-                ? "告诉 Agent 要修改的内容、版式、主题或导出要求…"
-                : "输入想法，或拖入文档/图片让 Agent 帮你从零搭 PPT…"
+                ? "告诉 Agent 要修改的内容、版式或图表（输入 @ 可引用页码或素材）…"
+                : "输入想法，或拖入文档/粘贴截图让 Agent 帮你从零搭 PPT…"
             }
             className="w-full bg-transparent text-[13.5px] text-ink placeholder:text-ink-muted outline-none resize-none leading-relaxed max-h-[160px] disabled:opacity-60"
           />
@@ -746,6 +898,20 @@ export function AgentChatPanel({
                 className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
               >
                 <Paperclip className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft((d) => (d.endsWith("@") ? d : `${d}@`));
+                  setMentionQuery("");
+                  setMentionIdx(0);
+                  inputRef.current?.focus();
+                }}
+                title="引用指定页码或素材 (@)"
+                aria-label="引用页面或素材"
+                className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
+              >
+                <AtSign className="w-3.5 h-3.5" />
               </button>
               <button
                 type="button"

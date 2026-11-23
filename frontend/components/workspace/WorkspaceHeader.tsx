@@ -10,6 +10,7 @@ import {
   Redo2,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Sparkles,
   Undo2,
 } from "lucide-react";
@@ -48,6 +49,7 @@ interface WorkspaceHeaderProps {
   onToggleRight: () => void;
   onToggleChat: () => void;
   onOpenLLMSettings: () => void;
+  onOpenPreflight?: () => void;
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
@@ -83,6 +85,7 @@ export function WorkspaceHeader({
   onToggleRight,
   onToggleChat,
   onOpenLLMSettings,
+  onOpenPreflight,
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
@@ -386,11 +389,23 @@ export function WorkspaceHeader({
           </button>
         )}
 
-        {project?.download_available && (
+        {hasOutline && onOpenPreflight && (
+          <button
+            type="button"
+            onClick={onOpenPreflight}
+            title="交付前体检：一键检查排版安全、事实溯源、配图与备注覆盖"
+            className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+            <span className="hidden md:inline">交付体检</span>
+          </button>
+        )}
+
+        {(project?.download_available || hasOutline) && (
           <Link
             href={`/p/${pid}/preview`}
             className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors flex items-center gap-1.5 whitespace-nowrap"
-            title="全屏查看高清预览"
+            title="全屏放映与演讲者视图"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span className="hidden sm:inline">放映</span>

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardPaste,
   FileText,
+  Globe,
   Image as ImageIcon,
   Plus,
   Search,
@@ -33,6 +34,7 @@ type DrawerView =
   | { kind: "list" }
   | { kind: "detail"; assetId: string }
   | { kind: "paste" }
+  | { kind: "url" }
   | { kind: "regen" };
 
 interface MaterialsDrawerProps {
@@ -46,6 +48,7 @@ interface MaterialsDrawerProps {
   onUploadClick: () => void;
   onDropFiles?: (files: FileList) => void;
   onPasteNote: (title: string, content: string) => Promise<void>;
+  onImportUrl?: (url: string, title?: string) => Promise<void>;
   onDeleteMaterial: (assetId: string) => Promise<void>;
   onToggleSourceId?: (sourceId: string) => void;
   onInsertExcerptToSlide?: (sourceId: string, text: string) => void;
@@ -65,6 +68,7 @@ export function MaterialsDrawer({
   onUploadClick,
   onDropFiles,
   onPasteNote,
+  onImportUrl,
   onDeleteMaterial,
   onToggleSourceId,
   onInsertExcerptToSlide,
@@ -81,6 +85,9 @@ export function MaterialsDrawer({
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [urlValue, setUrlValue] = useState("");
+  const [urlTitle, setUrlTitle] = useState("");
+  const [fetchingUrl, setFetchingUrl] = useState(false);
   const [confirmDeleteAsset, setConfirmDeleteAsset] = useState<string | null>(
     null
   );
@@ -290,23 +297,33 @@ export function MaterialsDrawer({
         <>
           {/* Quick Actions + Optional Search & Filter */}
           <div className="px-5 py-3.5 border-b border-black/[0.06] space-y-3 shrink-0 bg-surface-subtle/60">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={onUploadClick}
-                className="h-9 px-3 rounded-xl ui-btn-outline text-[13px] inline-flex items-center justify-center gap-1.5"
+                className="h-9 px-2.5 rounded-xl ui-btn-outline text-[13px] inline-flex items-center justify-center gap-1"
               >
-                <Plus className="w-4 h-4 shrink-0" />
-                <span>上传文件 / 图片</span>
+                <Plus className="w-3.5 h-3.5 shrink-0" />
+                <span>上传文件</span>
               </button>
               <button
                 type="button"
                 onClick={() => setView({ kind: "paste" })}
-                className="h-9 px-3 rounded-xl bg-surface hover:bg-canvas border border-black/[0.1] hover:border-black/25 text-ink text-[13px] font-medium transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5"
+                className="h-9 px-2.5 rounded-xl bg-surface hover:bg-canvas border border-black/[0.1] hover:border-black/25 text-ink text-[13px] font-medium transition-colors cursor-pointer inline-flex items-center justify-center gap-1"
               >
                 <ClipboardPaste className="w-3.5 h-3.5 shrink-0" />
-                <span>粘贴文本笔记</span>
+                <span>粘贴笔记</span>
               </button>
+              {onImportUrl && (
+                <button
+                  type="button"
+                  onClick={() => setView({ kind: "url" })}
+                  className="h-9 px-2.5 rounded-xl bg-surface hover:bg-canvas border border-black/[0.1] hover:border-black/25 text-ink text-[13px] font-medium transition-colors cursor-pointer inline-flex items-center justify-center gap-1"
+                >
+                  <Globe className="w-3.5 h-3.5 shrink-0" />
+                  <span>导入网页</span>
+                </button>
+              )}
             </div>
 
             {showSearchAndFilter && (
@@ -728,6 +745,80 @@ export function MaterialsDrawer({
               className="px-5 h-9 ui-btn-primary text-[13px]"
             >
               {savingNote ? "正在保存…" : "保存为项目素材"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* ── VIEW 3B: Import Web URL ─────────────────────────────────────────── */}
+      {view.kind === "url" && onImportUrl && (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!urlValue.trim()) return;
+            setFetchingUrl(true);
+            try {
+              await onImportUrl(urlValue.trim(), urlTitle.trim() || undefined);
+              setUrlValue("");
+              setUrlTitle("");
+              setView({ kind: "list" });
+            } finally {
+              setFetchingUrl(false);
+            }
+          }}
+          className="flex-1 min-h-0 flex flex-col"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto clean-scroll p-5 space-y-4">
+            <div className="space-y-1">
+              <div className="text-[14px] font-semibold text-ink">
+                从公开网页抓取素材
+              </div>
+              <p className="text-[13px] text-ink-secondary leading-relaxed">
+                自动提取网页正文转为可溯源 Markdown 切片。
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-semibold text-ink">
+                网页链接
+              </label>
+              <input
+                type="url"
+                required
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                placeholder="https://example.com/article"
+                className="w-full h-10 px-3.5 text-[13.5px] ui-field font-mono"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-semibold text-ink">
+                素材名称（选填）
+              </label>
+              <input
+                type="text"
+                value={urlTitle}
+                onChange={(e) => setUrlTitle(e.target.value)}
+                placeholder="留空自动使用网页标题"
+                className="w-full h-10 px-3.5 text-[13.5px] ui-field"
+              />
+            </div>
+          </div>
+
+          <div className="px-5 py-3.5 border-t border-black/[0.07] bg-surface-subtle flex items-center justify-end gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setView({ kind: "list" })}
+              className="px-4 h-9 rounded-full text-[13px] font-medium text-ink-secondary hover:text-ink cursor-pointer"
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={fetchingUrl || !urlValue.trim()}
+              className="px-5 h-9 ui-btn-primary text-[13px]"
+            >
+              {fetchingUrl ? "正在抓取…" : "抓取并导入"}
             </button>
           </div>
         </form>

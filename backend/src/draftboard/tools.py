@@ -7,15 +7,24 @@ Dependency injection for storage root is provided via _storage_root module
 variable (set in tests to redirect writes to a tmp directory).
 """
 
+import csv
+import html
+import io
+import ipaddress
 import pathlib
 import re
+import socket
+import urllib.parse
+import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
+from html.parser import HTMLParser
 from typing import Optional
 
 import pypdfium2 as pdfium
 from agents import function_tool
+from pptx import Presentation
 
 from draftboard.models import (
     Artifact,
@@ -111,6 +120,296 @@ def _extract_pdf_pages(filepath: pathlib.Path) -> list[tuple[int, str]]:
     return pages
 
 
+def _rows_to_markdown_table(rows: list[list[str]], max_rows: int = 200) -> str:
+    cleaned = [
+        [str(c or "").replace("\r", " ").replace("\n", " ").replace("|", "\\|").strip() for c in r]
+        for r in rows
+        if any(str(c or "").strip() for c in r)
+    ]
+    if not cleaned:
+        return ""
+    clipped = cleaned[:max_rows]
+    col_count = max(len(r) for r in clipped)
+    norm = [(r + [""] * col_count)[:col_count] for r in clipped]
+    header = norm[0]
+    out = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * col_count) + " |",
+    ]
+    for r in norm[1:]:
+        out.append("| " + " | ".join(r) + " |")
+    if len(cleaned) > max_rows:
+        out.append(f"\n（共 {len(cleaned)} 行，已展示前 {max_rows} 行）")
+    return "\n".join(out)
+
+
+def _extract_csv_text(filepath: pathlib.Path) -> str:
+    """Parse a CSV file into a clean Markdown table."""
+    raw_bytes = filepath.read_bytes()
+    text: Optional[str] = None
+    for enc in ("utf-8-sig", "utf-8", "gb18030", "latin-1"):
+        try:
+            text = raw_bytes.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw_bytes.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+    return _rows_to_markdown_table(rows)
+
+
+def _col_letters_to_idx(ref: str) -> int:
+    letters = "".join(ch for ch in ref if ch.isalpha()).upper()
+    idx = 0
+    for ch in letters:
+        idx = idx * 26 + (ord(ch) - ord("A") + 1)
+    return max(0, idx - 1)
+
+
+def _extract_xlsx_text(filepath: pathlib.Path) -> str:
+    """Extract sheets & cell tables from an .xlsx workbook using stdlib zipfile + XML."""
+    ns_main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    ns_rel = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    try:
+        with zipfile.ZipFile(filepath) as zf:
+            names = set(zf.namelist())
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in names:
+                ss_root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+                for si in ss_root.findall(f"{ns_main}si"):
+                    txt = "".join(t.text or "" for t in si.findall(f".//{ns_main}t"))
+                    shared_strings.append(txt)
+
+            # Map sheet display names to worksheet XML paths
+            sheet_entries: list[tuple[str, str]] = []
+            if "xl/workbook.xml" in names and "xl/_rels/workbook.xml.rels" in names:
+                wb_root = ET.fromstring(zf.read("xl/workbook.xml"))
+                rels_root = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+                rel_map = {
+                    rel.attrib.get("Id", ""): rel.attrib.get("Target", "")
+                    for rel in rels_root
+                }
+                for sh in wb_root.findall(f".//{ns_main}sheet"):
+                    sname = sh.attrib.get("name", "Sheet")
+                    rid = sh.attrib.get(f"{ns_rel}id", "")
+                    target = rel_map.get(rid, "").lstrip("/")
+                    if target and not target.startswith("xl/"):
+                        target = f"xl/{target}"
+                    if target in names:
+                        sheet_entries.append((sname, target))
+
+            if not sheet_entries:
+                sheet_files = sorted(
+                    n for n in names if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)
+                )
+                sheet_entries = [
+                    (f"Sheet{i + 1}", path) for i, path in enumerate(sheet_files)
+                ]
+
+            parts: list[str] = []
+            for sname, spath in sheet_entries:
+                sroot = ET.fromstring(zf.read(spath))
+                rows: list[list[str]] = []
+                for row_el in sroot.findall(f".//{ns_main}sheetData/{ns_main}row"):
+                    cells_by_col: dict[int, str] = {}
+                    fallback_col = 0
+                    for c_el in row_el.findall(f"{ns_main}c"):
+                        ref = c_el.attrib.get("r", "")
+                        col_idx = _col_letters_to_idx(ref) if ref else fallback_col
+                        fallback_col = col_idx + 1
+                        ctype = c_el.attrib.get("t", "")
+                        val_str = ""
+                        if ctype == "s":
+                            v_el = c_el.find(f"{ns_main}v")
+                            if v_el is not None and v_el.text and v_el.text.isdigit():
+                                sidx = int(v_el.text)
+                                if 0 <= sidx < len(shared_strings):
+                                    val_str = shared_strings[sidx]
+                        elif ctype == "inlineStr":
+                            val_str = "".join(
+                                t.text or "" for t in c_el.findall(f".//{ns_main}t")
+                            )
+                        else:
+                            v_el = c_el.find(f"{ns_main}v")
+                            if v_el is not None and v_el.text is not None:
+                                val_str = v_el.text
+                        if val_str.strip():
+                            cells_by_col[col_idx] = val_str.strip()
+                    if cells_by_col:
+                        max_c = max(cells_by_col.keys())
+                        rows.append([cells_by_col.get(i, "") for i in range(max_c + 1)])
+                md = _rows_to_markdown_table(rows)
+                if md:
+                    parts.append(f"## {sname}\n\n{md}")
+            return "\n\n".join(parts)
+    except Exception as exc:
+        raise ValueError(f"无法解析 Excel 文件 '{filepath.name}'") from exc
+
+
+def _extract_pptx_slides(filepath: pathlib.Path) -> list[tuple[int, str]]:
+    """Extract slide-by-slide text, tables, and speaker notes from a .pptx deck."""
+    try:
+        prs = Presentation(str(filepath))
+    except Exception as exc:
+        raise ValueError(f"无法解析 PPTX 文件 '{filepath.name}'") from exc
+
+    slides_out: list[tuple[int, str]] = []
+    for idx, slide in enumerate(prs.slides, start=1):
+        blocks: list[str] = []
+        for shape in slide.shapes:
+            if shape.has_table:
+                tbl_rows = [
+                    [cell.text.strip() for cell in row.cells]
+                    for row in shape.table.rows
+                ]
+                md_tbl = _rows_to_markdown_table(tbl_rows, max_rows=50)
+                if md_tbl:
+                    blocks.append(md_tbl)
+            elif shape.has_text_frame:
+                txt = "\n".join(
+                    p.text.strip() for p in shape.text_frame.paragraphs if p.text.strip()
+                )
+                if txt:
+                    blocks.append(txt)
+        try:
+            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                notes = (slide.notes_slide.notes_text_frame.text or "").strip()
+                if notes:
+                    blocks.append(f"[演讲备注] {notes}")
+        except Exception:
+            pass
+        slides_out.append((idx, "\n".join(blocks).strip()))
+    return slides_out
+
+
+class _ReadableHTMLParser(HTMLParser):
+    """Minimal zero-dependency HTML-to-Markdown text extractor."""
+
+    _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "footer", "aside", "iframe"}
+    _BLOCK_TAGS = {"p", "div", "section", "article", "li", "tr", "blockquote", "pre", "br", "hr"}
+    _HEADING_TAGS = {"h1": "# ", "h2": "## ", "h3": "### ", "h4": "#### "}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip_depth = 0
+        self._in_title = False
+        self.page_title = ""
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        t = tag.lower()
+        if t in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth > 0:
+            return
+        if t == "title":
+            self._in_title = True
+        elif t in self._HEADING_TAGS:
+            self._chunks.append(f"\n\n{self._HEADING_TAGS[t]}")
+        elif t == "li":
+            self._chunks.append("\n- ")
+        elif t in ("td", "th"):
+            self._chunks.append(" | ")
+        elif t in self._BLOCK_TAGS:
+            self._chunks.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if t in self._SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+            return
+        if t == "title":
+            self._in_title = False
+        elif t in self._HEADING_TAGS or t in ("p", "tr", "blockquote", "pre"):
+            self._chunks.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth > 0:
+            return
+        clean = " ".join(html.unescape(data).split())
+        if not clean:
+            return
+        if self._in_title and not self.page_title:
+            self.page_title = clean[:80]
+            return
+        self._chunks.append(clean + " ")
+
+    def get_markdown(self) -> str:
+        raw = "".join(self._chunks)
+        lines = [re.sub(r"\s+", " ", ln).strip() for ln in raw.splitlines()]
+        compact: list[str] = []
+        for ln in lines:
+            if not ln:
+                if compact and compact[-1] != "":
+                    compact.append("")
+                continue
+            compact.append(ln.strip("| ").strip())
+        return "\n".join(compact).strip()
+
+
+def _validate_public_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("仅支持 http:// 或 https:// 公开网页链接")
+    host = parsed.hostname.lower()
+    if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or host.endswith(".local"):
+        raise ValueError("出于安全限制，不允许抓取本机或内网地址")
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ValueError("出于安全限制，不允许抓取内网 IP 地址")
+    except ValueError as exc:
+        if "安全限制" in str(exc):
+            raise
+        # Domain name: verify resolved IPs are not private/loopback when resolvable
+        try:
+            for info in socket.getaddrinfo(host, None):
+                addr = info[4][0]
+                rip = ipaddress.ip_address(addr)
+                if rip.is_private or rip.is_loopback or rip.is_link_local:
+                    raise ValueError("出于安全限制，目标域名指向内网地址")
+        except socket.gaierror:
+            pass
+    return url.strip()
+
+
+def extract_url_to_markdown(url: str, timeout: float = 15.0) -> tuple[str, str]:
+    """Fetch a public web page and convert readable content to Markdown.
+
+    Returns (page_title, markdown_body).
+    """
+    safe_url = _validate_public_url(url)
+    req = urllib.request.Request(
+        safe_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; Draftboard/1.0; +https://github.com/lg114/draftboard)",
+            "Accept": "text/html,text/plain,text/markdown;q=0.9,*/*;q=0.5",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        ctype = (resp.headers.get("Content-Type") or "").lower()
+        raw = resp.read(2 * 1024 * 1024)  # 2MB safety cap
+    text = raw.decode("utf-8", errors="replace")
+
+    if "text/plain" in ctype or "text/markdown" in ctype:
+        first_line = next((ln.lstrip("# ").strip() for ln in text.splitlines() if ln.strip()), "")
+        title = first_line[:60] or urllib.parse.urlparse(safe_url).hostname or "网页素材"
+        body = f"> 来源链接：{safe_url}\n\n{text.strip()}"
+        return title, body
+
+    parser = _ReadableHTMLParser()
+    parser.feed(text)
+    md = parser.get_markdown()
+    if not md:
+        raise ValueError("该网页未提取到可读正文内容（可能需要登录或依赖前端动态渲染）")
+    title = parser.page_title or urllib.parse.urlparse(safe_url).hostname or "网页素材"
+    body = f"# {title}\n\n> 来源链接：{safe_url}\n\n{md}"
+    return title, body
+
+
 # ── Tool 1: read_materials ────────────────────────────────────────────────────
 
 
@@ -144,7 +443,7 @@ def read_materials(
 
     # Collect candidate files
     candidate_files: list[pathlib.Path] = []
-    for ext in ("*.md", "*.txt", "*.docx", "*.pdf", "*.png", "*.jpg", "*.jpeg"):
+    for ext in ("*.md", "*.txt", "*.docx", "*.csv", "*.xlsx", "*.pptx", "*.pdf", "*.png", "*.jpg", "*.jpeg"):
         candidate_files.extend(assets_dir.glob(ext))
 
     for filepath in sorted(candidate_files):
@@ -153,9 +452,13 @@ def read_materials(
             continue
 
         suffix = filepath.suffix.lower()
-        if suffix in (".md", ".txt", ".docx"):
+        if suffix in (".md", ".txt", ".docx", ".csv", ".xlsx"):
             if suffix == ".docx":
                 text = _extract_docx_text(filepath)
+            elif suffix == ".csv":
+                text = _extract_csv_text(filepath)
+            elif suffix == ".xlsx":
+                text = _extract_xlsx_text(filepath)
             else:
                 text = filepath.read_text(encoding="utf-8", errors="replace")
             materials.append(
@@ -223,6 +526,42 @@ def read_materials(
                                 content_preview=" ".join(chunk_lines[:3])[:200] or None,
                             )
                         )
+            materials.append(
+                MaterialContent(
+                    asset_id=stem,
+                    asset_type=AssetType.MARKDOWN,
+                    content="\n\n".join(combined_parts),
+                )
+            )
+        elif suffix == ".pptx":
+            ppt_slides = _extract_pptx_slides(filepath)
+            combined_parts = []
+            if not ppt_slides:
+                fragments.append(
+                    SourceFragment(
+                        source_id=f"{stem}-S1",
+                        asset_id=stem,
+                        location="S1",
+                        content_preview="[空 PPTX 演示文稿]",
+                    )
+                )
+            for snum, stext in ppt_slides:
+                if stext:
+                    combined_parts.append(f"## 第 {snum} 页\n{stext}")
+                lines = stext.splitlines()
+                preview = (
+                    " ".join(lines[:3])[:200]
+                    if lines
+                    else "[该页无可提取文字]"
+                )
+                fragments.append(
+                    SourceFragment(
+                        source_id=f"{stem}-S{snum}",
+                        asset_id=stem,
+                        location=f"S{snum}",
+                        content_preview=preview,
+                    )
+                )
             materials.append(
                 MaterialContent(
                     asset_id=stem,
@@ -740,8 +1079,24 @@ def export_deck_impl(
     exports_dir.mkdir(parents=True, exist_ok=True)
     pptx_path = exports_dir / f"{artifact_id}-r{revision}.pptx"
 
+    meta_brand = None
+    meta_path = storage.root / "meta.json"
+    if meta_path.exists():
+        try:
+            import json as _json
+            meta_obj = _json.loads(meta_path.read_text(encoding="utf-8"))
+            if isinstance(meta_obj, dict) and isinstance(meta_obj.get("brand"), dict):
+                meta_brand = meta_obj["brand"]
+        except Exception:
+            pass
+
     try:
-        export_pptx(artifact, pptx_path, assets_dir=storage.root / "assets")
+        export_pptx(
+            artifact,
+            pptx_path,
+            assets_dir=storage.root / "assets",
+            brand=meta_brand,
+        )
     except (ValueError, FileNotFoundError) as e:
         result = ExportResult(
             success=False,

@@ -27,23 +27,41 @@ import draftboard.chat_agent as chat_agent
 import draftboard.llm_config as llm_config
 import draftboard.tasks as tasks
 import draftboard.tools as tools_module
+import draftboard.user_library as user_library
+from PIL import Image, ImageDraw
+from draftboard.measure import load_fonts
 from draftboard.models import (
+    Artifact,
     CanvasElement,
+    ChartSeries,
     EvidenceStatus,
     Outline,
     OutlineItem,
+    Slide,
+    SlideElement,
     SlideLayout,
     validate_outline,
 )
-from draftboard.pptx_export import _resolve_image_path
+from draftboard.pptx_export import _measure_and_resolve, _resolve_image_path
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
-from draftboard.themes import is_valid_theme, list_themes, resolve_theme_id
+from draftboard.themes import get_theme, is_valid_theme, list_themes, resolve_theme_id
 
 load_dotenv()
 
 _PROJECT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 _DEFAULT_UNTITLED_NAME = "未命名文稿"
-_ALLOWED_EXTENSIONS = {".md", ".txt", ".docx", ".pdf", ".png", ".jpg", ".jpeg"}
+_ALLOWED_EXTENSIONS = {
+    ".md",
+    ".txt",
+    ".docx",
+    ".pdf",
+    ".csv",
+    ".xlsx",
+    ".pptx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+}
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
 _PARENTS = pathlib.Path(__file__).resolve().parents
 _FRONTEND_OUT_DIR = (
@@ -441,6 +459,392 @@ def get_themes():
     return {"themes": list_themes()}
 
 
+# ── Saved Reusable Custom Layouts ─────────────────────────────────────────────
+
+
+class CreateSavedLayoutRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    custom_bg: Optional[str] = "theme:bg"
+    elements: list[CanvasElement]
+
+
+@app.get("/api/layouts/custom")
+def get_saved_layouts():
+    return {"layouts": [p.model_dump() for p in user_library.list_saved_layouts()]}
+
+
+@app.post("/api/layouts/custom")
+def save_custom_layout(req: CreateSavedLayoutRequest):
+    try:
+        preset = user_library.create_saved_layout(
+            name=req.name,
+            elements=req.elements,
+            custom_bg=req.custom_bg,
+            description=req.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return preset.model_dump()
+
+
+@app.delete("/api/layouts/custom/{layout_id}")
+def remove_saved_layout(layout_id: str):
+    if not user_library.delete_saved_layout(layout_id):
+        raise HTTPException(404, "未找到该收藏版式")
+    return {"deleted": layout_id}
+
+
+# ── One-Click 10-Second Interactive Demo Project ──────────────────────────────
+
+
+def _generate_demo_diagram(path: pathlib.Path) -> None:
+    """Create a crisp architectural diagram PNG with PIL (zero external assets)."""
+    im = Image.new("RGB", (900, 560), (245, 246, 248))
+    draw = ImageDraw.Draw(im)
+    # 3 clean tier cards
+    boxes = [
+        (60, 70, 840, 190, (255, 255, 255), (0, 113, 227)),
+        (60, 225, 435, 365, (255, 255, 255), (46, 125, 99)),
+        (465, 225, 840, 365, (255, 255, 255), (46, 125, 99)),
+        (60, 400, 840, 500, (29, 29, 31), (29, 29, 31)),
+    ]
+    for x1, y1, x2, y2, fill, accent in boxes:
+        draw.rounded_rectangle([x1, y1, x2, y2], radius=18, fill=fill, outline=(224, 226, 232), width=2)
+        draw.rounded_rectangle([x1 + 24, y1 + 24, x1 + 32, y2 - 24], radius=4, fill=accent)
+        # Abstract editorial content bars inside each tier
+        bar_col = (225, 228, 235) if fill != (29, 29, 31) else (90, 92, 100)
+        title_col = (40, 42, 48) if fill != (29, 29, 31) else (240, 242, 245)
+        draw.rounded_rectangle([x1 + 52, y1 + 32, min(x2 - 48, x1 + 260), y1 + 50], radius=6, fill=title_col)
+        draw.rounded_rectangle([x1 + 52, y1 + 66, x2 - 48, y1 + 80], radius=5, fill=bar_col)
+        if y2 - y1 > 110:
+            draw.rounded_rectangle([x1 + 52, y1 + 94, x2 - 120, y1 + 108], radius=5, fill=bar_col)
+    im.save(path, format="PNG")
+
+
+@app.post("/api/projects/demo")
+def create_demo_project():
+    """Create a zero-LLM 10-second showcase deck demonstrating provenance, Bento KPI, native table/chart, and image slides."""
+    pid = f"demo-{uuid.uuid4().hex[:6]}"
+    p_dir = _root() / pid
+    assets_dir = p_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    demo_name = "示例：2026 Q1 产品增长与架构复盘"
+    meta = {
+        "project_id": pid,
+        "name": demo_name,
+        "theme_id": "keynote_light",
+        "auto_named": False,
+        "created_at": time.time(),
+        "brand": {
+            "footer_text": "Draftboard 示例文稿 · 所有数据可溯源至原始素材",
+            "logo_position": "top_right",
+        },
+    }
+    (p_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+    # 1. Real traceable source note
+    note_md = (
+        "# 2026 Q1 季度业务与架构复盘纪要\n\n"
+        "## 核心业务增长\n"
+        "- Q1 年度经常性收入（ARR）达到 1.20 亿元，同比增长 +42%（去年 Q4 为 0.85 亿元）。\n"
+        "- 企业客户净美元留存率（NDR）提升至 118%，较上季度提升 6 个百分点。\n"
+        "- 综合毛利率稳定在 78%（Q4 为 76%），获客成本（CAC）同比下降 23%。\n"
+        "- 近四个季度营收走势：Q2 62M、Q3 74M、Q4 85M、Q1 120M；毛利走势：46M、56M、65M、94M。\n\n"
+        "## 技术架构升级\n"
+        "- 完成核心网关与检索引擎异步化重构，平均响应耗时从 180ms 降至 45ms（降低 75%）。\n"
+        "- 导出编译链路切换为纯内存矢量渲染，单份 15 页 PPTX + PDF 渲染耗时压缩至 0.4 秒以内。\n"
+        "- 全链路可用性达到 99.96%，支撑 12 万日活工作台会话。\n\n"
+        "## Q2 重点规划\n"
+        "- 推出企业级品牌包与自定义版式复用库，覆盖 50 家头部种子客户。\n"
+        "- 深化多维数据表与实时图表联动能力，缩短从原始财报到汇报成稿的时间。\n"
+    )
+    (assets_dir / "Q1复盘纪要.md").write_text(note_md, encoding="utf-8")
+    _generate_demo_diagram(assets_dir / "架构演进示意.png")
+
+    # Index materials & fragments via the real pipeline
+    mat_out = _raw(tools_module.read_materials)(project_id=pid)
+    md_sids = [f.source_id for f in mat_out.source_fragments if f.asset_id == "Q1复盘纪要"]
+    img_sids = [f.source_id for f in mat_out.source_fragments if f.asset_id == "架构演进示意"]
+    primary_sid = md_sids[0] if md_sids else ""
+    img_sid = img_sids[0] if img_sids else ""
+
+    outline = Outline(
+        outline_version=f"v-{uuid.uuid4().hex[:8]}",
+        project_id=pid,
+        is_confirmed=False,
+        items=[
+            OutlineItem(
+                outline_item_id="demo-s1",
+                title="2026 Q1 产品增长与架构复盘",
+                summary="营收加速突破 1.2 亿 · 核心链路耗时下降 75%",
+                source_ids=[s for s in [primary_sid] if s],
+                evidence_status=EvidenceStatus.SUPPORTED if primary_sid else EvidenceStatus.UNSUPPORTED,
+                layout=SlideLayout.COVER,
+                speaker_notes="欢迎各位参加 Q1 复盘会。今天用 5 分钟快速同步本季度的业务增长结果、架构提速成果以及 Q2 路线图。",
+            ),
+            OutlineItem(
+                outline_item_id="demo-s2",
+                title="核心增长指标：营收与留存双线突破",
+                summary="ARR 达 1.20 亿（+42%），净留存 118%，综合毛利率 78%，获客成本下降 23%。",
+                source_ids=[s for s in [primary_sid] if s],
+                evidence_status=EvidenceStatus.SUPPORTED if primary_sid else EvidenceStatus.UNSUPPORTED,
+                layout=SlideLayout.CONTENT,
+                speaker_notes="这页采用自由画布 3 卡片指标布局，点击画布上任意卡片或数字都可以直接拖拽、缩放和修改字号配色。",
+                custom_bg="theme:bg",
+                custom_elements=[
+                    CanvasElement(
+                        id="s2_title",
+                        kind="text",
+                        x=48,
+                        y=28,
+                        w=864,
+                        h=48,
+                        text="核心增长指标：营收与留存双线突破",
+                        font_size=28,
+                        bold=True,
+                        color="theme:title",
+                    ),
+                    CanvasElement(
+                        id="s2_rule",
+                        kind="line",
+                        x=48,
+                        y=84,
+                        w=64,
+                        h=0,
+                        color="theme:accent",
+                        line_width=3.0,
+                    ),
+                    CanvasElement(
+                        id="s2_card_1",
+                        kind="card",
+                        x=48,
+                        y=112,
+                        w=274,
+                        h=228,
+                        fill="theme:surface",
+                        border_color="theme:divider",
+                        border_width=1.0,
+                        radius=16,
+                    ),
+                    CanvasElement(
+                        id="s2_kpi_1",
+                        kind="text",
+                        x=72,
+                        y=140,
+                        w=226,
+                        h=64,
+                        text="1.20 亿",
+                        font_size=42,
+                        bold=True,
+                        color="theme:accent",
+                    ),
+                    CanvasElement(
+                        id="s2_lbl_1",
+                        kind="text",
+                        x=72,
+                        y=216,
+                        w=226,
+                        h=96,
+                        text="Q1 年度经常性收入\n同比增长 +42%，较 Q4 净增 0.35 亿",
+                        font_size=15,
+                        color="theme:body",
+                    ),
+                    CanvasElement(
+                        id="s2_card_2",
+                        kind="card",
+                        x=343,
+                        y=112,
+                        w=274,
+                        h=228,
+                        fill="theme:surface",
+                        border_color="theme:divider",
+                        border_width=1.0,
+                        radius=16,
+                    ),
+                    CanvasElement(
+                        id="s2_kpi_2",
+                        kind="text",
+                        x=367,
+                        y=140,
+                        w=226,
+                        h=64,
+                        text="118%",
+                        font_size=42,
+                        bold=True,
+                        color="theme:title",
+                    ),
+                    CanvasElement(
+                        id="s2_lbl_2",
+                        kind="text",
+                        x=367,
+                        y=216,
+                        w=226,
+                        h=96,
+                        text="企业客户净留存率\n环比提升 6 个百分点，续费稳健",
+                        font_size=15,
+                        color="theme:body",
+                    ),
+                    CanvasElement(
+                        id="s2_card_3",
+                        kind="card",
+                        x=638,
+                        y=112,
+                        w=274,
+                        h=228,
+                        fill="theme:surface",
+                        border_color="theme:divider",
+                        border_width=1.0,
+                        radius=16,
+                    ),
+                    CanvasElement(
+                        id="s2_kpi_3",
+                        kind="text",
+                        x=662,
+                        y=140,
+                        w=226,
+                        h=64,
+                        text="-23%",
+                        font_size=42,
+                        bold=True,
+                        color="theme:title",
+                    ),
+                    CanvasElement(
+                        id="s2_lbl_3",
+                        kind="text",
+                        x=662,
+                        y=216,
+                        w=226,
+                        h=96,
+                        text="获客成本同比下降\n综合毛利率稳定维持在 78%",
+                        font_size=15,
+                        color="theme:body",
+                    ),
+                    CanvasElement(
+                        id="s2_banner",
+                        kind="card",
+                        x=48,
+                        y=364,
+                        w=864,
+                        h=112,
+                        fill="theme:surface",
+                        border_color="theme:divider",
+                        border_width=1.0,
+                        radius=14,
+                    ),
+                    CanvasElement(
+                        id="s2_note",
+                        kind="text",
+                        x=72,
+                        y=386,
+                        w=816,
+                        h=72,
+                        text="核心结论：在获客成本持续优化的前提下，老客增购与高毛利订阅共同驱动 Q1 营收创历史新高。",
+                        font_size=17,
+                        bold=True,
+                        color="theme:title",
+                    ),
+                ],
+            ),
+            OutlineItem(
+                outline_item_id="demo-s3",
+                title="季度财务对比与增长趋势",
+                summary="近四个季度营收由 62M 攀升至 120M，毛利同步升至 94M。",
+                source_ids=[s for s in [primary_sid] if s],
+                evidence_status=EvidenceStatus.SUPPORTED if primary_sid else EvidenceStatus.UNSUPPORTED,
+                layout=SlideLayout.CONTENT,
+                speaker_notes="左侧为原生可编辑对比表格，右侧为原生数据图表；点击图表可在底部属性条一键切换柱状/条形/折线/环形图。",
+                custom_bg="theme:bg",
+                custom_elements=[
+                    CanvasElement(
+                        id="s3_title",
+                        kind="text",
+                        x=48,
+                        y=28,
+                        w=864,
+                        h=48,
+                        text="季度财务对比与增长趋势",
+                        font_size=28,
+                        bold=True,
+                        color="theme:title",
+                    ),
+                    CanvasElement(
+                        id="s3_rule",
+                        kind="line",
+                        x=48,
+                        y=84,
+                        w=64,
+                        h=0,
+                        color="theme:accent",
+                        line_width=3.0,
+                    ),
+                    CanvasElement(
+                        id="s3_tbl",
+                        kind="table",
+                        x=48,
+                        y=116,
+                        w=404,
+                        h=260,
+                        headers=["核心指标", "上季 Q4", "本季 Q1", "变化"],
+                        rows=[
+                            ["ARR（亿）", "0.85", "1.20", "+42%"],
+                            ["净留存率", "112%", "118%", "+6%"],
+                            ["综合毛利率", "76%", "78%", "+2%"],
+                            ["平均响应", "180ms", "45ms", "-75%"],
+                        ],
+                        header_fill="theme:accent",
+                        header_color="theme:cover_title",
+                        table_font_size=13,
+                    ),
+                    CanvasElement(
+                        id="s3_chart",
+                        kind="chart",
+                        x=476,
+                        y=108,
+                        w=436,
+                        h=368,
+                        chart_type="bar",
+                        chart_title="近四季营收与毛利走势（百万）",
+                        chart_categories=["Q2", "Q3", "Q4", "Q1"],
+                        chart_series=[
+                            ChartSeries(name="营收", values=[62, 74, 85, 120]),
+                            ChartSeries(name="毛利", values=[46, 56, 65, 94]),
+                        ],
+                        show_values=True,
+                        value_suffix="M",
+                    ),
+                ],
+            ),
+            OutlineItem(
+                outline_item_id="demo-s4",
+                title="核心架构升级与性能跃迁",
+                summary=(
+                    "核心网关与检索引擎完成异步重构，平均耗时由 180ms 降至 45ms。\n"
+                    "导出编译链路全面切换为内存矢量渲染，15 页成品耗时低于 0.4 秒。\n"
+                    "全链路可用性达 99.96%，平稳支撑 12 万日活工作台会话。"
+                ),
+                source_ids=[s for s in [primary_sid, img_sid] if s],
+                evidence_status=EvidenceStatus.SUPPORTED if primary_sid else EvidenceStatus.UNSUPPORTED,
+                layout=SlideLayout.TEXT_IMAGE,
+                image_asset_id="架构演进示意",
+                speaker_notes="技术侧三大突破：响应降 75%、渲染提速至亚秒级、可用性达四个九级别。",
+            ),
+            OutlineItem(
+                outline_item_id="demo-s5",
+                title="Q2 重点规划与感谢聆听",
+                summary="聚焦企业品牌包与版式复用库落地 · 冲刺 50 家头部种子客户",
+                source_ids=[s for s in [primary_sid] if s],
+                evidence_status=EvidenceStatus.SUPPORTED if primary_sid else EvidenceStatus.UNSUPPORTED,
+                layout=SlideLayout.CLOSING,
+                speaker_notes="感谢大家聆听，欢迎进入 Q&A 环节。",
+            ),
+        ],
+    )
+    _storage(pid).save_outline(outline)
+    return {"project_id": pid, "name": demo_name}
+
+
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: str):
     _require_project(project_id)
@@ -448,10 +852,20 @@ def get_project(project_id: str):
     reports = _export_reports(project_id)
     latest_success = _latest_success_report(project_id)
     art_meta = _latest_artifact_meta(project_id)
+    meta_path = _root() / project_id / "meta.json"
+    meta_brand = None
+    if meta_path.exists():
+        try:
+            loaded_m = load_json(meta_path)
+            if isinstance(loaded_m, dict) and isinstance(loaded_m.get("brand"), dict):
+                meta_brand = loaded_m["brand"]
+        except Exception:
+            pass
     return {
         "project_id": project_id,
         "name": summary["name"],
         "theme_id": summary["theme_id"],
+        "brand": meta_brand,
         "stage": summary["stage"],
         "stage_label": summary["stage_label"],
         "slide_count": summary["slide_count"],
@@ -507,6 +921,264 @@ def update_project(project_id: str, req: UpdateProjectRequest):
     }
 
 
+@app.patch("/api/projects/{project_id}/brand")
+def update_project_brand(project_id: str, req: user_library.BrandKit):
+    """Save or clear per-project brand kit (accent, background, footer, corner logo)."""
+    _require_project(project_id)
+    try:
+        cleaned = req.cleaned()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    p_dir = _root() / project_id
+    meta_path = p_dir / "meta.json"
+    meta: dict = {"project_id": project_id, "created_at": time.time()}
+    if meta_path.exists():
+        try:
+            loaded_meta = load_json(meta_path)
+            if isinstance(loaded_meta, dict):
+                meta.update(loaded_meta)
+        except Exception:
+            pass
+
+    brand_dict = cleaned.model_dump()
+    if any(
+        [
+            brand_dict.get("accent_hex"),
+            brand_dict.get("bg_hex"),
+            brand_dict.get("footer_text"),
+            brand_dict.get("logo_asset_id"),
+        ]
+    ):
+        meta["brand"] = brand_dict
+    else:
+        meta.pop("brand", None)
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return {"project_id": project_id, "brand": meta.get("brand")}
+
+
+@app.get("/api/projects/{project_id}/preflight")
+def preflight_check(
+    project_id: str,
+    version: Optional[str] = None,
+    theme_id: str = "keynote_light",
+    auto_fit: bool = True,
+):
+    """Comprehensive pre-export readiness audit: layout safety, provenance, media, notes, rhythm."""
+    _require_project(project_id)
+    storage = _storage(project_id)
+    summaries = _outline_summaries(project_id)
+    if not summaries:
+        raise HTTPException(400, "当前项目还没有大纲")
+    target_ver = version or summaries[0]["outline_version"]
+    outline = storage.load_outline(target_ver)
+    assets_dir = storage.root / "assets"
+
+    items = [tools_module.normalize_outline_item_text(it) for it in outline.items]
+    total = len(items)
+    findings: list[dict] = []
+
+    # 1. Provenance & Notes & Media checks
+    supported_count = 0
+    notes_count = 0
+    eff_layouts: list[str] = []
+
+    for idx, it in enumerate(items):
+        page_no = idx + 1
+        is_custom = bool(it.custom_elements)
+        eff_layout = (
+            "custom"
+            if is_custom
+            else (
+                it.layout.value
+                if it.layout
+                else ("cover" if idx == 0 else ("closing" if idx == total - 1 and total > 1 else "content"))
+            )
+        )
+        eff_layouts.append(eff_layout)
+
+        if it.evidence_status == EvidenceStatus.SUPPORTED and it.source_ids:
+            supported_count += 1
+        elif it.evidence_status == EvidenceStatus.PARTIAL and it.source_ids:
+            findings.append(
+                {
+                    "slide_index": idx,
+                    "slide_number": page_no,
+                    "category": "provenance",
+                    "severity": "warning",
+                    "message": f"第 {page_no} 页「{it.title[:22]}」仅部分引用素材依据，建议核对数据出处。",
+                }
+            )
+        else:
+            findings.append(
+                {
+                    "slide_index": idx,
+                    "slide_number": page_no,
+                    "category": "provenance",
+                    "severity": "warning",
+                    "message": f"第 {page_no} 页「{it.title[:22]}」尚未关联原始素材出处。",
+                }
+            )
+
+        if (it.speaker_notes or "").strip():
+            notes_count += 1
+
+        if not is_custom:
+            if eff_layout == "text_image":
+                img_ref = (it.image_asset_id or "").strip()
+                if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:
+                    findings.append(
+                        {
+                            "slide_index": idx,
+                            "slide_number": page_no,
+                            "category": "media",
+                            "severity": "error",
+                            "message": f"第 {page_no} 页图文版式缺少有效配图，请补充或切换版式。",
+                        }
+                    )
+            if eff_layout == "two_column" and not (it.column_right or "").strip():
+                findings.append(
+                    {
+                        "slide_index": idx,
+                        "slide_number": page_no,
+                        "category": "layout",
+                        "severity": "error",
+                        "message": f"第 {page_no} 页双栏版式缺少右栏内容。",
+                    }
+                )
+            if len(it.summary.strip()) > 190:
+                findings.append(
+                    {
+                        "slide_index": idx,
+                        "slide_number": page_no,
+                        "category": "rhythm",
+                        "severity": "info",
+                        "message": f"第 {page_no} 页正文偏密（{len(it.summary.strip())} 字），建议精简要点或改用卡片排版。",
+                    }
+                )
+        else:
+            for cel in it.custom_elements or []:
+                if cel.kind == "image":
+                    img_ref = (cel.image_asset_id or "").strip()
+                    if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:
+                        findings.append(
+                            {
+                                "slide_index": idx,
+                                "slide_number": page_no,
+                                "category": "media",
+                                "severity": "error",
+                                "message": f"第 {page_no} 页自由画布图片元素 '{cel.id}' 缺失素材文件。",
+                            }
+                        )
+
+    # 2. Visual rhythm: 3+ consecutive identical non-custom layouts
+    run_len = 1
+    for i in range(1, len(eff_layouts)):
+        if eff_layouts[i] == eff_layouts[i - 1] and eff_layouts[i] not in ("cover", "closing", "custom"):
+            run_len += 1
+            if run_len == 3:
+                findings.append(
+                    {
+                        "slide_index": i - 2,
+                        "slide_number": i - 1,
+                        "category": "rhythm",
+                        "severity": "info",
+                        "message": f"第 {i - 1}–{i + 1} 页连续使用相同版式，可切换版式或改用自由画布制造节奏变化。",
+                    }
+                )
+        else:
+            run_len = 1
+
+    # 3. Deterministic font/box layout measurement via real exporter engine
+    slides: list[Slide] = []
+    for idx, it in enumerate(items):
+        sid = f"slide-{idx + 1:03d}"
+        layout = it.layout or (
+            SlideLayout.COVER if idx == 0 else (SlideLayout.CLOSING if idx == total - 1 and total > 1 else SlideLayout.CONTENT)
+        )
+        els = [SlideElement(element_id=f"{sid}-title", type="title", content=it.title or "未命名")]
+        if layout == SlideLayout.BULLETS:
+            for bi, ln in enumerate([l for l in it.summary.splitlines() if l.strip()], start=1):
+                els.append(SlideElement(element_id=f"{sid}-b{bi}", type="bullet", content=ln))
+        elif layout == SlideLayout.TWO_COLUMN:
+            els.append(SlideElement(element_id=f"{sid}-cl", type="column_left", content=it.summary))
+            if it.column_right:
+                els.append(SlideElement(element_id=f"{sid}-cr", type="column_right", content=it.column_right))
+        elif layout == SlideLayout.COVER:
+            els.append(SlideElement(element_id=f"{sid}-sub", type="subtitle", content=it.summary))
+        elif layout == SlideLayout.CLOSING:
+            els.append(SlideElement(element_id=f"{sid}-con", type="conclusion", content=it.summary))
+        else:
+            els.append(SlideElement(element_id=f"{sid}-txt", type="text", content=it.summary))
+        slides.append(
+            Slide(
+                slide_id=sid,
+                layout=layout,
+                elements=els,
+                speaker_notes=it.speaker_notes,
+                custom_bg=it.custom_bg,
+                custom_elements=it.custom_elements,
+            )
+        )
+
+    probe_artifact = Artifact(
+        artifact_id="preflight",
+        project_id=project_id,
+        artifact_revision=1,
+        slides=slides,
+        outline_version=target_ver,
+        template_id=resolve_theme_id(theme_id),
+        auto_fit=auto_fit,
+    )
+    layout_errors: list[str] = []
+    try:
+        theme = get_theme(probe_artifact.template_id)
+        _, layout_errors = _measure_and_resolve(
+            probe_artifact, load_fonts(), auto_fit=auto_fit, decorative=theme.decorative
+        )
+    except Exception as exc:
+        layout_errors = [str(exc)]
+
+    for err in layout_errors:
+        m_slide = re.search(r"slide-(\d+)", err, re.IGNORECASE)
+        s_idx = (int(m_slide.group(1)) - 1) if m_slide else 0
+        s_idx = max(0, min(total - 1, s_idx))
+        findings.append(
+            {
+                "slide_index": s_idx,
+                "slide_number": s_idx + 1,
+                "category": "layout",
+                "severity": "error",
+                "message": err,
+            }
+        )
+
+    error_count = sum(1 for f in findings if f["severity"] == "error")
+    warning_count = sum(1 for f in findings if f["severity"] == "warning")
+    info_count = sum(1 for f in findings if f["severity"] == "info")
+
+    # Compute a clean 0..100 readiness score
+    score = 100 - error_count * 22 - warning_count * 8 - info_count * 3
+    score = max(0, min(100, score))
+
+    return {
+        "outline_version": target_ver,
+        "total_slides": total,
+        "ready": error_count == 0,
+        "score": score,
+        "summary": {
+            "layout_ok": not any(f["category"] == "layout" for f in findings),
+            "media_ok": not any(f["category"] == "media" for f in findings),
+            "supported_slides": supported_count,
+            "notes_slides": notes_count,
+            "error_count": error_count,
+            "warning_count": warning_count,
+            "info_count": info_count,
+        },
+        "findings": findings,
+    }
+
+
 @app.delete("/api/projects/{project_id}")
 def delete_project(project_id: str):
     if not _PROJECT_ID_RE.fullmatch(project_id):
@@ -527,7 +1199,8 @@ async def upload_material(project_id: str, file: UploadFile):
     suffix = pathlib.Path(name).suffix.lower()
     if not name or suffix not in _ALLOWED_EXTENSIONS:
         raise HTTPException(
-            400, "只支持上传 .md / .txt / .docx / .pdf / .png / .jpg 文件"
+            400,
+            "只支持上传 .md / .txt / .docx / .pdf / .csv / .xlsx / .pptx / .png / .jpg 文件",
         )
     assets_dir = _storage(project_id).root / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
@@ -541,6 +1214,41 @@ async def upload_material(project_id: str, file: UploadFile):
     return {
         "asset_id": pathlib.Path(name).stem,
         "source_fragments": len(output.source_fragments),
+    }
+
+
+class UrlMaterialRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
+
+
+@app.post("/api/projects/{project_id}/materials/url")
+def import_url_material(project_id: str, req: UrlMaterialRequest):
+    """Fetch a public web page and store readable Markdown text as a traceable project material."""
+    _require_project(project_id)
+    try:
+        page_title, md_body = tools_module.extract_url_to_markdown(req.url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(400, f"抓取网页失败：{exc}") from exc
+
+    chosen_title = (req.title or "").strip() or page_title
+    safe_stem = re.sub(r'[\\/:*?"<>|\s]+', "_", chosen_title).strip("_")[:36] or f"网页_{uuid.uuid4().hex[:6]}"
+    assets_dir = _storage(project_id).root / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    target = assets_dir / f"{safe_stem}.md"
+    if target.exists():
+        safe_stem = f"{safe_stem}_{uuid.uuid4().hex[:4]}"
+        target = assets_dir / f"{safe_stem}.md"
+    target.write_text(md_body, encoding="utf-8")
+
+    output = _raw(tools_module.read_materials)(project_id=project_id)
+    return {
+        "asset_id": safe_stem,
+        "title": chosen_title,
+        "source_fragments": len(output.source_fragments),
+        "preview": md_body[:240],
     }
 
 

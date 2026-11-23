@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Trash2, X } from "lucide-react";
 import {
   api,
+  BrandKit,
   CanvasElement,
   ChatDeckChanges,
   ChatHistoryResponse,
@@ -21,6 +22,7 @@ import {
   OutlineLayout,
   Preview,
   Project,
+  SavedLayoutPreset,
   SlideRefineCandidate,
   SourceFragment,
   Task,
@@ -37,9 +39,11 @@ import {
   WorkspaceStage,
 } from "../../../components/workspace/layoutUtils";
 import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
+import { PreflightModal } from "../../../components/workspace/PreflightModal";
 import { SlideInspector } from "../../../components/workspace/SlideInspector";
 import { SlideNavigator } from "../../../components/workspace/SlideNavigator";
 import { SlideStageCanvas } from "../../../components/workspace/SlideStageCanvas";
+import { SourceContextModal } from "../../../components/workspace/SourceContextModal";
 import { WorkspaceHeader } from "../../../components/workspace/WorkspaceHeader";
 
 function buildOutlineEditPayload(outline: Outline) {
@@ -139,6 +143,16 @@ export default function ProjectWorkspacePage() {
   );
   const [showLLMModal, setShowLLMModal] = useState(false);
   const [llmModalReason, setLlmModalReason] = useState<string | null>(null);
+  const [showPreflight, setShowPreflight] = useState(false);
+  const [inspectedFragment, setInspectedFragment] =
+    useState<SourceFragment | null>(null);
+  const [savedLayouts, setSavedLayouts] = useState<SavedLayoutPreset[]>([]);
+  const [diffPreviewVersion, setDiffPreviewVersion] = useState<string | null>(
+    null
+  );
+  const [diffPreviewOutline, setDiffPreviewOutline] = useState<Outline | null>(
+    null
+  );
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,6 +181,9 @@ export default function ProjectWorkspacePage() {
       .catch(() => {});
     api<LLMSettingsResponse>("/api/settings/llm")
       .then(setLlmSettings)
+      .catch(() => {});
+    api<{ layouts: SavedLayoutPreset[] }>("/api/layouts/custom")
+      .then((res) => setSavedLayouts(res.layouts || []))
       .catch(() => {});
   }, []);
 
@@ -414,13 +431,27 @@ export default function ProjectWorkspacePage() {
     return JSON.stringify(outline.items) !== JSON.stringify(savedOutline.items);
   }, [outline, savedOutline]);
 
-  const activeTheme = useMemo(
-    () =>
+  const activeTheme = useMemo(() => {
+    const base =
       themes.find((t) => t.id === selectedThemeId) ||
       themes[0] ||
-      FALLBACK_THEMES[0],
-    [themes, selectedThemeId]
-  );
+      FALLBACK_THEMES[0];
+    const b = project?.brand;
+    if (!b || (!b.accent_hex && !b.bg_hex)) return base;
+    const nextPalette = [...(base.chart_palette || [])];
+    if (b.accent_hex && nextPalette.length > 0) {
+      nextPalette[0] = b.accent_hex;
+    }
+    return {
+      ...base,
+      swatches: {
+        ...base.swatches,
+        accent: b.accent_hex || base.swatches.accent,
+        bg: b.bg_hex || base.swatches.bg,
+      },
+      chart_palette: nextPalette.length > 0 ? nextPalette : base.chart_palette,
+    };
+  }, [themes, selectedThemeId, project?.brand]);
 
   const issueSlideIndices = useMemo(
     () => extractIssueSlideIndices(issues),
@@ -526,6 +557,149 @@ export default function ProjectWorkspacePage() {
     });
     await uploadFiles([file]);
   }
+
+  async function importUrlMaterial(url: string, title?: string) {
+    setRawError(null);
+    setStatus("正在抓取网页正文…");
+    try {
+      const targetPid = await ensureProjectId();
+      const res = await api<{ asset_id: string; title: string }>(
+        `/api/projects/${targetPid}/materials/url`,
+        jsonOptions("POST", { url, title: title || null })
+      );
+      flashToast(`已抓取网页素材「${res.title || res.asset_id}」`);
+      await refresh(targetPid);
+    } catch (e) {
+      setRawError((e as Error).message);
+      throw e;
+    } finally {
+      setStatus("");
+    }
+  }
+
+  async function updateBrand(nextBrand: BrandKit) {
+    const targetPid = createdPidRef.current || pid;
+    if (!targetPid || targetPid === "new") return;
+    setRawError(null);
+    try {
+      const res = await api<{ brand?: BrandKit | null }>(
+        `/api/projects/${targetPid}/brand`,
+        jsonOptions("PATCH", nextBrand)
+      );
+      setProject((prev) => (prev ? { ...prev, brand: res.brand ?? null } : prev));
+      flashToast(res.brand ? "已应用品牌定制设置" : "已恢复主题默认设置");
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  async function saveCurrentCustomLayout(name: string) {
+    const cur = outline?.items[selectedIndex];
+    if (!cur?.custom_elements?.length) return;
+    try {
+      const created = await api<SavedLayoutPreset>(
+        "/api/layouts/custom",
+        jsonOptions("POST", {
+          name,
+          custom_bg: cur.custom_bg || "theme:bg",
+          elements: cur.custom_elements,
+        })
+      );
+      setSavedLayouts((prev) => [created, ...prev]);
+      flashToast(`已收藏常用版式「${created.name}」`);
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  function applySavedLayout(preset: SavedLayoutPreset) {
+    mutateOutline((prev) => {
+      if (!prev.items[selectedIndex]) return null;
+      const items = [...prev.items];
+      const cur = items[selectedIndex];
+      const clonedEls: CanvasElement[] = JSON.parse(
+        JSON.stringify(preset.elements)
+      );
+      // Map current slide title into the largest text element so structure is reused cleanly
+      const textEls = clonedEls.filter((el) => el.kind === "text");
+      if (textEls.length > 0 && cur.title.trim()) {
+        const largest = textEls.reduce((a, b) =>
+          (b.font_size ?? 18) > (a.font_size ?? 18) ? b : a
+        );
+        largest.text = cur.title;
+      }
+      items[selectedIndex] = {
+        ...cur,
+        custom_bg: preset.custom_bg || "theme:bg",
+        custom_elements: clonedEls,
+      };
+      return { ...prev, items };
+    });
+    flashToast(`已套用常用版式「${preset.name}」`);
+  }
+
+  async function deleteSavedLayout(layoutId: string) {
+    try {
+      await api(`/api/layouts/custom/${encodeURIComponent(layoutId)}`, {
+        method: "DELETE",
+      });
+      setSavedLayouts((prev) => prev.filter((l) => l.id !== layoutId));
+      flashToast("已删除收藏版式");
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  async function toggleDiffPreview(beforeVer: string | null) {
+    if (!beforeVer) {
+      setDiffPreviewVersion(null);
+      setDiffPreviewOutline(null);
+      return;
+    }
+    const targetPid = createdPidRef.current || pid;
+    if (!targetPid || targetPid === "new") return;
+    try {
+      const oldOut = await api<Outline>(
+        `/api/projects/${targetPid}/outlines/${encodeURIComponent(beforeVer)}`
+      );
+      setDiffPreviewVersion(beforeVer);
+      setDiffPreviewOutline(oldOut);
+    } catch (e) {
+      setRawError((e as Error).message);
+    }
+  }
+
+  // Global Ctrl+V clipboard screenshot paste anywhere in workspace
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          const blob = it.getAsFile();
+          if (blob) {
+            const ext = it.type.includes("jpeg") ? "jpg" : "png";
+            const d = new Date();
+            const stamp = `${String(d.getHours()).padStart(2, "0")}${String(
+              d.getMinutes()
+            ).padStart(2, "0")}${String(d.getSeconds()).padStart(2, "0")}`;
+            imageFiles.push(
+              new File([blob], `screenshot_${stamp}.${ext}`, { type: it.type })
+            );
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        void uploadFiles(imageFiles);
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid, routePid, draftName]);
 
   async function deleteMaterial(assetId: string) {
     const targetPid = createdPidRef.current || pid;
@@ -1501,7 +1675,7 @@ export default function ProjectWorkspacePage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".md,.txt,.pdf,.docx,.png,.jpg,.jpeg"
+        accept=".md,.txt,.pdf,.docx,.csv,.xlsx,.pptx,.png,.jpg,.jpeg"
         multiple
         onChange={(e) => void uploadFiles(e.target.files)}
         className="hidden"
@@ -1544,6 +1718,7 @@ export default function ProjectWorkspacePage() {
           setLlmModalReason(null);
           setShowLLMModal(true);
         }}
+        onOpenPreflight={() => setShowPreflight(true)}
         onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
         onSelectVersion={(v) => void showOutline(v)}
         onSaveOutline={() => void saveOutline(false)}
@@ -1565,6 +1740,7 @@ export default function ProjectWorkspacePage() {
           onUploadClick={() => fileInputRef.current?.click()}
           onDropFiles={(files) => void uploadFiles(files)}
           onPasteNote={uploadPastedNote}
+          onImportUrl={importUrlMaterial}
           onDeleteMaterial={deleteMaterial}
           onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
           onInsertExcerptToSlide={(sid, text) =>
@@ -1654,10 +1830,13 @@ export default function ProjectWorkspacePage() {
           <SlideStageCanvas
             pid={pid}
             project={project}
-            outline={outline}
+            outline={diffPreviewOutline || outline}
             version={version}
             isStale={isStale}
-            selectedIndex={selectedIndex}
+            selectedIndex={Math.min(
+              selectedIndex,
+              Math.max(0, (diffPreviewOutline || outline).items.length - 1)
+            )}
             preview={preview}
             report={report}
             issues={issues}
@@ -1669,6 +1848,18 @@ export default function ProjectWorkspacePage() {
             statusText={status}
             isGenerating={isGenerating}
             materials={materials}
+            brand={project?.brand ?? null}
+            diffPreviewActive={Boolean(diffPreviewOutline)}
+            onExitDiffPreview={() => void toggleDiffPreview(null)}
+            onRevertFromDiff={() => {
+              if (diffPreviewVersion) {
+                const targetVer = diffPreviewVersion;
+                setDiffPreviewVersion(null);
+                setDiffPreviewOutline(null);
+                void revertToOutlineVersion(targetVer);
+              }
+            }}
+            onUpdateBrand={updateBrand}
             onSelectIndex={setSelectedIndex}
             onSelectTheme={(themeId) => {
               setSelectedThemeId(themeId);
@@ -1757,6 +1948,7 @@ export default function ProjectWorkspacePage() {
                   pid={pid}
                   outline={outline}
                   selectedIndex={selectedIndex}
+                  materials={materials}
                   materialsCount={materials.length}
                   themes={themes}
                   selectedThemeId={selectedThemeId}
@@ -1765,6 +1957,8 @@ export default function ProjectWorkspacePage() {
                   isStreaming={isChatStreaming}
                   llmConfigured={llmSettings ? llmSettings.configured : true}
                   activeModelLabel={llmSettings?.active_summary?.model || ""}
+                  diffPreviewVersion={diffPreviewVersion}
+                  onToggleDiffPreview={(ver) => void toggleDiffPreview(ver)}
                   onOpenLLMSettings={() => {
                     setLlmModalReason(null);
                     setShowLLMModal(true);
@@ -1801,6 +1995,11 @@ export default function ProjectWorkspacePage() {
                   }
                   onClearCustomLayout={() => clearCustomLayout(selectedIndex)}
                   onSwitchToChat={() => setRightPanelTab("chat")}
+                  onInspectFragment={setInspectedFragment}
+                  savedLayouts={savedLayouts}
+                  onSaveCustomLayout={saveCurrentCustomLayout}
+                  onApplySavedLayout={applySavedLayout}
+                  onDeleteSavedLayout={deleteSavedLayout}
                   onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
                   onApplyImageToSlide={(imgId, sid) =>
                     applyImageToSlide(selectedIndex, imgId, sid)
@@ -1832,6 +2031,7 @@ export default function ProjectWorkspacePage() {
             onUploadClick={() => fileInputRef.current?.click()}
             onDropFiles={(files) => void uploadFiles(files)}
             onPasteNote={uploadPastedNote}
+            onImportUrl={importUrlMaterial}
             onGenerateOutline={(p) => void genOutline(p)}
           />
           {onboardingChatOpen && (
@@ -1891,6 +2091,22 @@ export default function ProjectWorkspacePage() {
           )}
         </div>
       )}
+
+      <SourceContextModal
+        fragment={inspectedFragment}
+        materials={materials}
+        onClose={() => setInspectedFragment(null)}
+      />
+
+      <PreflightModal
+        open={showPreflight}
+        pid={pid}
+        version={version}
+        themeId={selectedThemeId}
+        autoFit={autoFit}
+        onJumpToSlide={setSelectedIndex}
+        onClose={() => setShowPreflight(false)}
+      />
 
       <LLMSettingsModal
         open={showLLMModal}

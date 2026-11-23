@@ -28,6 +28,7 @@ from pptx.util import Pt
 from draftboard.measure import FontPair, load_fonts, measure_box
 from draftboard.models import Artifact, CanvasElement, Slide, SlideLayout, validate_ir
 from draftboard.themes import ThemeSpec, get_theme
+from draftboard.user_library import apply_brand_to_theme
 
 CANVAS_W_PT = 960
 CANVAS_H_PT = 540
@@ -1053,12 +1054,52 @@ def _measure_and_resolve(
     return resolved, errors
 
 
+def _apply_brand_overlay(
+    pptx_slide,
+    slide: Slide,
+    theme: ThemeSpec,
+    brand: dict | None,
+    assets_dir: pathlib.Path | None,
+) -> None:
+    """Apply optional project brand footer text and corner logo on non-cover slides."""
+    if not brand or not isinstance(brand, dict):
+        return
+    if slide.layout == SlideLayout.COVER and not slide.custom_elements:
+        return
+
+    footer_text = (brand.get("footer_text") or "").strip()
+    logo_id = (brand.get("logo_asset_id") or "").strip()
+    logo_pos = brand.get("logo_position") or "top_right"
+
+    logo_path = _resolve_image_path(logo_id, assets_dir) if logo_id else None
+    if logo_path is not None:
+        if logo_pos == "bottom_left":
+            _add_picture_contain(pptx_slide, logo_path, (48, 502, 72, 24))
+        else:
+            _add_picture_contain(pptx_slide, logo_path, (840, 14, 72, 24))
+
+    if footer_text:
+        fx = 128 if (logo_path is not None and logo_pos == "bottom_left") else 48
+        box = pptx_slide.shapes.add_textbox(Pt(fx), Pt(505), Pt(520), Pt(20))
+        tf = box.text_frame
+        tf.word_wrap = False
+        tf.auto_size = MSO_AUTO_SIZE.NONE
+        tf.margin_left = Pt(0)
+        tf.margin_right = Pt(0)
+        tf.margin_top = Pt(0)
+        tf.margin_bottom = Pt(0)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.LEFT
+        _fill_paragraph(p, footer_text, 9, 12, theme.muted_rgb, bold=False)
+
+
 def export_pptx(
     artifact: Artifact,
     output_path: pathlib.Path,
     fonts: FontPair | None = None,
     assets_dir: pathlib.Path | None = None,
     auto_fit: bool | None = None,
+    brand: dict | None = None,
 ) -> None:
     """Validate the IR, measure every block, resolve images, and write PPTX.
 
@@ -1109,7 +1150,7 @@ def export_pptx(
     if fonts is None:
         fonts = load_fonts()
 
-    theme = get_theme(artifact.template_id)
+    theme = apply_brand_to_theme(get_theme(artifact.template_id), brand)
 
     effective_auto_fit = artifact.auto_fit if auto_fit is None else auto_fit
     resolved_styles, measure_errors = _measure_and_resolve(
@@ -1140,8 +1181,10 @@ def export_pptx(
             _export_custom_slide(
                 pptx_slide, slide, theme, resolved_styles, resolved_images
             )
+            _apply_brand_overlay(pptx_slide, slide, theme, brand, assets_dir)
         else:
             _apply_theme_chrome(pptx_slide, slide.layout, theme, idx, total_slides)
+            _apply_brand_overlay(pptx_slide, slide, theme, brand, assets_dir)
 
             for role, items in _group_boxes(slide):
                 if role == "image":

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Check,
@@ -11,6 +12,7 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -355,7 +357,9 @@ function SlideCardPreview({
 }
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<ProjectSummaryItem[]>([]);
+  const [creatingDemo, setCreatingDemo] = useState(false);
   const [themes, setThemes] = useState<ThemeOption[]>(FALLBACK_THEMES);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
@@ -478,6 +482,21 @@ export default function ProjectsPage() {
     }
   }
 
+  async function handleCreateDemo() {
+    if (creatingDemo) return;
+    setCreatingDemo(true);
+    setError("");
+    try {
+      const res = await api<{ project_id: string }>("/api/projects/demo", {
+        method: "POST",
+      });
+      router.push(`/p/${encodeURIComponent(res.project_id)}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setCreatingDemo(false);
+    }
+  }
+
   const filteredProjects = useMemo(() => {
     if (!search.trim()) return projects;
     const q = search.toLowerCase();
@@ -526,13 +545,24 @@ export default function ProjectsPage() {
             )}
           </button>
           {projects.length > 0 && (
-            <Link
-              href="/p/new"
-              className="ui-btn-primary px-4 py-1.5 text-[13px] inline-flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>新建文稿</span>
-            </Link>
+            <>
+              <button
+                type="button"
+                disabled={creatingDemo}
+                onClick={() => void handleCreateDemo()}
+                className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                <span>{creatingDemo ? "准备中…" : "体验示例"}</span>
+              </button>
+              <Link
+                href="/p/new"
+                className="ui-btn-primary px-4 py-1.5 text-[13px] inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>新建文稿</span>
+              </Link>
+            </>
           )}
         </div>
       </header>
@@ -778,7 +808,7 @@ export default function ProjectsPage() {
               </p>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/p/new"
                 className="ui-btn-primary inline-flex items-center gap-1.5 h-11 px-6 text-[14px]"
@@ -786,6 +816,15 @@ export default function ProjectsPage() {
                 <Plus className="w-4 h-4" />
                 <span>新建演示文稿</span>
               </Link>
+              <button
+                type="button"
+                disabled={creatingDemo}
+                onClick={() => void handleCreateDemo()}
+                className="ui-btn-outline inline-flex items-center gap-1.5 h-11 px-5 text-[14px]"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{creatingDemo ? "正在生成示例…" : "10 秒体验示例文稿"}</span>
+              </button>
             </div>
           </section>
         ) : null}
