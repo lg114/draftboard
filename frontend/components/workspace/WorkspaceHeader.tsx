@@ -86,6 +86,14 @@ export function WorkspaceHeader({
       (Boolean(version) && version !== project?.generated_outline_version));
 
   const hasOutline = Boolean(outline && outline.items.length > 0);
+  const stageMeta =
+    currentStage === "no_materials"
+      ? { step: 1, label: "导入素材" }
+      : currentStage === "has_materials_no_outline"
+      ? { step: 2, label: "提炼大纲" }
+      : currentStage === "outline_ready"
+      ? { step: 3, label: "审阅大纲" }
+      : { step: 4, label: "PPT 已就绪" };
 
   return (
     <header className="h-[52px] apple-glass border-b border-black/[0.07] px-4 flex items-center justify-between gap-3 sticky top-0 z-40 shrink-0">
@@ -263,50 +271,58 @@ export function WorkspaceHeader({
       </div>
 
       {/* Right: Quiet Utilities + Primary Action + Right Inspector Toggle */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <button
-          type="button"
-          onClick={onToggleMaterialsDrawer}
-          className={`px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-            showMaterialsDrawer
-              ? "bg-black/[0.08] text-[#1d1d1f]"
-              : "text-[#1d1d1f] hover:bg-black/[0.05]"
+      <div className="flex items-center gap-2 shrink-0">
+        {/* 4-Step Progress Indicator (replaces "素材 · 0" during initial import) */}
+        <div
+          className={`items-center gap-2.5 px-2.5 py-1 rounded-full ${
+            currentStage === "no_materials" ||
+            currentStage === "has_materials_no_outline"
+              ? "flex"
+              : "hidden lg:flex"
           }`}
+          aria-label={`当前步骤 ${stageMeta.step}/4：${stageMeta.label}`}
         >
-          素材 · {materialsCount}
-        </button>
+          <div className="flex items-center gap-1 w-[72px]">
+            {[1, 2, 3, 4].map((idx) => (
+              <span
+                key={idx}
+                className={`h-[3px] flex-1 rounded-full transition-colors ${
+                  idx <= stageMeta.step ? "bg-[#1d1d1f]" : "bg-black/[0.12]"
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-[12.5px] font-medium text-[#1d1d1f] tabular-nums whitespace-nowrap">
+            {stageMeta.step}/4 {stageMeta.label}
+          </span>
+        </div>
+
+        {currentStage !== "no_materials" && (
+          <button
+            type="button"
+            onClick={onToggleMaterialsDrawer}
+            className={`px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              showMaterialsDrawer
+                ? "bg-black/[0.08] text-[#1d1d1f]"
+                : "text-[#1d1d1f] hover:bg-black/[0.05]"
+            }`}
+          >
+            素材 · {materialsCount}
+          </button>
+        )}
 
         {project?.download_available && (
           <Link
             href={`/p/${pid}/preview`}
             className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-[#1d1d1f] hover:bg-black/[0.05] transition-colors flex items-center gap-1 whitespace-nowrap"
-            title="全屏查看 Office 渲染图"
+            title="全屏查看高清预览"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span className="hidden sm:inline">放映</span>
           </Link>
         )}
 
-        {currentStage === "no_materials" && (
-          <button
-            type="button"
-            onClick={onUploadClick}
-            className="px-4 py-1.5 rounded-full text-[12.5px] font-medium bg-[#1d1d1f] hover:bg-[#323236] text-white transition-colors cursor-pointer whitespace-nowrap"
-          >
-            上传素材
-          </button>
-        )}
-
-        {currentStage === "has_materials_no_outline" && (
-          <button
-            type="button"
-            onClick={onGenerateOutline}
-            disabled={isGenerating}
-            className="px-4 py-1.5 rounded-full text-[12.5px] font-medium bg-[#1d1d1f] hover:bg-[#323236] text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45"
-          >
-            {isGenerating ? "正在提炼…" : "提炼大纲"}
-          </button>
-        )}
+        {/* Note: In `no_materials` & `has_materials_no_outline`, the center onboarding card owns the single primary CTA. */}
 
         {currentStage === "outline_ready" && (
           <button

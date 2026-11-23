@@ -462,6 +462,18 @@ export default function ProjectsPage() {
     load().catch((e) => setError((e as Error).message));
   }, []);
 
+  useEffect(() => {
+    if (!showCreate) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowCreate(false);
+        setError("");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showCreate]);
+
   async function handleCreate(e?: React.FormEvent) {
     if (e) e.preventDefault();
     setError("");
@@ -559,7 +571,11 @@ export default function ProjectsPage() {
                 setShowCreate((v) => !v);
                 setError("");
               }}
-              className="px-4 py-1.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[13px] font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                showCreate
+                  ? "bg-transparent text-[#1d1d1f] ring-1 ring-black/15 hover:bg-black/[0.05]"
+                  : "bg-[#1d1d1f] hover:bg-[#323236] text-white"
+              }`}
             >
               {showCreate ? (
                 <>
@@ -611,7 +627,7 @@ export default function ProjectsPage() {
               新建演示文稿
             </div>
             <form onSubmit={handleCreate} className="space-y-3">
-              <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
                 <input
                   placeholder="输入文稿名称，例如：2026 年度技术架构评审"
                   value={nameInput}
@@ -623,15 +639,27 @@ export default function ProjectsPage() {
                   }}
                   disabled={loading}
                   autoFocus
-                  className="flex-1 text-[15px] bg-[#f5f5f7] focus:bg-white border border-transparent focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.06] rounded-xl px-4 py-2.5 text-[#1d1d1f] placeholder-[#71717a] outline-none transition-all"
+                  className="flex-1 h-11 rounded-full bg-[#f5f5f7] border border-black/[0.12] px-5 text-[15px] text-[#1d1d1f] placeholder-[#71717a] outline-none transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none hover:border-black/30 focus:bg-white focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.08] disabled:opacity-60"
                 />
-                <button
-                  type="submit"
-                  disabled={loading || !nameInput.trim()}
-                  className="px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[14px] font-medium transition-colors disabled:opacity-35 shrink-0 cursor-pointer"
-                >
-                  {loading ? "创建中…" : "创建并打开"}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="submit"
+                    disabled={loading || !nameInput.trim()}
+                    className="h-11 px-6 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[14px] font-medium transition-colors duration-200 shrink-0 cursor-pointer disabled:bg-[#e4e4e7] disabled:text-[#52525b] disabled:cursor-not-allowed"
+                  >
+                    {loading ? "创建中…" : "创建并打开"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreate(false);
+                      setError("");
+                    }}
+                    className="h-11 px-3 rounded-full text-[14px] font-medium text-[#52525b] hover:text-[#1d1d1f] hover:bg-black/[0.04] transition-colors shrink-0 cursor-pointer"
+                  >
+                    取消
+                  </button>
+                </div>
               </div>
 
               {nameInput.trim() && (
@@ -868,7 +896,7 @@ export default function ProjectsPage() {
               onSubmit={handleCreate}
               className="space-y-3 text-left max-w-md mx-auto"
             >
-              <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
                 <input
                   placeholder="文稿名称（例如：2026 技术复盘）"
                   value={nameInput}
@@ -880,12 +908,12 @@ export default function ProjectsPage() {
                   }}
                   disabled={loading}
                   autoFocus
-                  className="flex-1 text-[15px] bg-[#f5f5f7] focus:bg-white border border-transparent focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.06] rounded-xl px-4 py-2.5 text-[#1d1d1f] placeholder-[#71717a] outline-none transition-all"
+                  className="flex-1 h-11 rounded-full bg-[#f5f5f7] border border-black/[0.12] px-5 text-[15px] text-[#1d1d1f] placeholder-[#71717a] outline-none transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none hover:border-black/30 focus:bg-white focus:border-[#1d1d1f] focus:ring-4 focus:ring-black/[0.08] disabled:opacity-60"
                 />
                 <button
                   type="submit"
                   disabled={loading || !nameInput.trim()}
-                  className="px-5 py-2.5 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[14px] font-medium transition-colors disabled:opacity-35 shrink-0 cursor-pointer"
+                  className="h-11 px-6 rounded-full bg-[#1d1d1f] hover:bg-[#323236] text-white text-[14px] font-medium transition-colors duration-200 shrink-0 cursor-pointer disabled:bg-[#e4e4e7] disabled:text-[#52525b] disabled:cursor-not-allowed"
                 >
                   {loading ? "创建中…" : "开始创作"}
                 </button>
