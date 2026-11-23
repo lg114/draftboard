@@ -11,6 +11,7 @@ import type {
   Project,
   ThemeOption,
 } from "../../lib/api";
+import { CustomSlideLayer } from "./CustomSlideLayer";
 import {
   inferEffectiveLayout,
   LAYOUT_OPTIONS,
@@ -218,6 +219,12 @@ export function SlideStageCanvas({
 
   const total = outline.items.length;
   const item = outline.items[selectedIndex];
+  const isCustomCanvas = Boolean(
+    item?.custom_elements && item.custom_elements.length > 0
+  );
+  const firstCustomTextId = isCustomCanvas
+    ? item?.custom_elements?.find((el) => el.kind === "text")?.id
+    : undefined;
   const layout = item
     ? inferEffectiveLayout(item.layout, selectedIndex, total)
     : "content";
@@ -292,9 +299,16 @@ export function SlideStageCanvas({
             )}
           </div>
 
-          <span className="text-ink-secondary font-medium tabular-nums whitespace-nowrap shrink-0">
-            {selectedIndex + 1} / {total}
-          </span>
+          <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
+            {isCustomCanvas && (
+              <span className="px-2 py-0.5 rounded-full bg-black/[0.06] text-[13px] font-medium text-ink">
+                自由画布
+              </span>
+            )}
+            <span className="text-ink-secondary font-medium tabular-nums">
+              {selectedIndex + 1} / {total}
+            </span>
+          </div>
         </div>
 
         {/* True 960x540 Proportional Scaled 16:9 Stage (crisp 3px corners matching PPTX output) */}
@@ -304,7 +318,13 @@ export function SlideStageCanvas({
         >
           {showRenderedImage && preview?.pages[selectedIndex] ? (
             <div
-              onClick={() => onFocusField("input-title")}
+              onClick={() =>
+                onFocusField(
+                  firstCustomTextId
+                    ? `custom-el-${firstCustomTextId}`
+                    : "input-title"
+                )
+              }
               className="absolute inset-0 bg-white flex items-center justify-center cursor-text"
               title="点击右侧编辑内容（当前展示已导出的 Office 渲染图）"
             >
@@ -315,6 +335,16 @@ export function SlideStageCanvas({
                 className="w-full h-full object-contain select-none"
               />
             </div>
+          ) : item && isCustomCanvas && item.custom_elements ? (
+            <CustomSlideLayer
+              pid={pid}
+              customBg={item.custom_bg}
+              elements={item.custom_elements}
+              theme={activeTheme}
+              scale={scale}
+              interactive={true}
+              onSelectTextElement={(elId) => onFocusField(`custom-el-${elId}`)}
+            />
           ) : item ? (
             <div
               className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 transition-colors duration-200"
@@ -790,13 +820,17 @@ export function SlideStageCanvas({
             {/* Segmented Layout Control — crisp white sliding pill on gray track (Item 4) */}
             <div className="flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0">
               {LAYOUT_OPTIONS.map((opt) => {
-                const active = layout === opt.value;
+                const active = !isCustomCanvas && layout === opt.value;
                 return (
                   <button
                     key={opt.value}
                     type="button"
                     onClick={() => onSelectLayout(opt.value)}
-                    title={opt.label}
+                    title={
+                      isCustomCanvas
+                        ? `切换回「${opt.label}」标准版式`
+                        : opt.label
+                    }
                     className={`px-2.5 py-1 rounded-[9px] text-[13px] flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                       active
                         ? "bg-surface text-ink font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]"

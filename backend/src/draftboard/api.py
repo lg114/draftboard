@@ -28,6 +28,7 @@ import draftboard.llm_config as llm_config
 import draftboard.tasks as tasks
 import draftboard.tools as tools_module
 from draftboard.models import (
+    CanvasElement,
     EvidenceStatus,
     Outline,
     OutlineItem,
@@ -312,6 +313,8 @@ def _project_summary(pid: str) -> dict:
                         else first.get("column_right")
                     ),
                     "image_asset_id": first.get("image_asset_id"),
+                    "custom_bg": first.get("custom_bg"),
+                    "custom_elements": first.get("custom_elements"),
                 }
         except Exception:
             pass
@@ -692,6 +695,8 @@ class OutlineItemEdit(BaseModel):
     column_right: Optional[str] = None
     image_asset_id: Optional[str] = None
     speaker_notes: Optional[str] = None
+    custom_bg: Optional[str] = None
+    custom_elements: Optional[list[CanvasElement]] = None
 
 
 class OutlineEditRequest(BaseModel):
@@ -734,6 +739,10 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
                 item.image_asset_id = edit.image_asset_id
             if "speaker_notes" in edit.model_fields_set:
                 item.speaker_notes = edit.speaker_notes
+            if "custom_bg" in edit.model_fields_set:
+                item.custom_bg = edit.custom_bg
+            if "custom_elements" in edit.model_fields_set:
+                item.custom_elements = edit.custom_elements
             if "source_ids" in edit.model_fields_set and edit.source_ids is not None:
                 item.source_ids = edit.source_ids
                 if not item.source_ids:
@@ -758,6 +767,8 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
                     column_right=edit.column_right,
                     image_asset_id=edit.image_asset_id,
                     speaker_notes=edit.speaker_notes,
+                    custom_bg=edit.custom_bg,
+                    custom_elements=edit.custom_elements,
                 )
             )
 

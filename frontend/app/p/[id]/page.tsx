@@ -52,6 +52,8 @@ function buildOutlineEditPayload(outline: Outline) {
       column_right: item.column_right ?? null,
       image_asset_id: item.image_asset_id ?? null,
       speaker_notes: item.speaker_notes ?? null,
+      custom_bg: item.custom_bg ?? null,
+      custom_elements: item.custom_elements ?? null,
     })),
   };
 }
@@ -60,6 +62,9 @@ function isOutlineReadyForAutoSave(outline: Outline | null): boolean {
   if (!outline || outline.items.length === 0) return false;
   for (const item of outline.items) {
     if (!item.title.trim() || !item.summary.trim()) return false;
+    if (item.custom_elements && item.custom_elements.length > 0) {
+      continue;
+    }
     if (
       item.layout === "two_column" &&
       !(item.column_right && item.column_right.trim())
@@ -697,14 +702,94 @@ export default function ProjectWorkspacePage() {
   function handleSelectLayout(nextLayout: OutlineLayout) {
     const item = outline?.items[selectedIndex];
     if (!item) return;
-    const patch: Partial<Record<EditableOutlineField, string>> = {
-      layout: nextLayout,
-    };
-    if (nextLayout === "text_image" && !item.image_asset_id) {
-      const firstImage = materials.find((m) => m.asset_type === "image");
-      if (firstImage) patch.image_asset_id = firstImage.asset_id;
+    const wasCustom = Boolean(
+      item.custom_elements && item.custom_elements.length > 0
+    );
+    const firstImage =
+      nextLayout === "text_image" && !item.image_asset_id
+        ? materials.find((m) => m.asset_type === "image")
+        : undefined;
+    setOutline((prev) => {
+      if (!prev || !prev.items[selectedIndex]) return prev;
+      const items = [...prev.items];
+      const cur = items[selectedIndex];
+      items[selectedIndex] = {
+        ...cur,
+        layout: nextLayout,
+        image_asset_id: firstImage ? firstImage.asset_id : cur.image_asset_id,
+        custom_bg: null,
+        custom_elements: null,
+      };
+      return { ...prev, items };
+    });
+    if (wasCustom) {
+      flashToast(`已恢复为「${LAYOUT_LABELS[nextLayout] || nextLayout}」标准版式`);
     }
-    patchItem(selectedIndex, patch);
+  }
+
+  function updateCustomElementText(
+    index: number,
+    elementId: string,
+    nextText: string
+  ) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const item = items[index];
+      const elems = item.custom_elements;
+      if (!elems || elems.length === 0) return prev;
+
+      const textElems = elems.filter((el) => el.kind === "text");
+      let primaryHeadingId: string | null = null;
+      let maxFont = -1;
+      for (const el of textElems) {
+        const fs = el.font_size ?? 18;
+        if (fs > maxFont) {
+          maxFont = fs;
+          primaryHeadingId = el.id;
+        }
+      }
+
+      const nextElements = elems.map((el) =>
+        el.id === elementId ? { ...el, text: nextText } : el
+      );
+      const firstLine = nextText.trim().split(/\r?\n/)[0]?.trim() || "";
+      items[index] = {
+        ...item,
+        custom_elements: nextElements,
+        title:
+          elementId === primaryHeadingId && firstLine ? firstLine : item.title,
+      };
+      return { ...prev, items };
+    });
+  }
+
+  function clearCustomLayout(index: number) {
+    setOutline((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      const items = [...prev.items];
+      const cur = items[index];
+      let nextLayout = cur.layout;
+      if (
+        nextLayout === "two_column" &&
+        !(cur.column_right && cur.column_right.trim())
+      ) {
+        nextLayout = "content";
+      } else if (
+        nextLayout === "text_image" &&
+        !(cur.image_asset_id && cur.image_asset_id.trim())
+      ) {
+        nextLayout = "content";
+      }
+      items[index] = {
+        ...cur,
+        layout: nextLayout,
+        custom_bg: null,
+        custom_elements: null,
+      };
+      return { ...prev, items };
+    });
+    flashToast("已恢复为标准版式");
   }
 
   function toggleSourceId(index: number, sourceId: string) {
@@ -747,6 +832,8 @@ export default function ProjectWorkspacePage() {
         ...item,
         layout: "text_image",
         image_asset_id: imageAssetId,
+        custom_bg: null,
+        custom_elements: null,
         source_ids: nextIds,
         evidence_status:
           nextIds.length > 0 && item.evidence_status === "unsupported"
@@ -926,7 +1013,11 @@ export default function ProjectWorkspacePage() {
     setRightPanelTab("edit");
     if (!rightOpen) setRightOpen(true);
     setTimeout(() => {
-      document.getElementById(fieldId)?.focus();
+      const el = document.getElementById(fieldId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
     }, 30);
   }
 
@@ -1484,13 +1575,16 @@ export default function ProjectWorkspacePage() {
                       第 {selectedIndex + 1} 页
                     </span>
                     <span className="text-ink-secondary">
-                      {LAYOUT_LABELS[
-                        inferEffectiveLayout(
-                          currentItem.layout,
-                          selectedIndex,
-                          outline.items.length
-                        )
-                      ] || "正文"}
+                      {currentItem.custom_elements &&
+                      currentItem.custom_elements.length > 0
+                        ? "自由画布"
+                        : LAYOUT_LABELS[
+                            inferEffectiveLayout(
+                              currentItem.layout,
+                              selectedIndex,
+                              outline.items.length
+                            )
+                          ] || "正文"}
                     </span>
                   </div>
                 ) : (
@@ -1553,6 +1647,11 @@ export default function ProjectWorkspacePage() {
                   onUpdateField={(field, val) =>
                     patchItem(selectedIndex, { [field]: val })
                   }
+                  onUpdateCustomElementText={(elId, text) =>
+                    updateCustomElementText(selectedIndex, elId, text)
+                  }
+                  onClearCustomLayout={() => clearCustomLayout(selectedIndex)}
+                  onSwitchToChat={() => setRightPanelTab("chat")}
                   onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
                   onApplyImageToSlide={(imgId, sid) =>
                     applyImageToSlide(selectedIndex, imgId, sid)

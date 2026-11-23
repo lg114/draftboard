@@ -287,12 +287,21 @@ def normalize_outline_item_text(item: OutlineItem) -> OutlineItem:
         if item.speaker_notes is not None
         else None
     )
+    custom_els = None
+    if item.custom_elements is not None:
+        custom_els = [
+            el.model_copy(update={"text": _unescape(el.text)})
+            if el.kind == "text" and el.text is not None
+            else el
+            for el in item.custom_elements
+        ]
     return item.model_copy(
         update={
             "title": title or item.title,
             "summary": summary or item.summary,
             "column_right": col_right,
             "speaker_notes": notes,
+            "custom_elements": custom_els,
         }
     )
 
@@ -479,6 +488,8 @@ def generate_slides(
                 layout=layout,
                 elements=elements,
                 speaker_notes=item.speaker_notes,
+                custom_bg=item.custom_bg,
+                custom_elements=item.custom_elements,
             )
         )
 

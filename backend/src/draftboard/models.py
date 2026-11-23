@@ -5,7 +5,7 @@ All Pydantic v2 models with field descriptions for schema clarity.
 
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 
 class EvidenceStatus(str, Enum):
@@ -39,6 +39,63 @@ class SourceFragment(BaseModel):
     )
 
 
+class CanvasElement(BaseModel):
+    """Native editable freeform canvas primitive in 960x540 pt coordinates."""
+
+    id: str = Field(description="Unique element ID within the slide")
+    kind: Literal["text", "card", "line", "image"] = Field(
+        description="Primitive kind: text, card (rounded rect), line, or image"
+    )
+    x: float = Field(description="Left coordinate in pt (0..960)")
+    y: float = Field(description="Top coordinate in pt (0..540)")
+    w: float = Field(description="Width in pt (for line: delta X)")
+    h: float = Field(description="Height in pt (for line: delta Y)")
+
+    # Text fields (kind='text')
+    text: Optional[str] = Field(None, description="Text content")
+    font_size: Optional[int] = Field(
+        None, ge=10, le=72, description="Font size in pt (10..72)"
+    )
+    bold: Optional[bool] = Field(None, description="Bold weight for text")
+    color: Optional[str] = Field(
+        None,
+        description="Text or line color: semantic 'theme:*' token or '#RRGGBB'",
+    )
+    align: Optional[Literal["left", "center", "right"]] = Field(
+        None, description="Horizontal alignment for text"
+    )
+    line_height: Optional[float] = Field(
+        None, description="Optional line spacing in pt"
+    )
+
+    # Card fields (kind='card')
+    fill: Optional[str] = Field(
+        None, description="Card fill color: 'theme:*', '#RRGGBB', or 'transparent'"
+    )
+    border_color: Optional[str] = Field(
+        None, description="Optional card border color: 'theme:*' or '#RRGGBB'"
+    )
+    border_width: Optional[float] = Field(
+        None, ge=0, le=8, description="Card border width in pt"
+    )
+    radius: Optional[float] = Field(
+        None, ge=0, le=48, description="Card corner radius in pt"
+    )
+
+    # Line fields (kind='line')
+    line_width: Optional[float] = Field(
+        None, ge=0.5, le=12, description="Stroke width in pt for lines"
+    )
+
+    # Image fields (kind='image')
+    image_asset_id: Optional[str] = Field(
+        None, description="Uploaded project image asset_id"
+    )
+    fit: Optional[Literal["contain", "cover"]] = Field(
+        None, description="Image fit mode: contain or cover (center-cropped)"
+    )
+
+
 class OutlineItem(BaseModel):
     outline_item_id: str = Field(description="Unique ID for this outline item")
     title: str = Field(description="Title of the slide/section")
@@ -68,6 +125,14 @@ class OutlineItem(BaseModel):
     speaker_notes: Optional[str] = Field(
         None,
         description="Optional presenter talking points exported to PPTX notes",
+    )
+    custom_bg: Optional[str] = Field(
+        None,
+        description="Optional freeform slide background ('theme:*' or '#RRGGBB')",
+    )
+    custom_elements: Optional[list[CanvasElement]] = Field(
+        None,
+        description="Optional freeform 960x540 native canvas elements overriding fixed template",
     )
 
 
@@ -120,20 +185,21 @@ def validate_outline(
                 f"Outline item '{iid}': layout '{item.layout.value}' cannot be "
                 "generated from an outline; author the IR directly instead."
             )
-        if item.layout == SlideLayout.TWO_COLUMN and not (
-            item.column_right and item.column_right.strip()
-        ):
-            errors.append(
-                f"Outline item '{iid}': layout 'two_column' requires non-empty "
-                "column_right content."
-            )
-        if item.layout == SlideLayout.TEXT_IMAGE and not (
-            item.image_asset_id and item.image_asset_id.strip()
-        ):
-            errors.append(
-                f"Outline item '{iid}': layout 'text_image' requires an "
-                "image_asset_id from uploaded project images."
-            )
+        if not item.custom_elements:
+            if item.layout == SlideLayout.TWO_COLUMN and not (
+                item.column_right and item.column_right.strip()
+            ):
+                errors.append(
+                    f"Outline item '{iid}': layout 'two_column' requires non-empty "
+                    "column_right content."
+                )
+            if item.layout == SlideLayout.TEXT_IMAGE and not (
+                item.image_asset_id and item.image_asset_id.strip()
+            ):
+                errors.append(
+                    f"Outline item '{iid}': layout 'text_image' requires an "
+                    "image_asset_id from uploaded project images."
+                )
     return errors
 
 
@@ -193,6 +259,12 @@ class Slide(BaseModel):
     elements: list[SlideElement] = Field(description="Elements composing this slide")
     speaker_notes: Optional[str] = Field(
         None, description="Optional presenter notes written to the PPTX notes slide"
+    )
+    custom_bg: Optional[str] = Field(
+        None, description="Optional freeform slide background ('theme:*' or '#RRGGBB')"
+    )
+    custom_elements: Optional[list[CanvasElement]] = Field(
+        None, description="Optional freeform 960x540 native canvas elements"
     )
 
 

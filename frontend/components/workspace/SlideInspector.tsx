@@ -7,8 +7,10 @@ import {
   Columns2,
   FileText,
   Image as ImageIcon,
+  Layers,
   Link2,
   Plus,
+  RotateCcw,
   Sparkles,
   X,
 } from "lucide-react";
@@ -37,6 +39,9 @@ interface SlideInspectorProps {
   sourceFragments: SourceFragment[];
   slideIssues: Issue[];
   onUpdateField: (field: EditableOutlineField, value: string) => void;
+  onUpdateCustomElementText?: (elementId: string, text: string) => void;
+  onClearCustomLayout?: () => void;
+  onSwitchToChat?: () => void;
   onToggleSourceId: (sourceId: string) => void;
   onApplyImageToSlide: (imageAssetId: string, sourceId?: string) => void;
   onSplitTwoColumn: () => void;
@@ -129,6 +134,9 @@ export function SlideInspector({
   sourceFragments,
   slideIssues,
   onUpdateField,
+  onUpdateCustomElementText,
+  onClearCustomLayout,
+  onSwitchToChat,
   onToggleSourceId,
   onApplyImageToSlide,
   onSplitTwoColumn,
@@ -184,6 +192,24 @@ export function SlideInspector({
   }
 
   const layout = inferEffectiveLayout(item.layout, slideIndex, totalSlides);
+  const isCustomCanvas = Boolean(
+    item.custom_elements && item.custom_elements.length > 0
+  );
+  const customTextElements = isCustomCanvas
+    ? (item.custom_elements || []).filter((el) => el.kind === "text")
+    : [];
+  const primaryCustomHeadingId = (() => {
+    let bestId: string | null = null;
+    let maxFs = -1;
+    for (const el of customTextElements) {
+      const fs = el.font_size ?? 18;
+      if (fs > maxFs) {
+        maxFs = fs;
+        bestId = el.id;
+      }
+    }
+    return bestId;
+  })();
   const imageAssets = materials.filter((m) => m.asset_type === "image");
   const imageAssetIds = new Set(imageAssets.map((m) => m.asset_id));
 
@@ -240,7 +266,7 @@ export function SlideInspector({
               第 {slideIndex + 1} 页
             </span>
             <span className="text-[13px] font-medium text-ink-secondary">
-              {LAYOUT_LABELS[layout] || "正文"}
+              {isCustomCanvas ? "自由画布" : LAYOUT_LABELS[layout] || "正文"}
             </span>
           </div>
         </div>
@@ -541,7 +567,7 @@ export function SlideInspector({
                           {excerpt || "（该文本切片为空）"}
                         </p>
 
-                        {excerpt && (
+                        {excerpt && !isCustomCanvas && (
                           <div className="flex flex-wrap items-center gap-3 pt-1.5 border-t border-black/[0.06] text-[13px]">
                             <button
                               type="button"
@@ -590,6 +616,85 @@ export function SlideInspector({
         </section>
 
         {/* ── TIER 2 (PRIMARY FOCUS): Slide Content Editors + Inline AI Refine Strip ── */}
+        {isCustomCanvas ? (
+          <section className="space-y-4">
+            <div className="p-3.5 rounded-2xl bg-surface border border-black/[0.09] space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Layers className="w-4 h-4 text-ink shrink-0" />
+                  <span className="text-[14px] font-semibold text-ink truncate">
+                    自由画布排版
+                  </span>
+                  <span className="text-[13px] text-ink-muted shrink-0">
+                    {item.custom_elements?.length || 0} 个元素
+                  </span>
+                </div>
+                {onClearCustomLayout && (
+                  <button
+                    type="button"
+                    onClick={onClearCustomLayout}
+                    title="放弃自由画布，恢复使用标准模板版式"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer shrink-0"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>恢复标准版式</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[13px] text-ink-secondary leading-relaxed">
+                可直接修改下方文本内容；需要调整卡片、配色、布局或配图时，在「AI 对话」中直接说明即可。
+              </p>
+              {onSwitchToChat && (
+                <button
+                  type="button"
+                  onClick={onSwitchToChat}
+                  className="inline-flex items-center gap-1 text-[13px] font-medium text-ink underline underline-offset-2 hover:opacity-70 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>前往 AI 对话继续调整布局</span>
+                </button>
+              )}
+            </div>
+
+            {customTextElements.length > 0 ? (
+              <div className="space-y-3.5">
+                {customTextElements.map((el, idx) => {
+                  const isHeading = el.id === primaryCustomHeadingId;
+                  const fs = Math.round(el.font_size ?? 18);
+                  return (
+                    <div key={`${el.id}-${idx}`} className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          htmlFor={`custom-el-${el.id}`}
+                          className="text-[13px] font-semibold text-ink truncate"
+                        >
+                          {isHeading ? "主标题文本" : `文本块 ${idx + 1}`}
+                        </label>
+                        <span className="text-[13px] text-ink-muted font-mono shrink-0">
+                          {fs}pt
+                        </span>
+                      </div>
+                      <AutoGrowTextarea
+                        id={`custom-el-${el.id}`}
+                        value={el.text || ""}
+                        minRows={isHeading ? 1 : 2}
+                        placeholder="输入文本内容…"
+                        onChange={(val) =>
+                          onUpdateCustomElementText?.(el.id, val)
+                        }
+                        className={primaryInputBase}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-canvas border border-black/[0.07] text-[13px] text-ink-secondary">
+                本页自由画布暂无可编辑文本块。
+              </div>
+            )}
+          </section>
+        ) : (
         <section className="space-y-4">
           {/* Primary Title Field */}
           <div className="space-y-1.5">
@@ -995,6 +1100,7 @@ export function SlideInspector({
             )}
           </div>
         </section>
+        )}
 
         {/* ── TIER 3: Expanded-by-Default Speaker Notes (still collapsible) ── */}
         <section className="pt-3 border-t border-black/[0.07] space-y-2">

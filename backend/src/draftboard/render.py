@@ -18,7 +18,7 @@ from typing import Optional
 
 import pypdfium2 as pdfium
 from pptx import Presentation
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 from reportlab.lib.colors import Color
@@ -391,6 +391,81 @@ def _render_pptx_to_pdf(pptx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
                 except Exception:
                     pass
                 continue
+
+            # AutoShape (rounded rectangle / card primitive from custom freeform slides)
+            if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+                try:
+                    bx = float(shape.left.pt)
+                    by = float(shape.top.pt)
+                    bw = float(shape.width.pt)
+                    bh = float(shape.height.pt)
+
+                    has_fill = False
+                    fill_col = None
+                    try:
+                        if shape.fill.type == 1 and shape.fill.fore_color and shape.fill.fore_color.rgb:
+                            fill_col = _rgb_to_color(shape.fill.fore_color.rgb)
+                            has_fill = True
+                    except Exception:
+                        pass
+
+                    has_stroke = False
+                    stroke_col = None
+                    stroke_w = 1.0
+                    try:
+                        if (
+                            shape.line.fill.type == 1
+                            and shape.line.color
+                            and shape.line.color.rgb
+                        ):
+                            stroke_col = _rgb_to_color(shape.line.color.rgb)
+                            stroke_w = float(shape.line.width.pt) if shape.line.width else 1.0
+                            has_stroke = stroke_w > 0
+                    except Exception:
+                        pass
+
+                    radius_pt = 0.0
+                    try:
+                        if (
+                            shape.auto_shape_type == MSO_SHAPE.ROUNDED_RECTANGLE
+                            and len(shape.adjustments) > 0
+                        ):
+                            radius_pt = max(0.0, float(shape.adjustments[0]) * min(bw, bh))
+                    except Exception:
+                        pass
+
+                    if has_fill or has_stroke:
+                        c.saveState()
+                        if has_fill and fill_col is not None:
+                            c.setFillColor(fill_col)
+                        if has_stroke and stroke_col is not None:
+                            c.setStrokeColor(stroke_col)
+                            c.setLineWidth(stroke_w)
+                        if radius_pt > 0.1:
+                            c.roundRect(
+                                bx,
+                                slide_h - by - bh,
+                                bw,
+                                bh,
+                                radius_pt,
+                                stroke=1 if has_stroke else 0,
+                                fill=1 if has_fill else 0,
+                            )
+                        else:
+                            c.rect(
+                                bx,
+                                slide_h - by - bh,
+                                bw,
+                                bh,
+                                stroke=1 if has_stroke else 0,
+                                fill=1 if has_fill else 0,
+                            )
+                        c.restoreState()
+                except Exception:
+                    pass
+                # Only continue if the AutoShape has no text content inside
+                if not shape.has_text_frame or not (shape.text_frame.text or "").strip():
+                    continue
 
             # Textbox
             if shape.has_text_frame:

@@ -8,6 +8,28 @@ export type OutlineLayout =
   | "text_image"
   | "closing";
 
+export interface CanvasElement {
+  id: string;
+  kind: "text" | "card" | "line" | "image";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text?: string | null;
+  font_size?: number | null;
+  bold?: boolean | null;
+  color?: string | null;
+  align?: "left" | "center" | "right" | null;
+  line_height?: number | null;
+  fill?: string | null;
+  border_color?: string | null;
+  border_width?: number | null;
+  radius?: number | null;
+  line_width?: number | null;
+  image_asset_id?: string | null;
+  fit?: "contain" | "cover" | null;
+}
+
 export interface OutlineItem {
   outline_item_id: string;
   title: string;
@@ -18,6 +40,8 @@ export interface OutlineItem {
   column_right?: string | null;
   image_asset_id?: string | null;
   speaker_notes?: string | null;
+  custom_bg?: string | null;
+  custom_elements?: CanvasElement[] | null;
 }
 
 export interface ThemeSwatches {
@@ -177,6 +201,8 @@ export interface CoverSlidePreview {
   layout: OutlineLayout | string | null;
   column_right?: string | null;
   image_asset_id?: string | null;
+  custom_bg?: string | null;
+  custom_elements?: CanvasElement[] | null;
 }
 
 export interface ProjectSummary {

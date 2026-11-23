@@ -27,6 +27,7 @@ import {
 import { BackendStatus } from "../components/BackendStatus";
 import { BrandLogo } from "../components/BrandLogo";
 import { LLMSettingsModal } from "../components/LLMSettingsModal";
+import { AutoScaledCustomSlide } from "../components/workspace/CustomSlideLayer";
 import {
   inferEffectiveLayout,
   normalizeEscapedNewlines,
@@ -112,6 +113,16 @@ function SlideCardPreview({
   // Tier 2: Authentic live miniature of Slide 1 using the project's real theme
   if (project.cover_slide) {
     const slide = project.cover_slide;
+    if (slide.custom_elements && slide.custom_elements.length > 0) {
+      return (
+        <AutoScaledCustomSlide
+          pid={project.project_id}
+          customBg={slide.custom_bg}
+          elements={slide.custom_elements}
+          theme={theme}
+        />
+      );
+    }
     const layout = inferEffectiveLayout(slide.layout, 0, Math.max(1, project.slide_count));
     const sw = theme.swatches;
     const isHero = layout === "cover" || layout === "closing";

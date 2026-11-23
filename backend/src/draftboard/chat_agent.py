@@ -28,6 +28,7 @@ from draftboard.agent import resolve_model
 from draftboard.measure import load_fonts
 from draftboard.models import (
     Artifact,
+    CanvasElement,
     EvidenceStatus,
     Outline,
     OutlineItem,
@@ -37,7 +38,11 @@ from draftboard.models import (
     validate_ir,
     validate_outline,
 )
-from draftboard.pptx_export import _measure_and_resolve, _resolve_image_path
+from draftboard.pptx_export import (
+    _measure_and_resolve,
+    _measure_custom_slide,
+    _resolve_image_path,
+)
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
 from draftboard.tasks import (
     DEFAULT_UNTITLED_NAME,
@@ -54,27 +59,33 @@ TOOL_LABELS_CN: dict[str, str] = {
     "update_slide": "更新单页幻灯片",
     "batch_update_slides": "批量更新多页幻灯片",
     "manage_slides": "调整幻灯片增删与顺序",
+    "design_custom_slide": "设计自由画布排版",
     "check_deck_layout": "执行真实字体排版自检",
     "set_deck_theme": "切换主题与排版设置",
     "export_deck_now": "编译导出 PPTX 与矢量 PDF",
 }
 
 STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，定位类似“做 PPT 的 Cursor / Claude Code”。
-你不仅能和用户自然对话，还能直接调用工具观察项目素材、读取与修改幻灯片大纲、增删调整页序、切换主题、运行真实排版自检，并在用户要求时编译导出 PPTX / PDF。
+你不仅能和用户自然对话，还能直接调用工具观察项目素材、读取与修改幻灯片大纲、增删调整页序、**使用双轨自由画布自由排版**、切换主题、运行真实排版自检，并在用户要求时编译导出 PPTX / PDF。
 
 工作原则：
 1. **先看再改，实事求是**：
    - 开始修改或回答关于文稿/素材的问题前，按需调用 `get_deck_state` 和 `read_project_materials` 获取真实内容，不要猜测。
    - 严守 Draftboard 事实护栏：**绝不编造数字、指标、引用或图片内容**。凡是来自素材的事实，必须填写来自 `read_project_materials` 的真实 `source_ids`；若用户要求的内容在素材中缺乏依据，明确坦诚告知缺口，并将对应页面标记为 `evidence_status="unsupported"`（`source_ids=[]`），绝不伪造数据。
-2. **精准编辑，不随意推倒重来**：
-   - 局部修改优先用 `update_slide`、`batch_update_slides` 或 `manage_slides`；只有从零创建或用户明确要求整体重写时才用 `create_deck_outline`。
-   - 如果用户说“这一页 / 当前页”，指的是上下文里标注的「用户当前选中页」。
-   - 版式规范：`cover`（封面）、`content`（正文）、`bullets`（分点，每行一条，不要手动加 `- `）、`two_column`（双栏，必须提供非空 `column_right`）、`text_image`（图文，必须使用项目真实已上传的图片 `image_asset_id`）、`closing`（尾页）。
+2. **双轨排版策略（所说即能改）**：
+   - **标准模板轨道**（`create_deck_outline` / `update_slide` / `batch_update_slides` / `manage_slides`）：适合快速构建常规页面，包含 `cover / content / bullets / two_column / text_image / closing`。
+   - **自由画布轨道**（`design_custom_slide`）：当用户不满意固定模板，或需要**便当盒多卡片（Bento Grid）、大数字指标卡（KPI）、横向流程时间轴、左图右文/半屏出血大图、居中金句、章节过渡页、或任意自定义字号/对齐/配色**时，直接用 `design_custom_slide` 在 `960×540` pt 画布上用 4 种原生可编辑元素（`card`、`line`、`image`、`text`）精准构图！
+   - 自由画布设计规范：
+     * 画布固定 `960×540` pt，常规留白建议 `48` pt（安全内容区 `x=48..912, y=36..504`）；
+     * **绘制顺序（Z-order）**：先放背景色块和 `card`，再放 `line` 和 `image`，最后放前景 `text`；
+     * **优先使用主题语义色**（`theme:bg`、`theme:cover_bg`、`theme:surface`、`theme:title`、`theme:cover_title`、`theme:body`、`theme:cover_body`、`theme:accent`、`theme:muted`、`theme:divider`），确保切换全局主题时自动换肤；仅在用户点名特定颜色时使用 `#RRGGBB`；
+     * 严禁让任意两个 `text` 框重叠或超出 `960×540` 边界；若工具返回 `[OVERFLOW]` / `[OVERLAP]` / `[OUT_OF_BOUNDS]`，立刻调整坐标或字号重试直至通过。
+   - 给用户提排版建议时，只推荐工作台**真正支持且能直接代改**的方案；用户问“怎么改好看”时，给出清晰方案并顺手询问是否由你直接代改；用户说“帮我改好看 / 照你说的改”就直接动手改完！
 3. **改完主动自检排版**：
-   - 凡是新建大纲或较大幅度改动文字后，主动调用一次 `check_deck_layout` 检查是否超框。
-   - 如果自检报 `[OVERFLOW]`，主动精简对应页文案并再测一次，争取交付给用户时全部页面排版安全。
+   - 凡是新建大纲或较大幅度改动文字后，主动调用一次 `check_deck_layout` 检查是否超框及全稿节奏。
+   - 如果自检报 `[OVERFLOW]` 或 `[OVERLAP]`，主动精简文案或微调尺寸再测一次，争取交付时全部页面排版安全。
 4. **导出需尊重用户意图**：
-   - 仅当用户明确提出“导出 / 生成 PPTX / 编译一下”时，才调用 `export_deck_now`。平时改完大纲后画布会自动实时刷新，简明汇报改动即可。
+   - 仅当用户明确提出“导出 / 生成 PPTX / 编译一下”时，才调用 `export_deck_now`。平时改完画布会自动实时刷新，简明汇报改动即可。
 5. **简洁、专业、可直接行动的回复**：
    - 默认使用与用户和素材一致的语言（通常为自然流畅的简体中文）。
    - 提及具体页面时请使用「第 N 页」格式（例如「第 2 页」），前端会自动渲染为可点击的跳转标签。
@@ -478,6 +489,8 @@ def _build_in_memory_artifact(
                 layout=layout,
                 elements=elements,
                 speaker_notes=item.speaker_notes,
+                custom_bg=item.custom_bg,
+                custom_elements=item.custom_elements,
             )
         )
 
@@ -526,6 +539,13 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                         "speaker_notes": it.speaker_notes,
                         "source_ids": it.source_ids,
                         "evidence_status": it.evidence_status.value,
+                        "is_custom_canvas": bool(it.custom_elements),
+                        "custom_bg": it.custom_bg,
+                        "custom_elements": (
+                            [el.model_dump(exclude_none=True) for el in it.custom_elements]
+                            if it.custom_elements
+                            else None
+                        ),
                     }
                 )
         summary_msg = f"共 {len(slides_info)} 页，主题 {state.active_theme_id}"
@@ -649,8 +669,9 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         speaker_notes: Optional[str] = None,
         source_ids: Optional[list[str]] = None,
         evidence_status: Optional[EvidenceLiteral] = None,
+        clear_custom_layout: bool = False,
     ) -> str:
-        """精准更新指定页码（从 1 开始）的局部或全部字段，未传入的字段保持原样。"""
+        """精准更新指定页码（从 1 开始）的局部或全部字段；若需将自由画布还原为标准版式，传 clear_custom_layout=True。"""
         ver = state.current_outline_version()
         outline = _load_outline(state.project_id, ver)
         if not outline or not outline.items:
@@ -694,6 +715,20 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         )
         if err or updated_item is None:
             return f"ERROR: 第 {slide_number} 页更新失败：{err}"
+
+        # Preserve custom canvas unless explicitly cleared or switching to a different standard layout
+        keep_custom = (
+            not clear_custom_layout
+            and layout is None
+            and cur.custom_elements is not None
+        )
+        if keep_custom:
+            updated_item = updated_item.model_copy(
+                update={
+                    "custom_bg": cur.custom_bg,
+                    "custom_elements": cur.custom_elements,
+                }
+            )
 
         new_items = list(outline.items)
         new_items[idx] = updated_item
@@ -770,6 +805,13 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
             )
             if err or updated_item is None:
                 return f"ERROR: 第 {sn} 页更新失败：{err}"
+            if patch.layout is None and cur.custom_elements is not None:
+                updated_item = updated_item.model_copy(
+                    update={
+                        "custom_bg": cur.custom_bg,
+                        "custom_elements": cur.custom_elements,
+                    }
+                )
             new_items[idx] = updated_item
             touched_now.append(sn)
 
@@ -881,8 +923,141 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         )
 
     @function_tool
+    def design_custom_slide(
+        slide_number: int,
+        elements: list[CanvasElement],
+        background: Optional[str] = "theme:bg",
+        title: Optional[str] = None,
+        summary: Optional[str] = None,
+        speaker_notes: Optional[str] = None,
+        source_ids: Optional[list[str]] = None,
+        evidence_status: Optional[EvidenceLiteral] = None,
+    ) -> str:
+        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 4 种原生可编辑元素：card（圆角矩形卡片）、line（线条）、image（已上传图片）、text（文本框）。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、文本溢出与文本碰撞检测。"""
+        ver = state.current_outline_version()
+        outline = _load_outline(state.project_id, ver)
+        if not outline or not outline.items:
+            return "ERROR: 当前项目还没有大纲，请先使用 create_deck_outline 创建大纲。"
+        if slide_number < 1 or slide_number > len(outline.items):
+            return f"ERROR: 页码 {slide_number} 越界，当前共有 {len(outline.items)} 页。"
+        if not elements:
+            return "ERROR: elements 不能为空，请至少提供 1 个画布元素。"
+
+        # Ensure unique IDs & unescape text
+        seen_ids: set[str] = set()
+        cleaned_elements: list[CanvasElement] = []
+        assets_dir = _project_dir(state.project_id) / "assets"
+        uploaded_images = _list_uploaded_images(state.project_id)
+
+        for idx_el, raw_el in enumerate(elements, start=1):
+            eid = (raw_el.id or f"el-{idx_el}").strip()
+            if eid in seen_ids:
+                eid = f"{eid}-{idx_el}"
+            seen_ids.add(eid)
+
+            if raw_el.kind == "image":
+                img_ref = (raw_el.image_asset_id or "").strip()
+                if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:
+                    return (
+                        f"ERROR: 元素 '{eid}' 引用的图片 '{img_ref}' 不存在，"
+                        f"当前项目可用图片：{uploaded_images}。"
+                    )
+                cleaned_elements.append(
+                    raw_el.model_copy(update={"id": eid, "image_asset_id": pathlib.Path(img_ref).stem})
+                )
+            elif raw_el.kind == "text":
+                clean_txt = (raw_el.text or "").replace("\\r\\n", "\n").replace("\\n", "\n")
+                cleaned_elements.append(
+                    raw_el.model_copy(update={"id": eid, "text": clean_txt})
+                )
+            else:
+                cleaned_elements.append(raw_el.model_copy(update={"id": eid}))
+
+        # Run real deterministic bounds + overflow + text-overlap measurement BEFORE saving
+        idx = slide_number - 1
+        cur = outline.items[idx]
+        probe_slide = Slide(
+            slide_id=f"slide-{slide_number:03d}",
+            layout=cur.layout or SlideLayout.CONTENT,
+            elements=[
+                SlideElement(
+                    element_id=f"slide-{slide_number:03d}-title",
+                    type="title",
+                    content=title or cur.title,
+                )
+            ],
+            custom_bg=background or "theme:bg",
+            custom_elements=cleaned_elements,
+        )
+        measure_errors: list[str] = []
+        _measure_custom_slide(
+            probe_slide, load_fonts(), state.auto_fit, {}, measure_errors
+        )
+        if measure_errors:
+            return (
+                "ERROR: 自由画布排版未通过自检，请调整坐标、框高或字号后重试：\n"
+                + "\n".join(measure_errors)
+            )
+
+        mat_out = _raw(tools_module.read_materials)(project_id=state.project_id)
+        known_sids = {f.source_id for f in mat_out.source_fragments}
+        next_sids = (
+            [s for s in dict.fromkeys(source_ids) if s in known_sids]
+            if source_ids is not None
+            else cur.source_ids
+        )
+        if next_sids:
+            next_status = (
+                EvidenceStatus.PARTIAL
+                if evidence_status == "partial"
+                else EvidenceStatus.SUPPORTED
+            )
+        else:
+            next_status = EvidenceStatus.UNSUPPORTED
+
+        # Derive readable title/summary fallback from text elements if not explicitly passed
+        text_els = [el for el in cleaned_elements if el.kind == "text" and (el.text or "").strip()]
+        derived_title = title
+        if not derived_title and text_els:
+            largest = max(text_els, key=lambda e: int(e.font_size or 18))
+            first_ln = (largest.text or "").splitlines()[0].strip()
+            if first_ln:
+                derived_title = first_ln[:60]
+
+        updated_item = cur.model_copy(
+            update={
+                "title": (derived_title or cur.title).strip(),
+                "summary": (summary if summary is not None else cur.summary).strip() or cur.summary,
+                "speaker_notes": (
+                    speaker_notes.strip() if speaker_notes is not None else cur.speaker_notes
+                ),
+                "source_ids": next_sids,
+                "evidence_status": next_status,
+                "custom_bg": background or "theme:bg",
+                "custom_elements": cleaned_elements,
+            }
+        )
+        new_items = list(outline.items)
+        new_items[idx] = updated_item
+        saved = _persist_turn_outline(state, new_items)
+        state.touched_slides.add(slide_number)
+        state.layout_checked_ok = True
+        state.last_tool_summaries["design_custom_slide"] = (
+            f"已自由排版第 {slide_number} 页（{len(cleaned_elements)} 个元素）"
+        )
+        return json.dumps(
+            {
+                "ok": True,
+                "slide_number": slide_number,
+                "element_count": len(cleaned_elements),
+                "outline_version": saved.outline_version,
+            },
+            ensure_ascii=False,
+        )
+
+    @function_tool
     def check_deck_layout() -> str:
-        """使用真实字体测量引擎对当前大纲执行排版安全检查，精准检测文字溢出（OVERFLOW）或缺失配图。"""
+        """使用真实字体测量引擎对当前大纲执行排版安全检查（检测文字溢出、自定义画布重叠/越界、缺失配图），同时输出全稿视觉节奏诊断建议。"""
         ver = state.current_outline_version()
         outline = _load_outline(state.project_id, ver)
         if not outline or not outline.items:
@@ -895,6 +1070,14 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
 
         assets_dir = _project_dir(state.project_id) / "assets"
         for idx, slide in enumerate(artifact.slides, start=1):
+            if slide.custom_elements:
+                for cel in slide.custom_elements:
+                    if cel.kind == "image":
+                        if _resolve_image_path(cel.image_asset_id or "", assets_dir) is None:
+                            issues.append(
+                                f"第 {idx} 页自由画布元素 '{cel.id}' 找不到配图 '{cel.image_asset_id}'。"
+                            )
+                continue
             for el in slide.elements:
                 if el.type == "image":
                     if _resolve_image_path(el.content, assets_dir) is None:
@@ -909,16 +1092,58 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         )
         issues.extend(measure_errors)
 
+        # Lightweight deterministic visual rhythm diagnostics
+        rhythm_notes: list[str] = []
+        total = len(outline.items)
+        eff_layouts: list[str] = []
+        for idx, it in enumerate(outline.items, start=1):
+            if it.custom_elements:
+                eff_layouts.append("custom")
+            else:
+                lv = (
+                    it.layout.value
+                    if it.layout
+                    else ("cover" if idx == 1 else ("closing" if idx == total and total > 1 else "content"))
+                )
+                eff_layouts.append(lv)
+                if len(it.summary.strip()) > 190:
+                    rhythm_notes.append(
+                        f"第 {idx} 页文字偏密（{len(it.summary.strip())} 字），可精简要点、拆页或改用卡片自由排版。"
+                    )
+                if lv == "bullets":
+                    bc = len([ln for ln in it.summary.splitlines() if ln.strip()])
+                    if bc > 5:
+                        rhythm_notes.append(
+                            f"第 {idx} 页分点较多（{bc} 条），建议精简至 3–4 条或拆分为双栏/多卡片。"
+                        )
+                if lv in ("content", "bullets") and len(re.findall(r"\d+(?:\.\d+)?\s*[%倍×xX]", it.summary)) >= 2:
+                    rhythm_notes.append(
+                        f"第 {idx} 页包含多个量化指标，适合用自由画布改造成大数字指标卡提升视觉冲击力。"
+                    )
+
+        # Detect 3+ consecutive identical non-custom layouts
+        run_len = 1
+        for i in range(1, len(eff_layouts)):
+            if eff_layouts[i] == eff_layouts[i - 1] and eff_layouts[i] not in ("cover", "closing", "custom"):
+                run_len += 1
+                if run_len == 3:
+                    rhythm_notes.append(
+                        f"第 {i - 1}–{i + 1} 页连续使用相同版式（{eff_layouts[i]}），可调整其中一页版式或用自由画布制造节奏变化。"
+                    )
+            else:
+                run_len = 1
+
         if not issues:
             state.layout_checked_ok = True
             state.last_tool_summaries["check_deck_layout"] = (
-                f"全部 {len(outline.items)} 页排版安全"
+                f"全部 {total} 页排版安全"
             )
             return json.dumps(
                 {
                     "ok": True,
-                    "total_slides": len(outline.items),
-                    "message": f"全部 {len(outline.items)} 页排版安全，无文字溢出或缺失问题。",
+                    "total_slides": total,
+                    "message": f"全部 {total} 页排版安全，无文字溢出或重叠问题。",
+                    "rhythm_suggestions": rhythm_notes,
                 },
                 ensure_ascii=False,
             )
@@ -926,7 +1151,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         state.layout_checked_ok = False
         state.last_tool_summaries["check_deck_layout"] = f"发现 {len(issues)} 处排版问题"
         return json.dumps(
-            {"ok": False, "issues": issues},
+            {"ok": False, "issues": issues, "rhythm_suggestions": rhythm_notes},
             ensure_ascii=False,
         )
 
@@ -1031,6 +1256,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         update_slide,
         batch_update_slides,
         manage_slides,
+        design_custom_slide,
         check_deck_layout,
         set_deck_theme,
         export_deck_now,

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Outline, OutlineItem, ThemeOption } from "../../lib/api";
+import { AutoScaledCustomSlide } from "./CustomSlideLayer";
 import { inferEffectiveLayout, normalizeEscapedNewlines } from "./layoutUtils";
 
 interface SlideNavigatorProps {
@@ -226,6 +227,9 @@ export function SlideNavigator({
       <div className="flex-1 px-3 py-3.5 space-y-3 overflow-y-auto clean-scroll">
         {outline.items.map((item, idx) => {
           const active = idx === selectedIndex;
+          const isCustomCanvas = Boolean(
+            item.custom_elements && item.custom_elements.length > 0
+          );
           const layout = inferEffectiveLayout(item.layout, idx, total);
           const isHero = layout === "cover" || layout === "closing";
           const bg = isHero ? sw.cover_bg : sw.bg;
@@ -250,7 +254,9 @@ export function SlideNavigator({
 
               <div className="flex-1 min-w-0 relative">
                 <div
-                  className={`aspect-[16/9] w-full rounded-[4px] overflow-hidden p-2 flex flex-col relative transition-all ${
+                  className={`aspect-[16/9] w-full rounded-[4px] overflow-hidden ${
+                    isCustomCanvas ? "" : "p-2 flex flex-col"
+                  } relative transition-all ${
                     active
                       ? "thumb-selected"
                       : "thumb-idle group-hover:brightness-[0.98]"
@@ -259,19 +265,28 @@ export function SlideNavigator({
                 >
                   {(hasError || needsEvidence) && (
                     <span
-                      className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ring-2 ring-white/80 group-hover:opacity-0 transition-opacity ${
+                      className={`absolute top-1.5 right-1.5 z-10 w-1.5 h-1.5 rounded-full ring-2 ring-white/80 group-hover:opacity-0 transition-opacity ${
                         hasError ? "bg-danger" : "bg-warning-dot"
                       }`}
                       title={hasError ? "该页存在排版或校验问题" : "待补充出处"}
                     />
                   )}
-                  <ThumbSkeleton
-                    pid={pid}
-                    item={item}
-                    index={idx}
-                    total={total}
-                    theme={activeTheme}
-                  />
+                  {isCustomCanvas && item.custom_elements ? (
+                    <AutoScaledCustomSlide
+                      pid={pid}
+                      customBg={item.custom_bg}
+                      elements={item.custom_elements}
+                      theme={activeTheme}
+                    />
+                  ) : (
+                    <ThumbSkeleton
+                      pid={pid}
+                      item={item}
+                      index={idx}
+                      total={total}
+                      theme={activeTheme}
+                    />
+                  )}
                 </div>
 
                 {/* Hover-only translucent micro controls */}

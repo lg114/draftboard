@@ -9,19 +9,21 @@ Every text block is written as real, editable text (never a rendered image),
 and uploaded image assets are embedded natively with aspect-ratio preservation.
 """
 
+import io
 import pathlib
 import re
+from typing import Optional
 
-from PIL import Image
+from PIL import Image, ImageOps
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_CONNECTOR
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Pt
 
 from draftboard.measure import FontPair, load_fonts, measure_box
-from draftboard.models import Artifact, SlideLayout, validate_ir
+from draftboard.models import Artifact, CanvasElement, Slide, SlideLayout, validate_ir
 from draftboard.themes import ThemeSpec, get_theme
 
 CANVAS_W_PT = 960
@@ -380,6 +382,282 @@ def _group_boxes(slide) -> list[tuple[str, list[tuple[str, str]]]]:
     return list(groups.items())
 
 
+_HEX_COLOR_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
+CUSTOM_PAD_X_PT = 4
+CUSTOM_PAD_Y_PT = 2
+
+
+def resolve_canvas_hex(
+    spec: Optional[str], theme: ThemeSpec, fallback_hex: str
+) -> Optional[str]:
+    """Resolve a 'theme:*' semantic color token or '#RRGGBB' hex to '#RRGGBB' (or None for transparent)."""
+    raw = (spec or "").strip()
+    if not raw:
+        return fallback_hex
+    low = raw.lower()
+    if low in ("transparent", "none"):
+        return None
+    theme_map = {
+        "theme:bg": theme.bg_hex,
+        "theme:cover_bg": theme.cover_bg_hex,
+        "theme:surface": theme.surface_hex,
+        "theme:title": theme.title_hex,
+        "theme:cover_title": theme.cover_title_hex,
+        "theme:body": theme.body_hex,
+        "theme:cover_body": theme.cover_body_hex,
+        "theme:accent": theme.accent_hex,
+        "theme:muted": theme.muted_hex,
+        "theme:divider": theme.divider_hex,
+    }
+    if low in theme_map:
+        return theme_map[low]
+    m = _HEX_COLOR_RE.fullmatch(raw)
+    if m:
+        return f"#{m.group(1).upper()}"
+    return fallback_hex
+
+
+def _hex_to_rgb(hex_str: str) -> RGBColor:
+    h = hex_str.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _measure_custom_slide(
+    slide: Slide,
+    fonts: FontPair,
+    auto_fit: bool,
+    resolved: dict[tuple[str, str], tuple[int, int, int]],
+    errors: list[str],
+) -> None:
+    """Validate bounds, text overflow, and text-vs-text overlap on a freeform custom slide."""
+    elements = slide.custom_elements or []
+    text_boxes: list[tuple[str, float, float, float, float]] = []
+
+    for el in elements:
+        if el.kind == "line":
+            x2 = el.x + el.w
+            y2 = el.y + el.h
+            if (
+                el.x < -2
+                or el.y < -2
+                or el.x > CANVAS_W_PT + 2
+                or el.y > CANVAS_H_PT + 2
+                or x2 < -2
+                or y2 < -2
+                or x2 > CANVAS_W_PT + 2
+                or y2 > CANVAS_H_PT + 2
+            ):
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[OUT_OF_BOUNDS] Line endpoints ({el.x:.0f},{el.y:.0f})-({x2:.0f},{y2:.0f}) exceed 960x540 canvas."
+                )
+            continue
+
+        if el.w <= 0 or el.h <= 0:
+            errors.append(
+                f"Slide '{slide.slide_id}', element '{el.id}': "
+                f"[OUT_OF_BOUNDS] Width and height must be positive (got {el.w}x{el.h})."
+            )
+            continue
+
+        if (
+            el.x < -2
+            or el.y < -2
+            or el.x + el.w > CANVAS_W_PT + 2
+            or el.y + el.h > CANVAS_H_PT + 2
+        ):
+            errors.append(
+                f"Slide '{slide.slide_id}', element '{el.id}': "
+                f"[OUT_OF_BOUNDS] Box ({el.x:.0f},{el.y:.0f},{el.w:.0f}x{el.h:.0f}) exceeds 960x540 canvas."
+            )
+            continue
+
+        if el.kind == "text":
+            text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
+            content = (el.text or "").strip()
+            base_size = int(el.font_size or 18)
+            base_line = int(round(el.line_height or (base_size * 1.35)))
+            if not content:
+                resolved[(slide.slide_id, f"custom:{el.id}")] = (base_size, base_line, 0)
+                continue
+
+            if auto_fit:
+                candidates = []
+                for step in (0, 2, 4):
+                    sz = max(12, base_size - step)
+                    ln = max(sz + 3, int(round(sz * (base_line / max(1, base_size)))))
+                    pair = (sz, ln, 0)
+                    if pair not in candidates:
+                        candidates.append(pair)
+            else:
+                candidates = [(base_size, base_line, 0)]
+
+            chosen = None
+            last_m = None
+            for cand in candidates:
+                sz, ln, sp = cand
+                m = measure_box(
+                    [content],
+                    fonts=fonts,
+                    width_pt=el.w,
+                    height_pt=el.h,
+                    size_pt=sz,
+                    line_pt=ln,
+                    space_after_pt=sp,
+                    pad_x_pt=CUSTOM_PAD_X_PT,
+                    pad_y_pt=CUSTOM_PAD_Y_PT,
+                )
+                last_m = m
+                if m.fits and not m.issues:
+                    chosen = cand
+                    break
+
+            if chosen is not None:
+                resolved[(slide.slide_id, f"custom:{el.id}")] = chosen
+            else:
+                assert last_m is not None
+                for para in last_m.paragraphs:
+                    for iss in para.issues:
+                        errors.append(
+                            f"Slide '{slide.slide_id}', element '{el.id}': "
+                            f"[{iss.code}] {iss.message}"
+                        )
+                if not last_m.fits:
+                    errors.append(
+                        f"Slide '{slide.slide_id}', element '{el.id}': "
+                        f"[OVERFLOW] needs {last_m.required_height_pt:.1f}pt "
+                        f"(+8% margin) but box height is {el.h:.0f}pt."
+                    )
+
+    # Check pairwise text-vs-text overlap (with 2pt tolerance)
+    for i in range(len(text_boxes)):
+        id_a, ax1, ay1, ax2, ay2 = text_boxes[i]
+        for j in range(i + 1, len(text_boxes)):
+            id_b, bx1, by1, bx2, by2 = text_boxes[j]
+            if (ax1 + 2 < bx2 - 2) and (ax2 - 2 > bx1 + 2) and (ay1 + 2 < by2 - 2) and (ay2 - 2 > by1 + 2):
+                errors.append(
+                    f"Slide '{slide.slide_id}': [OVERLAP] Text elements '{id_a}' and '{id_b}' overlap."
+                )
+
+
+def _export_custom_slide(
+    pptx_slide,
+    slide: Slide,
+    theme: ThemeSpec,
+    resolved_styles: dict[tuple[str, str], tuple[int, int, int]],
+    resolved_images: dict[tuple[str, str], pathlib.Path],
+) -> None:
+    """Write native editable PPTX shapes for a freeform custom slide."""
+    bg_hex = resolve_canvas_hex(slide.custom_bg, theme, theme.bg_hex) or theme.bg_hex
+    bg_fill = pptx_slide.background.fill
+    bg_fill.solid()
+    bg_fill.fore_color.rgb = _hex_to_rgb(bg_hex)
+
+    for el in slide.custom_elements or []:
+        if el.kind == "card":
+            radius = float(el.radius if el.radius is not None else 12.0)
+            shape_type = (
+                MSO_SHAPE.ROUNDED_RECTANGLE if radius > 0 else MSO_SHAPE.RECTANGLE
+            )
+            shape = pptx_slide.shapes.add_shape(
+                shape_type, Pt(el.x), Pt(el.y), Pt(el.w), Pt(el.h)
+            )
+            shape.shadow.inherit = False
+            style_el = shape._element.find(qn("p:style"))
+            if style_el is not None:
+                effect_ref = style_el.find(qn("a:effectRef"))
+                if effect_ref is not None:
+                    effect_ref.set("idx", "0")
+            if radius > 0 and min(el.w, el.h) > 0:
+                try:
+                    shape.adjustments[0] = min(0.5, radius / min(el.w, el.h))
+                except Exception:
+                    pass
+            fill_hex = resolve_canvas_hex(el.fill, theme, theme.surface_hex)
+            if fill_hex:
+                shape.fill.solid()
+                shape.fill.fore_color.rgb = _hex_to_rgb(fill_hex)
+            else:
+                shape.fill.background()
+            border_hex = (
+                resolve_canvas_hex(el.border_color, theme, theme.divider_hex)
+                if el.border_color
+                else None
+            )
+            bw = float(el.border_width if el.border_width is not None else (1.0 if border_hex else 0.0))
+            if border_hex and bw > 0:
+                shape.line.color.rgb = _hex_to_rgb(border_hex)
+                shape.line.width = Pt(bw)
+            else:
+                shape.line.fill.background()
+
+        elif el.kind == "line":
+            col_hex = resolve_canvas_hex(el.color, theme, theme.divider_hex) or theme.divider_hex
+            lw = float(el.line_width if el.line_width is not None else 1.5)
+            _add_line(
+                pptx_slide,
+                el.x,
+                el.y,
+                el.x + el.w,
+                el.y + el.h,
+                _hex_to_rgb(col_hex),
+                width_pt=lw,
+            )
+
+        elif el.kind == "image":
+            img_path = resolved_images.get((slide.slide_id, f"custom:{el.id}"))
+            if not img_path:
+                continue
+            if el.fit == "cover":
+                with Image.open(img_path) as im:
+                    rgb_im = im.convert("RGBA") if im.mode in ("RGBA", "P") else im.convert("RGB")
+                    tw = max(2, int(round(el.w * 2)))
+                    th = max(2, int(round(el.h * 2)))
+                    cropped = ImageOps.fit(rgb_im, (tw, th), method=Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    cropped.save(buf, format="PNG")
+                    buf.seek(0)
+                    pptx_slide.shapes.add_picture(
+                        buf, Pt(el.x), Pt(el.y), width=Pt(el.w), height=Pt(el.h)
+                    )
+            else:
+                _add_picture_contain(pptx_slide, img_path, (el.x, el.y, el.w, el.h))
+
+        elif el.kind == "text":
+            content = el.text or ""
+            size_pt, line_pt, _ = resolved_styles.get(
+                (slide.slide_id, f"custom:{el.id}"),
+                (int(el.font_size or 18), int(round((el.font_size or 18) * 1.35)), 0),
+            )
+            col_hex = resolve_canvas_hex(el.color, theme, theme.body_hex) or theme.body_hex
+            box = pptx_slide.shapes.add_textbox(Pt(el.x), Pt(el.y), Pt(el.w), Pt(el.h))
+            tf = box.text_frame
+            tf.word_wrap = True
+            tf.auto_size = MSO_AUTO_SIZE.NONE
+            tf.vertical_anchor = MSO_ANCHOR.TOP
+            tf.margin_left = Pt(CUSTOM_PAD_X_PT)
+            tf.margin_right = Pt(CUSTOM_PAD_X_PT)
+            tf.margin_top = Pt(CUSTOM_PAD_Y_PT)
+            tf.margin_bottom = Pt(CUSTOM_PAD_Y_PT)
+
+            p = tf.paragraphs[0]
+            if el.align == "center":
+                p.alignment = PP_ALIGN.CENTER
+            elif el.align == "right":
+                p.alignment = PP_ALIGN.RIGHT
+            else:
+                p.alignment = PP_ALIGN.LEFT
+
+            _fill_paragraph(
+                p,
+                content,
+                size_pt,
+                line_pt,
+                _hex_to_rgb(col_hex),
+                bold=bool(el.bold),
+            )
+
+
 def _measure_and_resolve(
     artifact: Artifact,
     fonts: FontPair,
@@ -391,6 +669,9 @@ def _measure_and_resolve(
     errors: list[str] = []
 
     for slide in artifact.slides:
+        if slide.custom_elements:
+            _measure_custom_slide(slide, fonts, auto_fit, resolved, errors)
+            continue
         for role, items in _group_boxes(slide):
             if role == "image":
                 continue
@@ -464,6 +745,18 @@ def export_pptx(
 
     resolved_images: dict[tuple[str, str], pathlib.Path] = {}
     for slide in artifact.slides:
+        if slide.custom_elements:
+            for cel in slide.custom_elements:
+                if cel.kind == "image":
+                    img_ref = (cel.image_asset_id or "").strip()
+                    img_path = _resolve_image_path(img_ref, assets_dir) if img_ref else None
+                    if img_path is None:
+                        raise ValueError(
+                            f"Slide '{slide.slide_id}', element '{cel.id}': "
+                            f"[MISSING_IMAGE] Image asset '{img_ref}' not found."
+                        )
+                    resolved_images[(slide.slide_id, f"custom:{cel.id}")] = img_path
+            continue
         for el in slide.elements:
             if el.type == "shape":
                 raise ValueError(
@@ -516,26 +809,31 @@ def export_pptx(
 
     for idx, slide in enumerate(artifact.slides):
         pptx_slide = prs.slides.add_slide(blank_layout)
-        _apply_theme_chrome(pptx_slide, slide.layout, theme, idx, total_slides)
+        if slide.custom_elements:
+            _export_custom_slide(
+                pptx_slide, slide, theme, resolved_styles, resolved_images
+            )
+        else:
+            _apply_theme_chrome(pptx_slide, slide.layout, theme, idx, total_slides)
 
-        for role, items in _group_boxes(slide):
-            if role == "image":
-                # Embed the first image element in this slide's image slot
-                el_id, _ = items[0]
-                img_path = resolved_images[(slide.slide_id, el_id)]
-                _add_picture_contain(
-                    pptx_slide, img_path, _box_for(slide.layout, "image")
-                )
-            else:
-                style = resolved_styles[(slide.slide_id, role)]
-                _add_textbox(
-                    pptx_slide,
-                    slide.layout,
-                    role,
-                    [content for _, content in items],
-                    style,
-                    theme,
-                )
+            for role, items in _group_boxes(slide):
+                if role == "image":
+                    # Embed the first image element in this slide's image slot
+                    el_id, _ = items[0]
+                    img_path = resolved_images[(slide.slide_id, el_id)]
+                    _add_picture_contain(
+                        pptx_slide, img_path, _box_for(slide.layout, "image")
+                    )
+                else:
+                    style = resolved_styles[(slide.slide_id, role)]
+                    _add_textbox(
+                        pptx_slide,
+                        slide.layout,
+                        role,
+                        [content for _, content in items],
+                        style,
+                        theme,
+                    )
 
         if slide.speaker_notes and slide.speaker_notes.strip():
             notes_slide = pptx_slide.notes_slide
