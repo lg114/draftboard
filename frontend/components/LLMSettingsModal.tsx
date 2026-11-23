@@ -34,7 +34,8 @@ export function LLMSettingsModal({
   onClose,
   onSettingsUpdated,
 }: LLMSettingsModalProps) {
-  const [editingId, setEditingId] = useState<string | "new">("new");
+  const [editingId, setEditingId] = useState<string | "env" | "new">("new");
+  const [inheritEnvKey, setInheritEnvKey] = useState(false);
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("openai");
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
@@ -59,7 +60,7 @@ export function LLMSettingsModal({
 
   const editingProfile: LLMProfilePublic | null = useMemo(
     () =>
-      editingId === "new"
+      editingId === "new" || editingId === "env"
         ? null
         : profiles.find((p) => p.id === editingId) || null,
     [editingId, profiles]
@@ -67,6 +68,7 @@ export function LLMSettingsModal({
 
   function loadProfileIntoForm(prof: LLMProfilePublic) {
     setEditingId(prof.id);
+    setInheritEnvKey(false);
     setName(prof.name);
     setProvider(prof.provider || "custom");
     setBaseUrl(prof.base_url || "");
@@ -78,9 +80,37 @@ export function LLMSettingsModal({
     setConfirmDelete(false);
   }
 
+  function selectEnvView() {
+    setEditingId("env");
+    setInheritEnvKey(false);
+    setTestResult(null);
+    setError("");
+    setConfirmDelete(false);
+  }
+
+  function cloneEnvToEditable() {
+    const env = settings?.env_detected;
+    if (!env) {
+      startNewProfile("openai");
+      return;
+    }
+    setEditingId("new");
+    setInheritEnvKey(Boolean(env.has_api_key));
+    setProvider(env.provider || "custom");
+    setBaseUrl(env.base_url || "");
+    setModel(env.model || "");
+    setName(`${env.name.replace("环境变量", "自定义")}`);
+    setApiKey("");
+    setShowKey(false);
+    setTestResult(null);
+    setError("");
+    setConfirmDelete(false);
+  }
+
   function startNewProfile(presetId = "openai") {
     const preset = presets.find((p) => p.id === presetId) || presets[0];
     setEditingId("new");
+    setInheritEnvKey(false);
     setProvider(preset?.id || "openai");
     setBaseUrl(preset?.base_url || "");
     setModel(preset?.default_model || "");
@@ -92,21 +122,31 @@ export function LLMSettingsModal({
     setConfirmDelete(false);
   }
 
-  // Initialize form whenever modal opens
+  // Initialize form whenever modal opens or settings first become available
   useEffect(() => {
     if (!open || !settings) return;
-    const active = settings.profiles.find(
-      (p) => p.id === settings.active_profile_id
-    );
-    if (active) {
-      loadProfileIntoForm(active);
-    } else if (settings.profiles.length > 0) {
+    if (settings.source === "profile") {
+      const active = settings.profiles.find(
+        (p) => p.id === settings.active_profile_id
+      );
+      if (active) {
+        loadProfileIntoForm(active);
+        return;
+      }
+    }
+    if (settings.source === "env" && settings.env_detected) {
+      selectEnvView();
+      return;
+    }
+    if (settings.profiles.length > 0) {
       loadProfileIntoForm(settings.profiles[0]);
+    } else if (settings.env_detected) {
+      selectEnvView();
     } else {
       startNewProfile("openai");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, Boolean(settings)]);
 
   // Esc to close
   useEffect(() => {
@@ -135,20 +175,27 @@ export function LLMSettingsModal({
     }
   }
 
-  async function handleTestConnection() {
+  async function handleTestConnection(useEnv = false) {
     setTesting(true);
     setTestResult(null);
     setError("");
     try {
       const res = await api<LLMConnectionTestResponse>(
         "/api/settings/llm/test",
-        jsonOptions("POST", {
-          profile_id: editingId === "new" ? null : editingId,
-          provider,
-          base_url: baseUrl.trim(),
-          api_key: apiKey.trim() || null,
-          model: model.trim(),
-        })
+        jsonOptions(
+          "POST",
+          useEnv
+            ? { use_env: true }
+            : {
+                profile_id:
+                  editingId === "new" || editingId === "env" ? null : editingId,
+                use_env: inheritEnvKey && !apiKey.trim(),
+                provider,
+                base_url: baseUrl.trim(),
+                api_key: apiKey.trim() || null,
+                model: model.trim(),
+              }
+        )
       );
       setTestResult(res);
     } catch (e) {
@@ -166,11 +213,13 @@ export function LLMSettingsModal({
       const next = await api<LLMSettingsResponse>(
         "/api/settings/llm/profiles",
         jsonOptions("POST", {
-          profile_id: editingId === "new" ? null : editingId,
+          profile_id:
+            editingId === "new" || editingId === "env" ? null : editingId,
           name: name.trim(),
           provider,
           base_url: baseUrl.trim(),
           api_key: apiKey.trim() ? apiKey.trim() : null,
+          inherit_env_key: inheritEnvKey && !apiKey.trim(),
           model: model.trim(),
           activate: true,
         })
@@ -231,7 +280,7 @@ export function LLMSettingsModal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label="大模型配置"
+      aria-label="模型设置"
     >
       {/* Backdrop */}
       <div
@@ -245,7 +294,7 @@ export function LLMSettingsModal({
         <div className="px-6 py-4 border-b border-black/[0.07] flex items-center justify-between gap-3 shrink-0">
           <div>
             <h2 className="text-[16px] font-semibold text-ink tracking-[-0.015em]">
-              大模型配置
+              模型设置
             </h2>
             <p className="text-[13px] text-ink-secondary mt-0.5">
               配置仅保存在本机，支持多组模型随时切换并即时生效。
@@ -324,7 +373,14 @@ export function LLMSettingsModal({
               })}
 
               {settings?.env_detected && (
-                <div className="p-2.5 rounded-xl bg-canvas border border-black/[0.07] space-y-1.5">
+                <div
+                  onClick={() => selectEnvView()}
+                  className={`p-2.5 rounded-xl border transition-colors cursor-pointer space-y-1.5 ${
+                    editingId === "env"
+                      ? "bg-surface border-ink/50 shadow-2xs"
+                      : "bg-canvas hover:bg-surface border-black/[0.07]"
+                  }`}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[13px] font-semibold text-ink truncate">
                       {settings.env_detected.name}
@@ -338,7 +394,10 @@ export function LLMSettingsModal({
                       <button
                         type="button"
                         disabled={switchingId === "__env__"}
-                        onClick={() => void handleActivateProfile(null)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleActivateProfile(null);
+                        }}
                         className="text-[13px] font-medium text-ink-secondary hover:text-ink underline underline-offset-2 cursor-pointer shrink-0"
                       >
                         启用
@@ -374,7 +433,115 @@ export function LLMSettingsModal({
             </div>
           </div>
 
-          {/* Right Pane: Create / Edit Profile Form */}
+          {/* Right Pane: Active Env Inspector OR Create / Edit Profile Form */}
+          {editingId === "env" && settings?.env_detected ? (
+            <div className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
+              <div className="p-6 space-y-4 flex-1 md:overflow-y-auto clean-scroll">
+                <div className="p-3.5 rounded-xl bg-canvas border border-black/[0.07] space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[14px] font-semibold text-ink">
+                      {settings.env_detected.name}
+                    </span>
+                    {settings.source === "env" && (
+                      <span className="inline-flex items-center gap-1 text-[13px] font-medium text-success">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>当前生效中</span>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[13px] text-ink-secondary leading-relaxed">
+                    自动从本机 <code className="font-mono">.env</code> 或系统环境变量读取。如需修改模型或配置多套方案，可点下方按钮复制为独立配置，或在左侧新增其他配置随时切换。
+                  </p>
+                </div>
+
+                <div className="space-y-3 text-[13.5px]">
+                  <div className="space-y-1">
+                    <div className="text-[13px] font-semibold text-ink">
+                      服务商
+                    </div>
+                    <div className="px-3.5 py-2 rounded-xl bg-surface-subtle border border-black/[0.08] text-ink">
+                      {presets.find((p) => p.id === settings.env_detected?.provider)
+                        ?.name || settings.env_detected.provider}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-[13px] font-semibold text-ink">
+                      API Base URL
+                    </div>
+                    <div className="px-3.5 py-2 rounded-xl bg-surface-subtle border border-black/[0.08] font-mono text-ink break-all">
+                      {settings.env_detected.base_url || "https://api.openai.com/v1"}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-[13px] font-semibold text-ink">
+                      API Key
+                    </div>
+                    <div className="px-3.5 py-2 rounded-xl bg-surface-subtle border border-black/[0.08] font-mono text-ink">
+                      {settings.env_detected.has_api_key
+                        ? `已读取（${settings.env_detected.api_key_masked}）`
+                        : "未设置（本地免密钥模式）"}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-[13px] font-semibold text-ink">
+                      模型名称
+                    </div>
+                    <div className="px-3.5 py-2 rounded-xl bg-surface-subtle border border-black/[0.08] font-mono text-ink">
+                      {settings.env_detected.model}
+                    </div>
+                  </div>
+                </div>
+
+                {testResult && (
+                  <div
+                    className={`p-3 rounded-xl text-[13px] flex items-center gap-2 border ${
+                      testResult.ok
+                        ? "bg-surface-subtle border-success/30 text-success font-medium"
+                        : "bg-danger-bg border-danger/25 text-danger"
+                    }`}
+                  >
+                    {testResult.ok ? (
+                      <>
+                        <Check className="w-4 h-4 shrink-0" />
+                        <span>
+                          连接成功（{testResult.model || settings.env_detected.model}，耗时{" "}
+                          {testResult.latency_ms ?? 0} ms）
+                        </span>
+                      </>
+                    ) : (
+                      <span>{testResult.error || "连接测试失败"}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-3.5 border-t border-black/[0.07] bg-surface-subtle flex flex-wrap items-center justify-end gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={testing}
+                  onClick={() => void handleTestConnection(true)}
+                  className="h-9 px-3.5 ui-btn-outline text-[13px] inline-flex items-center gap-1.5"
+                >
+                  {testing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <PlugZap className="w-3.5 h-3.5" />
+                  )}
+                  <span>{testing ? "测试中…" : "测试连接"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={cloneEnvToEditable}
+                  className="h-9 px-4 ui-btn-primary text-[13px]"
+                >
+                  复制为可编辑配置
+                </button>
+              </div>
+            </div>
+          ) : (
           <form
             onSubmit={(e) => void handleSave(e)}
             className="flex-1 min-w-0 flex flex-col md:overflow-hidden"
@@ -479,6 +646,8 @@ export function LLMSettingsModal({
                     placeholder={
                       editingProfile?.has_api_key
                         ? "留空则继续使用已保存的密钥"
+                        : inheritEnvKey && settings?.env_detected?.api_key_masked
+                        ? `留空则继承环境变量密钥（${settings.env_detected.api_key_masked}）`
                         : activePreset?.requires_api_key
                         ? "输入 API Key…"
                         : "可选填"
@@ -631,6 +800,7 @@ export function LLMSettingsModal({
               </div>
             </div>
           </form>
+          )}
         </div>
       </div>
     </div>

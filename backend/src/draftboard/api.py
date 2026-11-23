@@ -168,6 +168,7 @@ class LLMProfileUpsertRequest(BaseModel):
     base_url: str = ""
     api_key: Optional[str] = None
     clear_api_key: bool = False
+    inherit_env_key: bool = False
     model: str
     activate: bool = True
 
@@ -178,6 +179,7 @@ class LLMActiveProfileRequest(BaseModel):
 
 class LLMConnectionTestRequest(BaseModel):
     profile_id: Optional[str] = None
+    use_env: bool = False
     provider: str = "openai"
     base_url: str = ""
     api_key: Optional[str] = None
@@ -198,6 +200,7 @@ def save_llm_profile(req: LLMProfileUpsertRequest):
         base_url=req.base_url,
         api_key=req.api_key,
         clear_api_key=req.clear_api_key,
+        inherit_env_key=req.inherit_env_key,
         model=req.model,
         activate=req.activate,
     )
@@ -217,6 +220,7 @@ def remove_llm_profile(profile_id: str):
 async def test_llm_settings(req: LLMConnectionTestRequest):
     return await llm_config.test_llm_connection(
         profile_id=req.profile_id,
+        use_env=req.use_env,
         provider=req.provider,
         base_url=req.base_url,
         api_key=req.api_key,

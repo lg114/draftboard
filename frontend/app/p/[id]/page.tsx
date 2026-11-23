@@ -1335,6 +1335,16 @@ export default function ProjectWorkspacePage() {
               <span className="font-medium truncate">{humanizedError}</span>
             </div>
             <div className="flex items-center gap-3 shrink-0 text-[13px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setLlmModalReason(null);
+                  setShowLLMModal(true);
+                }}
+                className="text-danger font-medium underline underline-offset-2 hover:opacity-80 cursor-pointer"
+              >
+                检查模型设置
+              </button>
               {rawError && rawError !== humanizedError && (
                 <button
                   type="button"
@@ -1505,6 +1515,12 @@ export default function ProjectWorkspacePage() {
                   materials={materials}
                   sourceFragments={sourceFragments}
                   slideIssues={currentSlideIssues}
+                  llmConfigured={llmSettings ? llmSettings.configured : true}
+                  activeModelLabel={llmSettings?.active_summary?.model || ""}
+                  onOpenLLMSettings={() => {
+                    setLlmModalReason(null);
+                    setShowLLMModal(true);
+                  }}
                   embedded={true}
                   onUpdateField={(field, val) =>
                     patchItem(selectedIndex, { [field]: val })
@@ -1531,6 +1547,12 @@ export default function ProjectWorkspacePage() {
           <EmptyStageOnboarding
             materials={materials}
             isGenerating={isGenerating}
+            llmConfigured={llmSettings ? llmSettings.configured : true}
+            activeModelLabel={llmSettings?.active_summary?.model || ""}
+            onOpenLLMSettings={() => {
+              setLlmModalReason(null);
+              setShowLLMModal(true);
+            }}
             onUploadClick={() => fileInputRef.current?.click()}
             onDropFiles={(files) => void uploadFiles(files)}
             onPasteNote={uploadPastedNote}

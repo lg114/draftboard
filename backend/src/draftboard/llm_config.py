@@ -290,6 +290,12 @@ def get_public_llm_settings() -> dict[str, Any]:
                 "provider": env_cfg.provider,
                 "model": env_cfg.model,
                 "base_url": env_cfg.base_url or "",
+                "has_api_key": bool(env_cfg.api_key and env_cfg.api_key != "local-no-key"),
+                "api_key_masked": (
+                    mask_api_key(env_cfg.api_key)
+                    if (env_cfg.api_key and env_cfg.api_key != "local-no-key")
+                    else ""
+                ),
             }
             if env_cfg is not None
             else None
@@ -307,6 +313,7 @@ def upsert_llm_profile(
     base_url: str = "",
     api_key: Optional[str] = None,
     clear_api_key: bool = False,
+    inherit_env_key: bool = False,
     model: str,
     activate: bool = True,
 ) -> dict[str, Any]:
@@ -340,6 +347,13 @@ def upsert_llm_profile(
         final_key = api_key.strip()
     elif existing is not None:
         final_key = str(existing.get("api_key") or "").strip()
+    elif inherit_env_key:
+        env_cfg = _resolve_env_config()
+        final_key = (
+            str(env_cfg.api_key or "").strip()
+            if (env_cfg and env_cfg.api_key and env_cfg.api_key != "local-no-key")
+            else ""
+        )
     else:
         final_key = ""
 
@@ -397,6 +411,7 @@ def delete_llm_profile(profile_id: str) -> dict[str, Any]:
 async def test_llm_connection(
     *,
     profile_id: Optional[str] = None,
+    use_env: bool = False,
     provider: str = "openai",
     base_url: str = "",
     api_key: Optional[str] = None,
@@ -409,7 +424,19 @@ async def test_llm_connection(
     clean_base = (base_url or "").strip() or str(preset.get("base_url") or "").strip()
     final_key = (api_key or "").strip()
 
-    if not final_key and profile_id:
+    if use_env:
+        env_cfg = _resolve_env_config()
+        if not env_cfg:
+            return {"ok": False, "error": "未检测到环境变量中的大模型配置。"}
+        clean_provider = env_cfg.provider
+        preset = _PRESET_BY_ID.get(clean_provider, {})
+        if not clean_model:
+            clean_model = env_cfg.model
+        if not clean_base:
+            clean_base = env_cfg.base_url or ""
+        if not final_key:
+            final_key = env_cfg.api_key or ""
+    elif not final_key and profile_id:
         raw = _read_raw_settings()
         existing = next(
             (p for p in raw.get("profiles", []) if p.get("id") == profile_id),

@@ -343,23 +343,6 @@ export function WorkspaceHeader({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={onOpenLLMSettings}
-          title={
-            llmConfigured && activeModelLabel
-              ? `大模型配置（当前：${activeModelLabel}）`
-              : "尚未配置大模型，点击前往配置"
-          }
-          aria-label="大模型配置"
-          className="relative p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer shrink-0"
-        >
-          <Settings className="w-4 h-4" />
-          {!llmConfigured && (
-            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-warning-dot" />
-          )}
-        </button>
-
         {project?.download_available && (
           <Link
             href={`/p/${pid}/preview`}
@@ -447,29 +430,51 @@ export function WorkspaceHeader({
           </div>
         )}
 
-        {hasOutline && (
+        {/* Global App Chrome Group (separated from document actions) */}
+        <div className="flex items-center gap-1 pl-2 ml-0.5 border-l border-black/[0.09] shrink-0">
           <button
             type="button"
-            onClick={onToggleRight}
-            title={rightOpen ? "收起右侧编辑检查器" : "展开右侧编辑检查器"}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ml-0.5 ${
-              rightOpen
-                ? "text-ink bg-black/[0.06] hover:bg-black/[0.1]"
-                : "text-ink-muted hover:text-ink hover:bg-black/[0.06]"
-            }`}
+            onClick={onOpenLLMSettings}
+            aria-label="模型设置"
+            title={
+              llmConfigured && activeModelLabel
+                ? `模型设置（当前：${activeModelLabel}）`
+                : "模型设置（尚未配置，点击前往设置）"
+            }
+            className="relative px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
           >
-            <svg
-              className="w-4 h-4"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
-              <line x1="12.5" y1="3.5" x2="12.5" y2="16.5" />
-            </svg>
+            <Settings className="w-4 h-4 shrink-0" />
+            <span className="hidden xl:inline">模型设置</span>
+            {!llmConfigured && (
+              <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
+            )}
           </button>
-        )}
+
+          {hasOutline && (
+            <button
+              type="button"
+              onClick={onToggleRight}
+              aria-label={rightOpen ? "收起右侧面板" : "展开右侧面板"}
+              title={rightOpen ? "收起右侧面板" : "展开右侧面板"}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
+                rightOpen
+                  ? "text-ink bg-black/[0.06] hover:bg-black/[0.1]"
+                  : "text-ink-muted hover:text-ink hover:bg-black/[0.06]"
+              }`}
+            >
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
+                <line x1="12.5" y1="3.5" x2="12.5" y2="16.5" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

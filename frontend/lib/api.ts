@@ -295,6 +295,8 @@ export interface LLMActiveSummary {
   model: string;
   base_url: string;
   source?: "profile" | "env";
+  has_api_key?: boolean;
+  api_key_masked?: string;
 }
 
 export interface LLMSettingsResponse {

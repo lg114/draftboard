@@ -500,19 +500,16 @@ export default function ProjectsPage() {
           <button
             type="button"
             onClick={() => setShowLLMModal(true)}
+            aria-label="模型设置"
             title={
               llmSettings?.active_summary
-                ? `当前模型：${llmSettings.active_summary.name}（${llmSettings.active_summary.model}）`
-                : "配置大模型 API Key 或本地 Ollama"
+                ? `模型设置（当前：${llmSettings.active_summary.name} / ${llmSettings.active_summary.model}）`
+                : "模型设置（尚未配置，点击前往设置）"
             }
             className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
-            <Settings className="w-3.5 h-3.5 text-ink-secondary" />
-            <span className="hidden sm:inline">
-              {llmSettings?.active_summary
-                ? llmSettings.active_summary.model
-                : "模型设置"}
-            </span>
+            <Settings className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+            <span>模型设置</span>
             {llmSettings && !llmSettings.configured && (
               <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
             )}

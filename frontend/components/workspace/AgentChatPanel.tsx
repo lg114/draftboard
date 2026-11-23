@@ -558,23 +558,26 @@ export function AgentChatPanel({
                 )}
 
                 {msg.content ? (
-                  <div
-                    className={
-                      msg.is_error
-                        ? "p-3 rounded-xl bg-danger-bg border border-danger/20 text-[13px] text-danger leading-relaxed"
-                        : "px-0.5"
-                    }
-                  >
-                    {msg.is_error ? (
-                      msg.content
-                    ) : (
+                  msg.is_error ? (
+                    <div className="p-3 rounded-xl bg-danger-bg border border-danger/20 text-[13px] text-danger leading-relaxed space-y-2">
+                      <div>{msg.content}</div>
+                      <button
+                        type="button"
+                        onClick={onOpenLLMSettings}
+                        className="font-semibold text-danger underline underline-offset-2 hover:opacity-80 cursor-pointer"
+                      >
+                        检查模型设置
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="px-0.5">
                       <FormattedMessageBody
                         content={msg.content}
                         totalSlides={totalSlides}
                         onJumpToSlide={onJumpToSlide}
                       />
-                    )}
-                  </div>
+                    </div>
+                  )
                 ) : runningNow ? (
                   <div className="flex items-center gap-2 text-[13px] text-ink-muted px-0.5">
                     <span className="w-2 h-2 rounded-full bg-ink animate-pulse" />
@@ -599,10 +602,10 @@ export function AgentChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      {/* Bottom Composer */}
-      <div className="p-3.5 border-t border-black/[0.08] bg-surface shrink-0">
+      {/* Bottom Composer (seamless surface, no hard divider line) */}
+      <div className="px-3.5 pb-3.5 pt-1 bg-surface-subtle shrink-0">
         {/* Input Box */}
-        <div className="rounded-2xl bg-canvas border border-black/[0.12] focus-within:bg-surface focus-within:border-ink focus-within:ring-4 focus-within:ring-black/[0.06] transition-[border-color,background-color,box-shadow] duration-200 px-3 pt-2.5 pb-2">
+        <div className="rounded-2xl bg-surface border border-black/[0.12] hover:border-black/25 focus-within:border-ink focus-within:ring-4 focus-within:ring-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] duration-200 px-3 pt-2.5 pb-2">
           <textarea
             ref={inputRef}
             rows={2}
@@ -635,10 +638,10 @@ export function AgentChatPanel({
                 type="button"
                 onClick={onUploadClick}
                 title="上传文档或图片到素材库"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
+                aria-label="添加素材"
+                className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
               >
-                <Paperclip className="w-3.5 h-3.5" />
-                <span>添素材</span>
+                <Paperclip className="w-4 h-4" />
               </button>
               <button
                 type="button"
@@ -647,7 +650,7 @@ export function AgentChatPanel({
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer min-w-0"
               >
                 <Settings className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate max-w-[125px]">
+                <span className="truncate max-w-[175px]">
                   {llmConfigured && activeModelLabel
                     ? activeModelLabel
                     : "配置模型"}

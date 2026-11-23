@@ -5,6 +5,7 @@ import {
   ClipboardPaste,
   FileText,
   Image as ImageIcon,
+  Settings,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -14,6 +15,9 @@ import { formatAssetLabel } from "./SlideInspector";
 interface EmptyStageOnboardingProps {
   materials: Material[];
   isGenerating: boolean;
+  llmConfigured?: boolean;
+  activeModelLabel?: string;
+  onOpenLLMSettings?: () => void;
   onUploadClick: () => void;
   onDropFiles: (files: FileList) => void;
   onPasteNote: (title: string, content: string) => Promise<void>;
@@ -29,6 +33,9 @@ const PROMPT_PRESETS = [
 export function EmptyStageOnboarding({
   materials,
   isGenerating,
+  llmConfigured = true,
+  activeModelLabel = "",
+  onOpenLLMSettings,
   onUploadClick,
   onDropFiles,
   onPasteNote,
@@ -155,6 +162,22 @@ export function EmptyStageOnboarding({
             </p>
           </div>
 
+          {!llmConfigured && onOpenLLMSettings && (
+            <div className="w-full max-w-lg px-4 py-2.5 rounded-xl bg-warning-bg border border-warning-dot/25 flex flex-wrap items-center justify-between gap-2 text-left text-[13px]">
+              <span className="inline-flex items-center gap-2 text-warning font-medium">
+                <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+                <span>尚未配置大模型，生成大纲前需先完成模型设置</span>
+              </span>
+              <button
+                type="button"
+                onClick={onOpenLLMSettings}
+                className="font-semibold text-ink underline underline-offset-2 hover:opacity-70 cursor-pointer shrink-0"
+              >
+                前往模型设置
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
@@ -270,10 +293,39 @@ export function EmptyStageOnboarding({
         </div>
 
         {/* Optional Direction / Audience / Page Count Prompt (PRD Stage 2 & F-04) */}
+        {!llmConfigured && onOpenLLMSettings && (
+          <div className="w-full max-w-lg px-4 py-2.5 rounded-xl bg-warning-bg border border-warning-dot/25 flex flex-wrap items-center justify-between gap-2 text-left text-[13px]">
+            <span className="inline-flex items-center gap-2 text-warning font-medium">
+              <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+              <span>尚未配置大模型，配置后即可基于这些素材生成大纲</span>
+            </span>
+            <button
+              type="button"
+              onClick={onOpenLLMSettings}
+              className="font-semibold text-ink underline underline-offset-2 hover:opacity-70 cursor-pointer shrink-0"
+            >
+              前往模型设置
+            </button>
+          </div>
+        )}
+
         <div className="w-full max-w-lg space-y-2 text-left bg-canvas p-3.5 rounded-2xl">
-          <label className="block text-[12.5px] font-medium text-ink-secondary px-0.5">
-            提炼方向与要求（选填：指定目标页数、受众或重点章节）
-          </label>
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <label className="block text-[13px] font-medium text-ink-secondary">
+              提炼方向与要求（选填）
+            </label>
+            {llmConfigured && activeModelLabel && onOpenLLMSettings && (
+              <button
+                type="button"
+                onClick={onOpenLLMSettings}
+                title="点击切换或修改模型设置"
+                className="inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer shrink-0"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span className="truncate max-w-[160px]">{activeModelLabel}</span>
+              </button>
+            )}
+          </div>
           <input
             type="text"
             value={outlinePrompt}

@@ -46,6 +46,9 @@ interface SlideInspectorProps {
   ) => Promise<SlideRefineCandidate | null>;
   onApplyRefineCandidate: (candidate: SlideRefineCandidate) => void;
   onUploadClick: () => void;
+  llmConfigured?: boolean;
+  activeModelLabel?: string;
+  onOpenLLMSettings?: () => void;
   embedded?: boolean;
 }
 
@@ -132,6 +135,9 @@ export function SlideInspector({
   onRefineSlide,
   onApplyRefineCandidate,
   onUploadClick,
+  llmConfigured = true,
+  activeModelLabel = "",
+  onOpenLLMSettings,
   embedded = false,
 }: SlideInspectorProps) {
   // Speaker notes stay expanded by default to utilize lower inspector space (still collapsible).
@@ -804,14 +810,39 @@ export function SlideInspector({
 
           {/* Lightweight Inline AI Refine Action Strip (whole-slide scope clearly stated) */}
           <div className="space-y-2 pt-0.5">
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center justify-between gap-2">
               <span
-                className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-secondary mr-1"
+                className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-secondary"
                 title="对本页标题与正文整体改写，确认后生效"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>本页 AI 精修</span>
               </span>
+              {onOpenLLMSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenLLMSettings}
+                  aria-label="模型设置"
+                  title={
+                    llmConfigured && activeModelLabel
+                      ? `当前模型：${activeModelLabel}，点击切换或修改`
+                      : "尚未配置大模型，点击前往模型设置"
+                  }
+                  className="inline-flex items-center gap-1.5 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer min-w-0"
+                >
+                  {!llmConfigured && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
+                  )}
+                  <span className="truncate max-w-[160px] font-mono">
+                    {llmConfigured && activeModelLabel
+                      ? activeModelLabel
+                      : "未配置模型"}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 disabled={Boolean(refiningMode)}
