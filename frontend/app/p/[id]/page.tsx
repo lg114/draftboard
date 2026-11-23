@@ -856,6 +856,7 @@ export default function ProjectWorkspacePage() {
           currentSlideIndex={selectedIndex}
           isGenerating={isGenerating}
           onUploadClick={() => fileInputRef.current?.click()}
+          onDropFiles={(files) => void uploadFiles(files)}
           onPasteNote={uploadPastedNote}
           onDeleteMaterial={deleteMaterial}
           onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
