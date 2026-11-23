@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Check, ChevronDown, Download, Play, RefreshCw } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
+import { ExportFormatMenu } from "./ExportFormatMenu";
 import {
   PROJECT_STAGE_STEPS,
   resolveWorkspaceStageKey,
@@ -330,20 +331,35 @@ export function WorkspaceHeader({
         {/* Note: In `no_materials` & `has_materials_no_outline`, the center onboarding card owns the single primary CTA. */}
 
         {currentStage === "outline_ready" && (
-          <button
-            type="button"
-            onClick={onConfirmGenerate}
-            disabled={isGenerating || !version}
-            className="px-4 py-1.5 rounded-full text-[13px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45"
-          >
-            {isGenerating ? "编译中…" : "确认并生成 PPTX"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <ExportFormatMenu
+              pid={pid}
+              label="导出"
+              canDownloadRendered={false}
+              canDownloadNotes={true}
+            />
+            <button
+              type="button"
+              onClick={onConfirmGenerate}
+              disabled={isGenerating || !version}
+              className="px-4 py-1.5 rounded-full text-[13px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45"
+            >
+              {isGenerating ? "编译中…" : "确认并生成 PPTX"}
+            </button>
+          </div>
         )}
 
         {currentStage === "ppt_ready" && (
           <div className="flex items-center gap-1.5">
             {needsReexport ? (
               <>
+                <ExportFormatMenu
+                  pid={pid}
+                  label="旧版导出"
+                  includePptx={true}
+                  canDownloadRendered={true}
+                  canDownloadNotes={true}
+                />
                 <button
                   type="button"
                   onClick={onConfirmGenerate}
@@ -355,15 +371,6 @@ export function WorkspaceHeader({
                   />
                   <span>{isGenerating ? "编译中…" : "更新 PPTX"}</span>
                 </button>
-                <a
-                  href={`/api/projects/${pid}/download`}
-                  download
-                  className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink bg-black/[0.06] hover:bg-black/[0.1] transition-colors flex items-center gap-1 whitespace-nowrap"
-                  title="下载上一版已导出的 PPTX"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">旧版</span>
-                </a>
               </>
             ) : (
               <>
@@ -378,15 +385,12 @@ export function WorkspaceHeader({
                     className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
                   />
                 </button>
-                <a
-                  href={`/api/projects/${pid}/download/pdf`}
-                  download
-                  className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink bg-black/[0.06] hover:bg-black/[0.1] transition-colors flex items-center gap-1 whitespace-nowrap"
-                  title="下载同源渲染的 PDF 文件"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>PDF</span>
-                </a>
+                <ExportFormatMenu
+                  pid={pid}
+                  label="更多格式"
+                  canDownloadRendered={true}
+                  canDownloadNotes={true}
+                />
                 <a
                   href={`/api/projects/${pid}/download`}
                   download

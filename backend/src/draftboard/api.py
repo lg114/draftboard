@@ -6,14 +6,17 @@ agent use — there is no second generation path here.  Long work (model
 outline generation, slide generation + export) runs as persisted tasks.
 """
 
+import io
 import json
 import pathlib
 import re
 import shutil
 import time
 import uuid
+import zipfile
 from contextlib import asynccontextmanager
 from typing import Optional
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, UploadFile
@@ -862,9 +865,113 @@ def latest_result(project_id: str):
     return reports[-1]
 
 
+_SAFE_FILENAME_RE = re.compile(r'[\\/:*?"<>|\r\n\t]+')
+_LAYOUT_LABELS_CN = {
+    "cover": "封面",
+    "content": "正文",
+    "bullets": "分点",
+    "two_column": "双栏",
+    "text_image": "图文",
+    "closing": "尾页",
+}
+
+
+def _safe_download_stem(project_id: str) -> str:
+    """Resolve the project's human-readable name as a safe download filename stem."""
+    meta_path = _root() / project_id / "meta.json"
+    raw_name = ""
+    if meta_path.exists():
+        try:
+            loaded = load_json(meta_path)
+            if isinstance(loaded, dict):
+                raw_name = str(loaded.get("name") or "").strip()
+        except Exception:
+            pass
+    cleaned = _SAFE_FILENAME_RE.sub("_", raw_name)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ._-")
+    if len(cleaned) > 80:
+        cleaned = cleaned[:80].rstrip(" ._-")
+    return cleaned or project_id
+
+
+def _content_disposition(filename: str) -> str:
+    """Build an RFC 5987 UTF-8 Content-Disposition attachment header."""
+    ascii_fallback = re.sub(r"[^\x20-\x7e]+", "_", filename).replace('"', "'").strip(" _")
+    if not ascii_fallback or ascii_fallback.startswith("."):
+        suffix = pathlib.Path(filename).suffix
+        ascii_fallback = f"draftboard_export{suffix}"
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(filename, safe="")}'
+
+
+def _format_fragment_location_cn(location: str) -> str:
+    loc = (location or "").strip()
+    if not loc:
+        return ""
+    m = re.fullmatch(r"P(\d+)\s+L(\d+)-L(\d+)", loc, re.IGNORECASE)
+    if m:
+        return (
+            f"第 {m.group(1)} 页 第 {m.group(2)} 行"
+            if m.group(2) == m.group(3)
+            else f"第 {m.group(1)} 页 第 {m.group(2)}–{m.group(3)} 行"
+        )
+    m = re.fullmatch(r"L(\d+)-L(\d+)", loc, re.IGNORECASE)
+    if m:
+        return (
+            f"第 {m.group(1)} 行"
+            if m.group(1) == m.group(2)
+            else f"第 {m.group(1)}–{m.group(2)} 行"
+        )
+    m = re.fullmatch(r"L(\d+)", loc, re.IGNORECASE)
+    if m:
+        return f"第 {m.group(1)} 行"
+    m = re.fullmatch(r"P(\d+)-P(\d+)", loc, re.IGNORECASE)
+    if m:
+        return (
+            f"第 {m.group(1)} 页"
+            if m.group(1) == m.group(2)
+            else f"第 {m.group(1)}–{m.group(2)} 页"
+        )
+    m = re.fullmatch(r"P(\d+)", loc, re.IGNORECASE)
+    if m:
+        return f"第 {m.group(1)} 页"
+    return loc
+
+
+def _clean_excerpt_md(raw: str) -> str:
+    lines: list[str] = []
+    for line in (raw or "").splitlines():
+        cleaned = re.sub(r"^\s{0,3}#{1,6}\s+", "", line)
+        cleaned = re.sub(r"^\s*>\s?", "", cleaned)
+        cleaned = re.sub(r"\*\*(.+?)\*\*", r"\1", cleaned)
+        cleaned = re.sub(r"__(.+?)__", r"\1", cleaned)
+        cleaned = cleaned.rstrip()
+        if cleaned == "" and (not lines or lines[-1] == ""):
+            continue
+        lines.append(cleaned)
+    return "\n".join(lines).strip()
+
+
+def _resolve_fragment_excerpt(frag, materials_by_id: dict[str, object]) -> str:
+    mat = materials_by_id.get(frag.asset_id)
+    content = getattr(mat, "content", None) if mat is not None else None
+    if content and getattr(mat, "asset_type", "") != "image":
+        m = re.search(r"L(\d+)-L(\d+)$", frag.location or "")
+        if m:
+            start = max(0, int(m.group(1)) - 1)
+            end = int(m.group(2))
+            sliced = "\n".join(content.splitlines()[start:end]).strip()
+            if sliced:
+                return _clean_excerpt_md(sliced)
+        if frag.content_preview:
+            return _clean_excerpt_md(frag.content_preview)
+        return _clean_excerpt_md(content[:360])
+    return _clean_excerpt_md(frag.content_preview or "")
+
+
 @app.get("/api/projects/{project_id}/download")
 def download(project_id: str):
     _require_project(project_id)
+    stem = _safe_download_stem(project_id)
     for report in reversed(_export_reports(project_id)):
         path = report.get("pptx_path")
         if report["success"] and path and pathlib.Path(path).exists():
@@ -874,7 +981,7 @@ def download(project_id: str):
                     "application/vnd.openxmlformats-officedocument."
                     "presentationml.presentation"
                 ),
-                filename=f"{project_id}.pptx",
+                filename=f"{stem}.pptx",
             )
     raise HTTPException(404, "没有可下载的 PPTX：尚未成功导出过文件")
 
@@ -893,10 +1000,165 @@ def download_pdf(project_id: str):
         render_preview(pathlib.Path(report["pptx_path"]), pdir)
     if not pdf_path.exists():
         raise HTTPException(500, "PDF 渲染未生成输出文件")
+    stem = _safe_download_stem(project_id)
     return FileResponse(
         pdf_path,
         media_type="application/pdf",
-        filename=f"{project_id}.pdf",
+        filename=f"{stem}.pdf",
+    )
+
+
+@app.get("/api/projects/{project_id}/download/images")
+def download_images_zip(project_id: str):
+    _require_project(project_id)
+    report = _latest_success_report(project_id)
+    if not report:
+        raise HTTPException(404, "没有可下载的高清图片：尚未成功导出过文件")
+    pdir = _preview_dir(project_id, report)
+    pages = sorted(pdir.glob("page-*.png")) if pdir.exists() else []
+    if not pages:
+        from draftboard.render import render_preview
+
+        pages = render_preview(pathlib.Path(report["pptx_path"]), pdir)
+    if not pages:
+        raise HTTPException(500, "高清图片渲染未生成输出文件")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for idx, page_path in enumerate(pages, start=1):
+            zf.write(page_path, arcname=f"slide-{idx:02d}.png")
+    stem = _safe_download_stem(project_id)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": _content_disposition(f"{stem}_高清图片.zip"),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/api/projects/{project_id}/download/notes")
+def download_speaker_notes(project_id: str):
+    _require_project(project_id)
+    summary = _project_summary(project_id)
+    outlines = _outline_summaries(project_id)
+    if not outlines:
+        raise HTTPException(404, "该项目尚未生成大纲，无法导出讲稿")
+
+    art_meta = _latest_artifact_meta(project_id)
+    exported_ver = art_meta.get("outline_version")
+    target_ver = (
+        exported_ver
+        if exported_ver and any(o["outline_version"] == exported_ver for o in outlines)
+        else max(outlines, key=lambda o: o["mtime"])["outline_version"]
+    )
+    outline_path = _root() / project_id / "outlines" / f"{target_ver}.json"
+    outline_data = load_json(outline_path)
+    items = outline_data.get("items", [])
+
+    mat_output = _raw(tools_module.read_materials)(project_id=project_id)
+    frags_by_id = {f.source_id: f for f in mat_output.source_fragments}
+    mats_by_id = {m.asset_id: m for m in mat_output.materials}
+
+    doc_name = summary["name"] or project_id
+    lines: list[str] = [
+        f"# {doc_name} — 演讲者讲稿与出处核查",
+        "",
+        f"- 共 {len(items)} 页",
+        f"- 大纲版本：`{target_ver}`",
+        "",
+        "---",
+        "",
+    ]
+
+    total = len(items)
+    for idx, item in enumerate(items, start=1):
+        raw_layout = item.get("layout")
+        if raw_layout not in _LAYOUT_LABELS_CN:
+            if idx == 1:
+                raw_layout = "cover"
+            elif idx == total and total > 1:
+                raw_layout = "closing"
+            else:
+                raw_layout = "content"
+        layout_label = _LAYOUT_LABELS_CN.get(raw_layout, "正文")
+        title = (item.get("title") or "未命名页面").replace("\\n", " ").strip()
+        summary_text = (
+            (item.get("summary") or "")
+            .replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .strip()
+        )
+        col_right = (
+            (item.get("column_right") or "")
+            .replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .strip()
+        )
+        image_id = (item.get("image_asset_id") or "").strip()
+        notes = (
+            (item.get("speaker_notes") or "")
+            .replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .strip()
+        )
+        source_ids = [s for s in (item.get("source_ids") or []) if s]
+
+        lines.append(f"## 第 {idx} 页：{title}（{layout_label}）")
+        lines.append("")
+        if summary_text:
+            lines.append("**页面内容**")
+            lines.append("")
+            lines.append(summary_text)
+            if raw_layout == "two_column" and col_right:
+                lines.append("")
+                lines.append("**右栏对比**")
+                lines.append("")
+                lines.append(col_right)
+            if raw_layout == "text_image" and image_id:
+                lines.append("")
+                lines.append(f"配图：`{image_id}`")
+            lines.append("")
+
+        lines.append("**演讲者备注**")
+        lines.append("")
+        lines.append(notes if notes else "（本页未填写演讲者备注）")
+        lines.append("")
+
+        lines.append("**素材出处核查**")
+        lines.append("")
+        if source_ids:
+            for sid in source_ids:
+                frag = frags_by_id.get(sid)
+                if frag:
+                    loc = _format_fragment_location_cn(frag.location)
+                    label = f"`{frag.asset_id}` {loc}".strip()
+                    excerpt = _resolve_fragment_excerpt(frag, mats_by_id)
+                    lines.append(f"- {label}")
+                    if excerpt:
+                        excerpt_one_line = " ".join(excerpt.splitlines()).strip()
+                        if len(excerpt_one_line) > 180:
+                            excerpt_one_line = excerpt_one_line[:180] + "…"
+                        lines.append(f"  > {excerpt_one_line}")
+                else:
+                    lines.append(f"- `{sid}`")
+        else:
+            lines.append("- 待补充素材出处")
+        lines.append("")
+        if idx < total:
+            lines.append("---")
+            lines.append("")
+
+    md_bytes = ("\n".join(lines).rstrip() + "\n").encode("utf-8")
+    stem = _safe_download_stem(project_id)
+    return Response(
+        content=md_bytes,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": _content_disposition(f"{stem}_讲稿.md"),
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -950,7 +1212,7 @@ def render_preview_now(project_id: str):
 
 
 @app.get("/api/projects/{project_id}/preview/{name}")
-def preview_image(project_id: str, name: str):
+def preview_image(project_id: str, name: str, download: bool = False):
     _require_project(project_id)
     if not re.fullmatch(r"page-\d+\.png", name):
         raise HTTPException(400, "非法的预览图片名")
@@ -960,6 +1222,15 @@ def preview_image(project_id: str, name: str):
     path = _preview_dir(project_id, report) / name
     if not path.exists():
         raise HTTPException(404, "预览图片不存在")
+    if download:
+        page_num = int(re.search(r"\d+", name).group(0))
+        stem = _safe_download_stem(project_id)
+        return FileResponse(
+            path,
+            media_type="image/png",
+            filename=f"{stem}_第{page_num}页.png",
+            headers={"Cache-Control": "no-store"},
+        )
     return FileResponse(
         path,
         media_type="image/png",

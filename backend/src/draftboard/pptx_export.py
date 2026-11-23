@@ -504,6 +504,16 @@ def export_pptx(
     prs = Presentation()
     prs.slide_width = Pt(CANVAS_W_PT)
     prs.slide_height = Pt(CANVAS_H_PT)
+    prs.core_properties.author = "Draftboard"
+    deck_title = ""
+    for slide in artifact.slides:
+        for el in slide.elements:
+            if el.type == "title" and el.content.strip():
+                deck_title = " ".join(el.content.split())
+                break
+        if deck_title:
+            break
+    prs.core_properties.title = deck_title or artifact.artifact_id
     blank_layout = prs.slide_layouts[6]
     total_slides = len(artifact.slides)
 

@@ -8,9 +8,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  ImageDown,
   RefreshCw,
 } from "lucide-react";
 import { api, ExportReport, Preview, Project } from "../../../../lib/api";
+import { ExportFormatMenu } from "../../../../components/workspace/ExportFormatMenu";
 
 export default function PreviewPage() {
   const params = useParams<{ id: string }>();
@@ -86,6 +88,11 @@ export default function PreviewPage() {
     }
   }
 
+  const currentPageSrc = preview?.pages?.[selected] || "";
+  const currentPageDownloadUrl = currentPageSrc
+    ? `${currentPageSrc}${currentPageSrc.includes("?") ? "&" : "?"}download=1`
+    : "";
+
   return (
     <div className="min-h-screen flex flex-col bg-stage text-ink">
       {/* Monochrome Translucent Cinema Top Bar */}
@@ -123,14 +130,23 @@ export default function PreviewPage() {
               <span>{rendering ? "渲染中…" : "重新渲染"}</span>
             </button>
           )}
-          <a
-            href={`/api/projects/${pid}/download/pdf`}
-            download
-            className="px-3.5 py-1.5 rounded-full bg-black/[0.06] hover:bg-black/[0.1] text-ink text-[13px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>下载 PDF</span>
-          </a>
+          {currentPageDownloadUrl && (
+            <a
+              href={currentPageDownloadUrl}
+              download
+              className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.06] transition-colors flex items-center gap-1.5 whitespace-nowrap"
+              title={`将第 ${selected + 1} 页保存为高清 PNG 图片`}
+            >
+              <ImageDown className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">保存当前页</span>
+            </a>
+          )}
+          <ExportFormatMenu
+            pid={pid}
+            label="更多格式"
+            canDownloadRendered={Boolean(report?.success)}
+            canDownloadNotes={true}
+          />
           <a
             href={`/api/projects/${pid}/download`}
             download
