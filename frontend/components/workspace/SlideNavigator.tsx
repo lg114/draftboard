@@ -59,10 +59,6 @@ function ThumbSkeleton({
             </div>
           )}
         </div>
-        <div
-          className="w-full h-px opacity-70"
-          style={{ backgroundColor: sw.divider }}
-        />
       </div>
     );
   }
@@ -243,9 +239,9 @@ export function SlideNavigator({
               className="w-full flex items-start gap-2 group cursor-pointer"
             >
               <span
-                className={`w-4 text-right pt-1 text-[11.5px] tabular-nums shrink-0 ${
+                className={`w-4 text-right pt-0.5 text-[13px] tabular-nums shrink-0 ${
                   active
-                    ? "text-ink font-bold"
+                    ? "text-ink font-semibold"
                     : "text-ink-muted font-medium"
                 }`}
               >
@@ -254,7 +250,7 @@ export function SlideNavigator({
 
               <div className="flex-1 min-w-0 relative">
                 <div
-                  className={`aspect-[16/9] w-full rounded-[8px] overflow-hidden p-2 flex flex-col relative transition-all ${
+                  className={`aspect-[16/9] w-full rounded-[4px] overflow-hidden p-2 flex flex-col relative transition-all ${
                     active
                       ? "thumb-selected"
                       : "thumb-idle group-hover:brightness-[0.98]"
@@ -322,7 +318,7 @@ export function SlideNavigator({
         <button
           type="button"
           onClick={onAddItem}
-          className="w-full py-1.5 rounded-[10px] bg-surface hover:bg-black/[0.02] text-[12.5px] font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.08)] transition-all cursor-pointer whitespace-nowrap"
+          className="w-full py-2 rounded-[10px] bg-surface hover:bg-black/[0.02] text-[13px] font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.08)] transition-all cursor-pointer whitespace-nowrap"
         >
           + 新建幻灯片
         </button>

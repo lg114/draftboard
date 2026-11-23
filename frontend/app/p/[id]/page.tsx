@@ -885,7 +885,7 @@ export default function ProjectWorkspacePage() {
               <span className="w-2 h-2 rounded-full bg-danger shrink-0" />
               <span className="font-medium truncate">{humanizedError}</span>
             </div>
-            <div className="flex items-center gap-3 shrink-0 text-[12.5px]">
+            <div className="flex items-center gap-3 shrink-0 text-[13px]">
               {rawError && rawError !== humanizedError && (
                 <button
                   type="button"
@@ -908,7 +908,7 @@ export default function ProjectWorkspacePage() {
             </div>
           </div>
           {showErrorDetail && rawError && (
-            <pre className="max-w-6xl mx-auto mt-2 p-2.5 rounded-xl bg-surface/80 text-[11.5px] font-mono text-danger whitespace-pre-wrap overflow-x-auto">
+            <pre className="max-w-6xl mx-auto mt-2 p-2.5 rounded-xl bg-surface/80 text-[13px] font-mono text-danger whitespace-pre-wrap overflow-x-auto">
               {rawError}
             </pre>
           )}

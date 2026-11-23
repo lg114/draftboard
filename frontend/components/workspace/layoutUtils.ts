@@ -95,7 +95,7 @@ export function normalizeEscapedNewlines(text: string): string {
 
 /**
  * Format raw fragment location tokens (e.g. `L1-L3`, `P2 L1-L10`, `P1`) into
- * clean Chinese labels (`第 1–3 行`, `第 2 页 · 第 1–10 行`, `第 1 页`).
+ * clean Chinese labels (`第 1–3 行`, `第 2 页 第 1–10 行`, `第 1 页`).
  */
 export function formatFragmentLocation(location: string): string {
   const loc = (location || "").trim();
@@ -103,8 +103,8 @@ export function formatFragmentLocation(location: string): string {
   const pdfLine = /^P(\d+)\s+L(\d+)-L(\d+)$/i.exec(loc);
   if (pdfLine) {
     return pdfLine[2] === pdfLine[3]
-      ? `第 ${pdfLine[1]} 页 · 第 ${pdfLine[2]} 行`
-      : `第 ${pdfLine[1]} 页 · 第 ${pdfLine[2]}–${pdfLine[3]} 行`;
+      ? `第 ${pdfLine[1]} 页 第 ${pdfLine[2]} 行`
+      : `第 ${pdfLine[1]} 页 第 ${pdfLine[2]}–${pdfLine[3]} 行`;
   }
   const lineRange = /^L(\d+)-L(\d+)$/i.exec(loc);
   if (lineRange) {

@@ -159,10 +159,6 @@ function SlideCardPreview({
               </div>
             )}
           </div>
-          <div
-            className="w-full h-px shrink-0"
-            style={{ backgroundColor: sw.divider }}
-          />
         </div>
       );
     }

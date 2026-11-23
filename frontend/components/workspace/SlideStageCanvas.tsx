@@ -206,7 +206,7 @@ export function SlideStageCanvas({
         if (w > 0) setScale(w / 960);
       }
       if (colRef.current) {
-        setCompactDock(colRef.current.clientWidth < 640);
+        setCompactDock(colRef.current.clientWidth < 700);
       }
     };
     update();
@@ -227,8 +227,8 @@ export function SlideStageCanvas({
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
 
-  // Automatically display real LibreOffice PNG only when exported & strictly in sync;
-  // any edit or theme switch seamlessly flips to the 960x540 live canvas!
+  // Automatically display rendered PNG only when exported & strictly in sync;
+  // any edit or theme switch seamlessly flips to the live 960x540 canvas!
   const hasRenderedPage = Boolean(preview?.pages && preview.pages[selectedIndex]);
   const settingsInSync =
     Boolean(project?.latest_template_id) &&
@@ -246,14 +246,14 @@ export function SlideStageCanvas({
     issues.length > 0 || Boolean(report && !report.success);
 
   return (
-    <main className="flex-1 bg-stage flex flex-col items-center justify-center px-5 lg:px-8 py-5 min-w-0 min-h-0 overflow-y-auto clean-scroll">
+    <main className="flex-1 bg-stage flex flex-col items-center justify-center px-4 lg:px-6 py-4 min-w-0 min-h-0 overflow-y-auto clean-scroll">
       <div
         ref={colRef}
-        className="w-full max-w-[min(920px,max(360px,calc((100vh-196px)*16/9)))] flex flex-col items-center gap-4 my-auto"
+        className="w-full max-w-[min(1080px,max(420px,calc((100vh-172px)*16/9)))] flex flex-col items-center gap-3.5 my-auto"
       >
         {/* Clean 1-line Quiet Status Above Stage */}
-        <div className="w-full flex items-center justify-between px-1 text-[12.5px] gap-4">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="w-full flex items-center justify-between px-0.5 text-[13px] gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             {isGenerating ? (
               <span className="inline-flex items-center gap-2 text-ink font-medium truncate">
                 <span className="w-2 h-2 rounded-full bg-ink animate-pulse shrink-0" />
@@ -272,9 +272,12 @@ export function SlideStageCanvas({
                 <span className="w-2 h-2 rounded-full bg-danger shrink-0" />
                 <span className="truncate">
                   {firstIssueSlide !== undefined
-                    ? `第 ${firstIssueSlide + 1} 页存在排版溢出或校验异常 · 点击定位 ›`
+                    ? `第 ${firstIssueSlide + 1} 页存在排版溢出或校验异常`
                     : "最近一次排版校验未通过"}
                 </span>
+                {firstIssueSlide !== undefined && (
+                  <span className="shrink-0">点击定位 ›</span>
+                )}
               </button>
             ) : showRenderedImage ? (
               <span className="inline-flex items-center gap-2 text-ink font-medium whitespace-nowrap">
@@ -294,10 +297,10 @@ export function SlideStageCanvas({
           </span>
         </div>
 
-        {/* True 960x540 Proportional Scaled 16:9 Stage */}
+        {/* True 960x540 Proportional Scaled 16:9 Stage (crisp 3px corners matching PPTX output) */}
         <div
           ref={shellRef}
-          className="aspect-[16/9] w-full rounded-[14px] overflow-hidden slide-shadow relative bg-white"
+          className="aspect-[16/9] w-full rounded-[3px] overflow-hidden slide-shadow relative bg-surface"
         >
           {showRenderedImage && preview?.pages[selectedIndex] ? (
             <div
@@ -367,19 +370,8 @@ export function SlideStageCanvas({
                       textAlign: "left",
                     }}
                   >
-                    {item.summary}
+                    {normalizeEscapedNewlines(item.summary)}
                   </div>
-                  {/* Anchoring bottom hairline */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 48,
-                      top: 458,
-                      width: 864,
-                      height: 1,
-                      backgroundColor: sw.divider,
-                    }}
-                  />
                 </>
               ) : layout === "closing" ? (
                 <>
@@ -427,7 +419,7 @@ export function SlideStageCanvas({
                       textAlign: "center",
                     }}
                   >
-                    {item.summary}
+                    {normalizeEscapedNewlines(item.summary)}
                   </div>
                   <div
                     style={{
@@ -576,7 +568,7 @@ export function SlideStageCanvas({
                           color: bodyCol,
                         }}
                       >
-                        {item.summary}
+                        {normalizeEscapedNewlines(item.summary)}
                       </div>
                       <div
                         onClick={() => onFocusField("input-col-right")}
@@ -592,7 +584,9 @@ export function SlideStageCanvas({
                           color: item.column_right ? bodyCol : sw.muted,
                         }}
                       >
-                        {item.column_right || "（请在右侧填写右栏内容）"}
+                        {item.column_right
+                          ? normalizeEscapedNewlines(item.column_right)
+                          : "（请在右侧填写右栏内容）"}
                       </div>
                     </>
                   ) : layout === "text_image" ? (
@@ -611,7 +605,7 @@ export function SlideStageCanvas({
                           color: bodyCol,
                         }}
                       >
-                        {item.summary}
+                        {normalizeEscapedNewlines(item.summary)}
                       </div>
                       {/* Expanded 456x372 image visual stage */}
                       <div
@@ -675,7 +669,7 @@ export function SlideStageCanvas({
                         color: bodyCol,
                       }}
                     >
-                      {item.summary}
+                      {normalizeEscapedNewlines(item.summary)}
                     </div>
                   )}
                 </>
@@ -708,8 +702,8 @@ export function SlideStageCanvas({
                 className="fixed inset-0 z-40"
                 onClick={() => setThemePopoverOpen(false)}
               />
-              <div className="absolute bottom-full left-0 mb-2.5 w-[312px] apple-glass dock-shadow rounded-2xl p-3 z-50">
-                <div className="text-[12px] font-semibold text-ink-secondary px-1 pb-2.5">
+              <div className="absolute bottom-full left-0 mb-2.5 w-[328px] apple-glass dock-shadow rounded-2xl p-3 z-50">
+                <div className="text-[13px] font-semibold text-ink-secondary px-1 pb-2.5">
                   选择演示主题
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -730,7 +724,7 @@ export function SlideStageCanvas({
                         }`}
                       >
                         <div
-                          className="aspect-[16/9] rounded-lg overflow-hidden mb-1.5 p-2.5 flex flex-col justify-between border border-black/[0.08]"
+                          className="aspect-[16/9] rounded-[4px] overflow-hidden mb-1.5 p-2.5 flex flex-col justify-between border border-black/[0.08]"
                           style={{ backgroundColor: th.swatches.cover_bg }}
                         >
                           <div className="flex items-center justify-between">
@@ -754,10 +748,10 @@ export function SlideStageCanvas({
                             />
                           </div>
                         </div>
-                        <div className="text-[12.5px] font-semibold text-ink">
+                        <div className="text-[13px] font-semibold text-ink">
                           {th.name}
                         </div>
-                        <div className="text-[11px] text-ink-muted truncate">
+                        <div className="text-[13px] text-ink-muted truncate">
                           {th.description}
                         </div>
                       </button>
@@ -783,17 +777,17 @@ export function SlideStageCanvas({
                 }}
               />
               {!compactDock && (
-                <span className="text-[12.5px] font-medium text-ink">
+                <span className="text-[13px] font-medium text-ink">
                   {activeTheme.name}
                 </span>
               )}
-              <ChevronDown className="w-3 h-3 text-ink-muted shrink-0" />
+              <ChevronDown className="w-3.5 h-3.5 text-ink-muted shrink-0" />
             </button>
 
             <div className="w-px h-5 bg-black/[0.08] shrink-0" />
 
-            {/* Segmented Layout Control with Distinct 16:9 Miniature Diagrams */}
-            <div className="flex items-center bg-black/[0.05] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0">
+            {/* Segmented Layout Control — crisp white sliding pill on gray track (Item 4) */}
+            <div className="flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0">
               {LAYOUT_OPTIONS.map((opt) => {
                 const active = layout === opt.value;
                 return (
@@ -802,9 +796,9 @@ export function SlideStageCanvas({
                     type="button"
                     onClick={() => onSelectLayout(opt.value)}
                     title={opt.label}
-                    className={`px-2.5 py-1 rounded-[9px] text-[12px] flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-2.5 py-1 rounded-[9px] text-[13px] flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                       active
-                        ? "bg-ink text-white font-medium shadow-[0_1px_3px_rgba(0,0,0,0.16)]"
+                        ? "bg-surface text-ink font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]"
                         : "text-ink-secondary hover:text-ink font-medium"
                     }`}
                   >
@@ -817,23 +811,27 @@ export function SlideStageCanvas({
 
             <div className="w-px h-5 bg-black/[0.08] shrink-0" />
 
-            {/* Auto-Fit Toggle */}
+            {/* Explicit Auto-Fit Pill Toggle Switch with Clear Tooltip (Item 10) */}
             <button
               type="button"
+              role="switch"
+              aria-checked={autoFit}
               onClick={onToggleAutoFit}
-              title={
-                autoFit
-                  ? "自动缩字已开启（正文轻度超框时自动按 20→18→16→14pt 退让）"
-                  : "自动缩字已关闭（严格按固定字号测量）"
-              }
-              className="px-2.5 py-1.5 rounded-xl hover:bg-black/[0.05] text-[12.5px] font-medium text-ink flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0"
+              title="文字过多时自动缩小，防止超出版面"
+              className="px-2.5 py-1.5 rounded-xl hover:bg-black/[0.05] text-[13px] font-medium text-ink flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0"
             >
               <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  autoFit ? "bg-ink" : "bg-ink-muted/50"
+                className={`w-8 h-[18px] rounded-full p-[2px] flex items-center transition-colors shrink-0 ${
+                  autoFit ? "bg-ink/75" : "bg-black/20"
                 }`}
-              />
-              {!compactDock && <span>{autoFit ? "自动缩字" : "固定字号"}</span>}
+              >
+                <span
+                  className={`w-3.5 h-3.5 rounded-full bg-surface shadow-xs transition-transform ${
+                    autoFit ? "translate-x-[14px]" : "translate-x-0"
+                  }`}
+                />
+              </span>
+              {!compactDock && <span>自动缩字</span>}
             </button>
           </div>
         </div>

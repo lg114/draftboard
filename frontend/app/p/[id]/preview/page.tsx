@@ -99,9 +99,14 @@ export default function PreviewPage() {
             <span>返回工作台</span>
           </Link>
           <span className="text-black/20">/</span>
-          <span className="text-[14.5px] font-semibold text-ink truncate">
-            {projectName || pid} · 放映预览
-          </span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-[14.5px] font-semibold text-ink truncate">
+              {projectName || pid}
+            </span>
+            <span className="text-[13px] text-ink-secondary whitespace-nowrap">
+              放映预览
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -110,7 +115,7 @@ export default function PreviewPage() {
               type="button"
               onClick={renderNow}
               disabled={rendering}
-              className="px-3 py-1.5 rounded-full text-[12.5px] font-medium text-ink hover:bg-black/[0.06] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap"
+              className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.06] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${rendering ? "animate-spin" : ""}`}
@@ -121,7 +126,7 @@ export default function PreviewPage() {
           <a
             href={`/api/projects/${pid}/download/pdf`}
             download
-            className="px-3.5 py-1.5 rounded-full bg-black/[0.06] hover:bg-black/[0.1] text-ink text-[12.5px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
+            className="px-3.5 py-1.5 rounded-full bg-black/[0.06] hover:bg-black/[0.1] text-ink text-[13px] font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             <span>下载 PDF</span>
@@ -129,7 +134,7 @@ export default function PreviewPage() {
           <a
             href={`/api/projects/${pid}/download`}
             download
-            className="ui-btn-primary px-4 py-1.5 text-[12.5px] flex items-center gap-1.5 whitespace-nowrap"
+            className="ui-btn-primary px-4 py-1.5 text-[13px] flex items-center gap-1.5 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             <span>下载 PPTX</span>
@@ -137,12 +142,12 @@ export default function PreviewPage() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 gap-6">
+      <main className="flex-1 flex flex-col items-center justify-center p-5 sm:p-6 gap-5">
         {preview && preview.pages.length > 0 ? (
           <>
-            {/* Large 16:9 Stage */}
-            <div className="w-full max-w-[1040px] relative group">
-              <div className="aspect-[16/9] w-full rounded-[14px] bg-surface overflow-hidden slide-shadow flex items-center justify-center">
+            {/* Large 16:9 Stage (crisp 3px corners matching PPTX output) */}
+            <div className="w-full max-w-[1120px] relative group">
+              <div className="aspect-[16/9] w-full rounded-[3px] bg-surface overflow-hidden slide-shadow flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={preview.pages[selected]}
@@ -174,14 +179,14 @@ export default function PreviewPage() {
             </div>
 
             {/* Bottom Horizontal Thumbnail Filmstrip */}
-            <div className="w-full max-w-[1040px] flex flex-col items-center gap-3">
+            <div className="w-full max-w-[1120px] flex flex-col items-center gap-3">
               <div className="flex items-center gap-3 overflow-x-auto max-w-full pb-2 px-1 clean-scroll">
                 {preview.pages.map((src, idx) => (
                   <button
                     key={src}
                     type="button"
                     onClick={() => setSelected(idx)}
-                    className={`w-28 aspect-[16/9] rounded-[8px] bg-surface overflow-hidden shrink-0 transition-all cursor-pointer ${
+                    className={`w-28 aspect-[16/9] rounded-[4px] bg-surface overflow-hidden shrink-0 transition-all cursor-pointer ${
                       idx === selected
                         ? "thumb-selected"
                         : "thumb-idle opacity-75 hover:opacity-100"
@@ -196,8 +201,12 @@ export default function PreviewPage() {
                   </button>
                 ))}
               </div>
-              <div className="text-[12px] text-ink-secondary tabular-nums">
-                第 {selected + 1} / {preview.pages.length} 页 · 支持键盘 ← / → 翻页 · 最终效果以 PowerPoint 打开为准
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[13px] text-ink-secondary tabular-nums">
+                <span className="font-medium text-ink">
+                  第 {selected + 1} / {preview.pages.length} 页
+                </span>
+                <span>支持键盘 ← / → 翻页</span>
+                <span>最终效果以 PowerPoint 打开为准</span>
               </div>
             </div>
           </>

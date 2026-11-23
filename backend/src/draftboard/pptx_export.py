@@ -270,9 +270,8 @@ def _apply_theme_chrome(
 
     if theme.decorative:
         if layout == SlideLayout.COVER:
-            # Editorial top-left accent bar + bottom anchoring hairline
+            # Clean Keynote editorial top-left accent bar
             _add_line(pptx_slide, 48, 146, 108, 146, theme.accent_rgb, width_pt=3.5)
-            _add_line(pptx_slide, 48, 458, 912, 458, theme.divider_rgb, width_pt=1.0)
         elif layout == SlideLayout.CLOSING:
             # Centered minimal accent rule above closing title + bottom hairline
             _add_line(pptx_slide, 452, 140, 508, 140, theme.accent_rgb, width_pt=3.0)
