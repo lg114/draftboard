@@ -189,11 +189,14 @@ class LLMProfileUpsertRequest(BaseModel):
     clear_api_key: bool = False
     inherit_env_key: bool = False
     model: str
+    models: Optional[list[str]] = None
     activate: bool = True
 
 
 class LLMActiveProfileRequest(BaseModel):
     profile_id: Optional[str] = None
+    model: Optional[str] = None
+    models: Optional[list[str]] = None
 
 
 class LLMConnectionTestRequest(BaseModel):
@@ -205,6 +208,14 @@ class LLMConnectionTestRequest(BaseModel):
     model: str = ""
 
 
+class LLMFetchModelsRequest(BaseModel):
+    profile_id: Optional[str] = None
+    use_env: bool = False
+    provider: str = "openai"
+    base_url: str = ""
+    api_key: Optional[str] = None
+
+
 @app.get("/api/settings/llm")
 def get_llm_settings():
     return llm_config.get_public_llm_settings()
@@ -212,27 +223,41 @@ def get_llm_settings():
 
 @app.post("/api/settings/llm/profiles")
 def save_llm_profile(req: LLMProfileUpsertRequest):
-    return llm_config.upsert_llm_profile(
-        profile_id=req.profile_id,
-        name=req.name,
-        provider=req.provider,
-        base_url=req.base_url,
-        api_key=req.api_key,
-        clear_api_key=req.clear_api_key,
-        inherit_env_key=req.inherit_env_key,
-        model=req.model,
-        activate=req.activate,
-    )
+    try:
+        return llm_config.upsert_llm_profile(
+            profile_id=req.profile_id,
+            name=req.name,
+            provider=req.provider,
+            base_url=req.base_url,
+            api_key=req.api_key,
+            clear_api_key=req.clear_api_key,
+            inherit_env_key=req.inherit_env_key,
+            model=req.model,
+            models=req.models,
+            activate=req.activate,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/settings/llm/active")
 def activate_llm_profile(req: LLMActiveProfileRequest):
-    return llm_config.set_active_llm_profile(req.profile_id)
+    try:
+        return llm_config.set_active_llm_profile(
+            req.profile_id,
+            model=req.model,
+            models=req.models,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.delete("/api/settings/llm/profiles/{profile_id}")
 def remove_llm_profile(profile_id: str):
-    return llm_config.delete_llm_profile(profile_id)
+    try:
+        return llm_config.delete_llm_profile(profile_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.post("/api/settings/llm/test")
@@ -244,6 +269,17 @@ async def test_llm_settings(req: LLMConnectionTestRequest):
         base_url=req.base_url,
         api_key=req.api_key,
         model=req.model,
+    )
+
+
+@app.post("/api/settings/llm/models")
+async def list_provider_models(req: LLMFetchModelsRequest):
+    return await llm_config.fetch_provider_models(
+        profile_id=req.profile_id,
+        use_env=req.use_env,
+        provider=req.provider,
+        base_url=req.base_url,
+        api_key=req.api_key,
     )
 
 

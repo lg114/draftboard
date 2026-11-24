@@ -10,7 +10,8 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import type { Material } from "../../lib/api";
+import type { LLMSettingsResponse, Material } from "../../lib/api";
+import { ModelQuickSwitcher } from "../ModelQuickSwitcher";
 import { formatAssetLabel } from "./SlideInspector";
 
 interface EmptyStageOnboardingProps {
@@ -18,6 +19,8 @@ interface EmptyStageOnboardingProps {
   isGenerating: boolean;
   llmConfigured?: boolean;
   activeModelLabel?: string;
+  llmSettings?: LLMSettingsResponse | null;
+  onLLMSettingsUpdated?: (next: LLMSettingsResponse) => void;
   onOpenLLMSettings?: () => void;
   onUploadClick: () => void;
   onDropFiles: (files: FileList) => void;
@@ -37,6 +40,8 @@ export function EmptyStageOnboarding({
   isGenerating,
   llmConfigured = true,
   activeModelLabel = "",
+  llmSettings = null,
+  onLLMSettingsUpdated,
   onOpenLLMSettings,
   onUploadClick,
   onDropFiles,
@@ -399,16 +404,25 @@ export function EmptyStageOnboarding({
             <label className="block text-[13px] font-medium text-ink-secondary">
               提炼方向与要求（选填）
             </label>
-            {llmConfigured && activeModelLabel && onOpenLLMSettings && (
-              <button
-                type="button"
-                onClick={onOpenLLMSettings}
-                title="点击切换或修改模型设置"
-                className="inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer shrink-0"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span className="truncate max-w-[160px]">{activeModelLabel}</span>
-              </button>
+            {llmConfigured && onOpenLLMSettings && (
+              llmSettings ? (
+                <ModelQuickSwitcher
+                  settings={llmSettings}
+                  onSettingsUpdated={onLLMSettingsUpdated}
+                  onOpenSettings={onOpenLLMSettings}
+                  align="right"
+                />
+              ) : activeModelLabel ? (
+                <button
+                  type="button"
+                  onClick={onOpenLLMSettings}
+                  title="点击切换或修改模型设置"
+                  className="inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer shrink-0"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span className="truncate max-w-[160px]">{activeModelLabel}</span>
+                </button>
+              ) : null
             )}
           </div>
           <input

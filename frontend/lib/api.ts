@@ -374,6 +374,7 @@ export interface LLMProviderPreset {
   default_model: string;
   requires_api_key: boolean;
   suggested_models: string[];
+  api_key_url?: string;
 }
 
 export interface LLMProfilePublic {
@@ -382,6 +383,7 @@ export interface LLMProfilePublic {
   provider: string;
   base_url: string;
   model: string;
+  models?: string[];
   has_api_key: boolean;
   api_key_masked: string;
   usable: boolean;
@@ -391,6 +393,8 @@ export interface LLMActiveSummary {
   name: string;
   provider: string;
   model: string;
+  default_env_model?: string;
+  models?: string[];
   base_url: string;
   source?: "profile" | "env";
   has_api_key?: boolean;
@@ -411,6 +415,12 @@ export interface LLMConnectionTestResponse {
   ok: boolean;
   latency_ms?: number;
   model?: string;
+  error?: string;
+}
+
+export interface LLMFetchModelsResponse {
+  ok: boolean;
+  models: string[];
   error?: string;
 }
 

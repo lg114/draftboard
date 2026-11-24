@@ -158,3 +158,73 @@ def test_multi_profile_crud_masking_and_env_fallback(client: TestClient, monkeyp
     r_del2 = client.delete(f"/api/settings/llm/profiles/{p2_id}")
     assert r_del2.status_code == 200
     assert r_del2.json()["profiles"] == []
+
+
+def test_env_instant_model_switch_and_provider_inference(client: TestClient, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSyEnvKey8888")
+    monkeypatch.setenv("DRAFTBOARD_MODEL", "gemini-2.5-flash-lite")
+
+    s0 = client.get("/api/settings/llm").json()
+    assert s0["source"] == "env"
+    assert s0["env_detected"]["provider"] == "gemini"
+    assert s0["env_detected"]["model"] == "gemini-2.5-flash-lite"
+    assert "gemini-2.5-pro" in s0["env_detected"]["models"]
+
+    # Switch active model directly on .env provider WITHOUT creating a duplicate profile
+    r_sw = client.post(
+        "/api/settings/llm/active",
+        json={
+            "profile_id": None,
+            "model": "gemini-2.5-pro",
+            "models": ["gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.5-flash"],
+        },
+    )
+    assert r_sw.status_code == 200
+    s1 = r_sw.json()
+    assert s1["source"] == "env"
+    assert s1["profiles"] == []
+    assert s1["active_summary"]["model"] == "gemini-2.5-pro"
+    eff = llm_config.resolve_effective_llm_config()
+    assert eff.model == "gemini-2.5-pro"
+    assert eff.api_key == "AIzaSyEnvKey8888"
+
+    # Also test URL-based provider inference (SiliconFlow)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-sf-1234567890")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1")
+    s_sf = client.get("/api/settings/llm").json()
+    assert s_sf["env_detected"]["provider"] == "siliconflow"
+
+
+def test_fetch_provider_models_filters_and_strips_prefix(client: TestClient, monkeypatch):
+    from types import SimpleNamespace
+
+    class DummyModelsAPI:
+        async def list(self):
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(id="models/gemini-2.5-pro"),
+                    SimpleNamespace(id="models/gemini-2.5-flash"),
+                    SimpleNamespace(id="models/text-embedding-004"),
+                    SimpleNamespace(id="whisper-1"),
+                ]
+            )
+
+    class DummyAsyncOpenAI:
+        def __init__(self, **kwargs):
+            self.models = DummyModelsAPI()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(llm_config, "AsyncOpenAI", DummyAsyncOpenAI)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSyEnvKey7777")
+
+    r = client.post(
+        "/api/settings/llm/models",
+        json={"use_env": True, "provider": "gemini"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["models"] == ["gemini-2.5-flash", "gemini-2.5-pro"]

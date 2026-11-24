@@ -19,12 +19,14 @@ import {
 } from "lucide-react";
 import type {
   Issue,
+  LLMSettingsResponse,
   Material,
   OutlineItem,
   SavedLayoutPreset,
   SlideRefineCandidate,
   SourceFragment,
 } from "../../lib/api";
+import { ModelQuickSwitcher } from "../ModelQuickSwitcher";
 import {
   cleanMarkdownExcerpt,
   EditableOutlineField,
@@ -62,6 +64,8 @@ interface SlideInspectorProps {
   onUploadClick: () => void;
   llmConfigured?: boolean;
   activeModelLabel?: string;
+  llmSettings?: LLMSettingsResponse | null;
+  onLLMSettingsUpdated?: (next: LLMSettingsResponse) => void;
   onOpenLLMSettings?: () => void;
   embedded?: boolean;
 }
@@ -159,6 +163,8 @@ export function SlideInspector({
   onUploadClick,
   llmConfigured = true,
   activeModelLabel = "",
+  llmSettings = null,
+  onLLMSettingsUpdated,
   onOpenLLMSettings,
   embedded = false,
 }: SlideInspectorProps) {
@@ -1000,28 +1006,37 @@ export function SlideInspector({
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>本页 AI 精修</span>
               </span>
-              {onOpenLLMSettings && (
-                <button
-                  type="button"
-                  onClick={onOpenLLMSettings}
-                  aria-label="模型设置"
-                  title={
-                    llmConfigured && activeModelLabel
-                      ? `当前模型：${activeModelLabel}，点击切换或修改`
-                      : "尚未配置大模型，点击前往模型设置"
-                  }
-                  className="inline-flex items-center gap-1.5 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer min-w-0"
-                >
-                  {!llmConfigured && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
-                  )}
-                  <span className="truncate max-w-[160px] font-mono">
-                    {llmConfigured && activeModelLabel
-                      ? activeModelLabel
-                      : "未配置模型"}
-                  </span>
-                </button>
-              )}
+              {onOpenLLMSettings &&
+                (llmSettings ? (
+                  <ModelQuickSwitcher
+                    settings={llmSettings}
+                    onSettingsUpdated={onLLMSettingsUpdated}
+                    onOpenSettings={onOpenLLMSettings}
+                    align="right"
+                    compact={true}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenLLMSettings}
+                    aria-label="模型设置"
+                    title={
+                      llmConfigured && activeModelLabel
+                        ? `当前模型：${activeModelLabel}，点击切换或修改`
+                        : "尚未配置大模型，点击前往模型设置"
+                    }
+                    className="inline-flex items-center gap-1.5 text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer min-w-0"
+                  >
+                    {!llmConfigured && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
+                    )}
+                    <span className="truncate max-w-[160px] font-mono">
+                      {llmConfigured && activeModelLabel
+                        ? activeModelLabel
+                        : "未配置模型"}
+                    </span>
+                  </button>
+                ))}
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">

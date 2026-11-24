@@ -21,10 +21,12 @@ import type {
   ChatDeckChanges,
   ChatMessage,
   ChatToolStep,
+  LLMSettingsResponse,
   Material,
   Outline,
   ThemeOption,
 } from "../../lib/api";
+import { ModelQuickSwitcher } from "../ModelQuickSwitcher";
 import { inferEffectiveLayout, LAYOUT_LABELS } from "./layoutUtils";
 
 interface AgentChatPanelProps {
@@ -40,6 +42,8 @@ interface AgentChatPanelProps {
   isStreaming: boolean;
   llmConfigured: boolean;
   activeModelLabel?: string;
+  llmSettings?: LLMSettingsResponse | null;
+  onLLMSettingsUpdated?: (next: LLMSettingsResponse) => void;
   diffPreviewVersion?: string | null;
   onToggleDiffPreview?: (beforeVersion: string | null) => void;
   onOpenLLMSettings: () => void;
@@ -529,6 +533,8 @@ export function AgentChatPanel({
   isStreaming,
   llmConfigured,
   activeModelLabel = "",
+  llmSettings = null,
+  onLLMSettingsUpdated,
   diffPreviewVersion = null,
   onToggleDiffPreview,
   onOpenLLMSettings,
@@ -913,19 +919,28 @@ export function AgentChatPanel({
               >
                 <AtSign className="w-3.5 h-3.5" />
               </button>
-              <button
-                type="button"
-                onClick={onOpenLLMSettings}
-                title="切换或配置大模型"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer min-w-0"
-              >
-                <Settings className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate max-w-[175px]">
-                  {llmConfigured && activeModelLabel
-                    ? activeModelLabel
-                    : "配置模型"}
-                </span>
-              </button>
+              {llmSettings ? (
+                <ModelQuickSwitcher
+                  settings={llmSettings}
+                  onSettingsUpdated={onLLMSettingsUpdated}
+                  onOpenSettings={onOpenLLMSettings}
+                  align="left"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenLLMSettings}
+                  title="切换或配置大模型"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer min-w-0"
+                >
+                  <Settings className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate max-w-[175px]">
+                    {llmConfigured && activeModelLabel
+                      ? activeModelLabel
+                      : "配置模型"}
+                  </span>
+                </button>
+              )}
               <span className="hidden xl:inline text-[13px] text-ink-muted truncate">
                 {totalSlides > 0
                   ? `第 ${selectedIndex + 1} 页`

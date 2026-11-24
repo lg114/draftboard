@@ -1957,6 +1957,13 @@ export default function ProjectWorkspacePage() {
                   isStreaming={isChatStreaming}
                   llmConfigured={llmSettings ? llmSettings.configured : true}
                   activeModelLabel={llmSettings?.active_summary?.model || ""}
+                  llmSettings={llmSettings}
+                  onLLMSettingsUpdated={(next) => {
+                    setLlmSettings(next);
+                    if (next.active_summary) {
+                      flashToast(`已切换模型：${next.active_summary.model}`);
+                    }
+                  }}
                   diffPreviewVersion={diffPreviewVersion}
                   onToggleDiffPreview={(ver) => void toggleDiffPreview(ver)}
                   onOpenLLMSettings={() => {
@@ -1982,6 +1989,13 @@ export default function ProjectWorkspacePage() {
                   slideIssues={currentSlideIssues}
                   llmConfigured={llmSettings ? llmSettings.configured : true}
                   activeModelLabel={llmSettings?.active_summary?.model || ""}
+                  llmSettings={llmSettings}
+                  onLLMSettingsUpdated={(next) => {
+                    setLlmSettings(next);
+                    if (next.active_summary) {
+                      flashToast(`已切换模型：${next.active_summary.model}`);
+                    }
+                  }}
                   onOpenLLMSettings={() => {
                     setLlmModalReason(null);
                     setShowLLMModal(true);
@@ -2024,6 +2038,13 @@ export default function ProjectWorkspacePage() {
             isGenerating={isGenerating}
             llmConfigured={llmSettings ? llmSettings.configured : true}
             activeModelLabel={llmSettings?.active_summary?.model || ""}
+            llmSettings={llmSettings}
+            onLLMSettingsUpdated={(next) => {
+              setLlmSettings(next);
+              if (next.active_summary) {
+                flashToast(`已切换模型：${next.active_summary.model}`);
+              }
+            }}
             onOpenLLMSettings={() => {
               setLlmModalReason(null);
               setShowLLMModal(true);
@@ -2067,6 +2088,7 @@ export default function ProjectWorkspacePage() {
                 pid={pid}
                 outline={null}
                 selectedIndex={0}
+                materials={materials}
                 materialsCount={materials.length}
                 themes={themes}
                 selectedThemeId={selectedThemeId}
@@ -2075,6 +2097,13 @@ export default function ProjectWorkspacePage() {
                 isStreaming={isChatStreaming}
                 llmConfigured={llmSettings ? llmSettings.configured : true}
                 activeModelLabel={llmSettings?.active_summary?.model || ""}
+                llmSettings={llmSettings}
+                onLLMSettingsUpdated={(next) => {
+                  setLlmSettings(next);
+                  if (next.active_summary) {
+                    flashToast(`已切换模型：${next.active_summary.model}`);
+                  }
+                }}
                 onOpenLLMSettings={() => {
                   setLlmModalReason(null);
                   setShowLLMModal(true);
