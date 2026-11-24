@@ -71,13 +71,21 @@ def main() -> None:
 
     if args.command == "run":
         from draftboard.agent import run_agent
+        from draftboard.outline_run import commit_outline_run
 
         try:
-            result = asyncio.run(run_agent(args.prompt))
+            result, version = commit_outline_run(
+                lambda: asyncio.run(run_agent(args.prompt))
+            )
             print(result)
+            print(f"outline_version={version}")
             if args.output:
                 pathlib.Path(args.output).write_text(
-                    json.dumps({"result": result}, ensure_ascii=False, indent=2),
+                    json.dumps(
+                        {"result": result, "outline_version": version},
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
                     encoding="utf-8",
                 )
             sys.exit(0)

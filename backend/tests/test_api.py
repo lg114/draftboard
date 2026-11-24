@@ -253,6 +253,37 @@ def test_agent_saves_no_outline_fails_clearly(client, monkeypatch):
     assert "没有保存任何大纲" in task["error"]
 
 
+def test_existing_outline_does_not_mask_unsaved_run(client, env, monkeypatch):
+    """A finished agent that writes no outline must not reuse an older file."""
+    import os
+
+    pid = _create(client)
+    _upload_txt(client, pid)
+    monkeypatch.setattr(tasks, "outline_via_agent", _fake_outline_agent)
+    old = _run_outline(client, pid)
+    old_path = env / pid / "outlines" / f"{old}.json"
+    old_bytes = old_path.read_bytes()
+
+    def speak_and_plant(project_id, user_prompt=None):
+        planted = env / project_id / "outlines" / "v-planted1.json"
+        planted.write_text(
+            old_path.read_text(encoding="utf-8").replace(old, "v-planted1"),
+            encoding="utf-8",
+        )
+        future = time.time() + 3600
+        os.utime(planted, (future, future))
+        return "已保存大纲 v-planted1"
+
+    monkeypatch.setattr(tasks, "outline_via_agent", speak_and_plant)
+    r = client.post(f"/api/projects/{pid}/outline/generate")
+    task = _wait_task(client, pid, r.json()["task_id"])
+    assert task["status"] == "failed", task
+    assert "没有保存任何大纲" in task["error"]
+    assert "v-planted1" not in task["error"]
+    assert task["result"] == {}
+    assert old_path.read_bytes() == old_bytes
+
+
 # ── Task guards and restart recovery ─────────────────────────────────────────
 
 

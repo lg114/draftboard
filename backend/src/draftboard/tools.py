@@ -45,6 +45,7 @@ from draftboard.models import (
     validate_ir,
     validate_outline,
 )
+from draftboard.outline_run import active_outline_run
 from draftboard.pptx_export import export_pptx
 from draftboard.storage import STORAGE_ROOT, ProjectStorage
 
@@ -671,19 +672,27 @@ def propose_outline(
             reference unknown source fragments, or a layout cannot be built
             from an outline.  Nothing is saved on failure.
     """
+    run = active_outline_run()
     storage = _get_storage(project_id)
-    cleaned_items = [normalize_outline_item_text(it) for it in items]
-    errors = validate_outline(cleaned_items, storage.load_source_ids())
-    if errors:
-        raise ValueError("Invalid outline:\n" + "\n".join(errors))
-    outline_version = f"v-{uuid.uuid4().hex[:8]}"
-    outline = Outline(
-        outline_version=outline_version,
-        project_id=project_id,
-        items=cleaned_items,
-        is_confirmed=False,
-    )
-    storage.save_outline(outline)
+    try:
+        cleaned_items = [normalize_outline_item_text(it) for it in items]
+        errors = validate_outline(cleaned_items, storage.load_source_ids())
+        if errors:
+            raise ValueError("Invalid outline:\n" + "\n".join(errors))
+        outline_version = f"v-{uuid.uuid4().hex[:8]}"
+        outline = Outline(
+            outline_version=outline_version,
+            project_id=project_id,
+            items=cleaned_items,
+            is_confirmed=False,
+        )
+        storage.save_outline(outline)
+    except Exception as exc:
+        if run is not None:
+            run.note_failure(exc)
+        raise
+    if run is not None:
+        run.note_success(outline.outline_version)
     return outline
 
 
