@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from draftboard.models import TaskRecord, TaskStatus
+from draftboard.outline_run import commit_outline_run
 from draftboard.storage import ProjectStorage, load_json
 
 _submit_lock = threading.Lock()
@@ -260,6 +261,8 @@ def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> Non
     """Ask the real agent to read materials and propose an outline.
 
     Tests monkeypatch this function; everything downstream is shared code.
+    This function does not decide success. The caller installs an outline run
+    and accepts only a version propose_outline persisted during that run.
     """
     from draftboard.agent import run_agent
     from draftboard.llm_config import classify_llm_error, resolve_effective_llm_config
@@ -276,14 +279,12 @@ def outline_via_agent(project_id: str, user_prompt: Optional[str] = None) -> Non
         raise RuntimeError(f"{friendly}（原始错误：{str(exc)[:220]}）") from exc
 
 
-def _latest_outline_version(root: pathlib.Path, project_id: str) -> Optional[str]:
-    outlines_dir = root / project_id / "outlines"
-    if not outlines_dir.exists():
-        return None
-    files = list(outlines_dir.glob("*.json"))
-    if not files:
-        return None
-    return max(files, key=lambda p: p.stat().st_mtime).stem
+def _call_outline_agent(project_id: str, user_prompt: Optional[str]) -> None:
+    params = inspect.signature(outline_via_agent).parameters
+    if user_prompt and len(params) >= 2:
+        outline_via_agent(project_id, user_prompt)
+    else:
+        outline_via_agent(project_id)
 
 
 def outline_work(
@@ -297,14 +298,9 @@ def outline_work(
         if not materials:
             raise RuntimeError("项目中暂无可用素材，请先上传文件或输入主题笔记后再生成大纲。")
         ctx.set_step("读取材料并生成大纲")
-        params = inspect.signature(outline_via_agent).parameters
-        if user_prompt and len(params) >= 2:
-            outline_via_agent(project_id, user_prompt)
-        else:
-            outline_via_agent(project_id)
-        version = _latest_outline_version(root, project_id)
-        if version is None:
-            raise RuntimeError("Agent 没有保存任何大纲，请检查素材内容格式或稍后重试。")
+        _, version = commit_outline_run(
+            lambda: _call_outline_agent(project_id, user_prompt)
+        )
         _maybe_auto_name_project_from_outline(root, project_id, version)
         return {"outline_version": version}
 
