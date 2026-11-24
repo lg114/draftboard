@@ -27,6 +27,7 @@ import type {
   ThemeOption,
 } from "../../lib/api";
 import { ModelQuickSwitcher } from "../ModelQuickSwitcher";
+import { Collapse } from "../ui/Collapse";
 import { inferEffectiveLayout, LAYOUT_LABELS } from "./layoutUtils";
 
 interface AgentChatPanelProps {
@@ -257,7 +258,7 @@ function ToolStepsBar({
             </>
           ) : (
             <>
-              <Check className="w-3.5 h-3.5 text-success shrink-0" />
+              <Check className="w-3.5 h-3.5 text-success shrink-0 anim-check-pop" />
               <span className="font-medium text-ink-secondary truncate">
                 已完成 {steps.length} 项工作台操作
               </span>
@@ -265,13 +266,13 @@ function ToolStepsBar({
           )}
         </div>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-ink-muted shrink-0 transition-transform ${
+          className={`w-3.5 h-3.5 text-ink-muted shrink-0 transition-transform duration-[160ms] ${
             expanded ? "rotate-180" : ""
           }`}
         />
       </button>
 
-      {(expanded || (isRunning && steps.length > 1)) && (
+      <Collapse open={expanded || (isRunning && steps.length > 1)}>
         <div className="px-3 pb-2.5 pt-1 border-t border-black/[0.06] space-y-1.5">
           {steps.map((st) => (
             <div
@@ -280,7 +281,7 @@ function ToolStepsBar({
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-[160ms] ${
                     st.status === "running"
                       ? "bg-ink animate-pulse"
                       : st.status === "error"
@@ -308,7 +309,7 @@ function ToolStepsBar({
             </div>
           ))}
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }
@@ -419,7 +420,7 @@ function ChangeReceiptCard({
   }
 
   return (
-    <div className="p-3 rounded-xl bg-surface border border-black/[0.08] space-y-2.5">
+    <div className="p-3 rounded-xl bg-surface border border-black/[0.08] space-y-2.5 anim-msg-in">
       <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
         {touched.length > 0 && (
           <>
@@ -450,7 +451,7 @@ function ChangeReceiptCard({
 
         {changes.layout_checked_ok === true && (
           <span className="inline-flex items-center gap-1 text-[13px] text-success font-medium">
-            <Check className="w-3.5 h-3.5" />
+            <Check className="w-3.5 h-3.5 anim-check-pop" />
             <span>排版安全</span>
           </span>
         )}
@@ -689,7 +690,7 @@ export function AgentChatPanel({
 
             if (msg.role === "user") {
               return (
-                <div key={msg.id} className="flex justify-end">
+                <div key={msg.id} className="flex justify-end anim-msg-in">
                   <div className="max-w-[88%] rounded-2xl bg-canvas border border-black/[0.08] px-3.5 py-2.5 text-[13.5px] text-ink leading-relaxed whitespace-pre-wrap break-words">
                     {msg.content}
                   </div>
@@ -819,7 +820,7 @@ export function AgentChatPanel({
           };
 
           return (
-            <div className="absolute bottom-full left-3.5 right-3.5 mb-1.5 z-30 apple-glass dock-shadow rounded-xl p-1.5 max-h-52 overflow-y-auto clean-scroll space-y-0.5">
+            <div className="absolute bottom-full left-3.5 right-3.5 mb-1.5 z-30 apple-glass dock-shadow rounded-xl p-1.5 max-h-52 overflow-y-auto clean-scroll space-y-0.5 anim-popover-up-in">
               <div className="px-2 py-1 text-[13px] font-medium text-ink-muted">
                 引用页面或素材
               </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { FileText, X } from "lucide-react";
 import type { Material, SourceFragment } from "../../lib/api";
+import { usePresence } from "../../lib/usePresence";
 import { formatFragmentLocation } from "./layoutUtils";
 
 interface SourceContextModalProps {
@@ -29,6 +30,11 @@ export function SourceContextModal({
   onClose,
 }: SourceContextModalProps) {
   const firstHighlightRef = useRef<HTMLDivElement | null>(null);
+  const lastFragRef = useRef<SourceFragment | null>(null);
+  if (fragment) lastFragRef.current = fragment;
+
+  const { mounted, exiting } = usePresence(Boolean(fragment), 140);
+  const activeFrag = fragment || lastFragRef.current;
 
   useEffect(() => {
     if (!fragment) return;
@@ -48,15 +54,15 @@ export function SourceContextModal({
     };
   }, [fragment, onClose]);
 
-  if (!fragment) return null;
+  if (!mounted || !activeFrag) return null;
 
   const mat = materials.find(
-    (m) => m.asset_id === fragment.asset_id && m.asset_type !== "image"
+    (m) => m.asset_id === activeFrag.asset_id && m.asset_type !== "image"
   );
-  const fullText = mat?.content || fragment.content_preview || "";
+  const fullText = mat?.content || activeFrag.content_preview || "";
   const lines = fullText.split(/\r?\n/);
-  const range = parseLineRange(fragment.location);
-  const previewNeedle = (fragment.content_preview || "").trim().slice(0, 24);
+  const range = parseLineRange(activeFrag.location);
+  const previewNeedle = (activeFrag.content_preview || "").trim().slice(0, 24);
 
   let firstHitLine = -1;
   const isHighlighted = (lineNo: number, text: string): boolean => {
@@ -75,21 +81,25 @@ export function SourceContextModal({
       aria-modal="true"
       aria-label="原文溯源上下文"
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4 sm:p-6"
+      className={`fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4 sm:p-6 ${
+        exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
+      }`}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl max-h-[82vh] bg-surface rounded-2xl border border-black/[0.1] shadow-2xl flex flex-col overflow-hidden"
+        className={`w-full max-w-3xl max-h-[82vh] bg-surface rounded-2xl border border-black/[0.1] shadow-2xl flex flex-col overflow-hidden ${
+          exiting ? "anim-modal-out" : "anim-modal-in"
+        }`}
       >
         <div className="px-5 py-3.5 border-b border-black/[0.08] flex items-center justify-between gap-3 shrink-0 bg-surface-subtle">
           <div className="flex items-center gap-2.5 min-w-0">
             <FileText className="w-4 h-4 text-ink shrink-0" />
             <div className="min-w-0">
               <div className="text-[14.5px] font-semibold text-ink truncate">
-                {fragment.asset_id}
+                {activeFrag.asset_id}
               </div>
               <div className="text-[13px] text-ink-secondary">
-                引用位置：{formatFragmentLocation(fragment.location)}（高亮区域为本页溯源依据）
+                引用位置：{formatFragmentLocation(activeFrag.location)}（高亮区域为本页溯源依据）
               </div>
             </div>
           </div>

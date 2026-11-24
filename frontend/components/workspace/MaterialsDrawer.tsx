@@ -22,6 +22,7 @@ import type {
   OutlineItem,
   SourceFragment,
 } from "../../lib/api";
+import { usePresence } from "../../lib/usePresence";
 import { extractFragmentText } from "./SlideInspector";
 import {
   formatFragmentLocation,
@@ -38,6 +39,7 @@ type DrawerView =
   | { kind: "regen" };
 
 interface MaterialsDrawerProps {
+  open?: boolean;
   pid: string;
   materials: Material[];
   sourceFragments: SourceFragment[];
@@ -58,6 +60,7 @@ interface MaterialsDrawerProps {
 }
 
 export function MaterialsDrawer({
+  open = true,
   pid,
   materials,
   sourceFragments,
@@ -93,8 +96,11 @@ export function MaterialsDrawer({
   );
   const [deletingAsset, setDeletingAsset] = useState(false);
 
+  const { mounted, exiting } = usePresence(open, 170);
+
   // Esc goes back to list from sub-views, or closes drawer from list view
   useEffect(() => {
+    if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
@@ -107,7 +113,7 @@ export function MaterialsDrawer({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [view.kind, onClose]);
+  }, [open, view.kind, onClose]);
 
   const fragmentsByAsset = useMemo(() => {
     const map = new Map<string, SourceFragment[]>();
@@ -218,27 +224,38 @@ export function MaterialsDrawer({
       )
     : "content";
 
+  if (!mounted) return null;
+
   return (
-    <aside
-      aria-label="项目素材库"
-      onDragOver={(e) => {
-        if (!onDropFiles) return;
-        e.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={(e) => {
-        if (e.currentTarget === e.target) setIsDragging(false);
-      }}
-      onDrop={(e) => {
-        if (!onDropFiles) return;
-        e.preventDefault();
-        setIsDragging(false);
-        if (e.dataTransfer.files?.length) {
-          onDropFiles(e.dataTransfer.files);
-        }
-      }}
-      className="fixed top-[52px] right-0 bottom-0 z-30 w-full sm:w-[460px] xl:w-[496px] bg-surface border-l border-black/[0.08] shadow-[-12px_0_36px_rgba(0,0,0,0.08)] flex flex-col"
-    >
+    <>
+      <div
+        onClick={onClose}
+        className={`fixed inset-x-0 top-[52px] bottom-0 z-29 bg-black/12 ${
+          exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
+        }`}
+      />
+      <aside
+        aria-label="项目素材库"
+        onDragOver={(e) => {
+          if (!onDropFiles) return;
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          if (!onDropFiles) return;
+          e.preventDefault();
+          setIsDragging(false);
+          if (e.dataTransfer.files?.length) {
+            onDropFiles(e.dataTransfer.files);
+          }
+        }}
+        className={`fixed top-[52px] right-0 bottom-0 z-30 w-full sm:w-[460px] xl:w-[496px] bg-surface border-l border-black/[0.08] shadow-[-12px_0_36px_rgba(0,0,0,0.08)] flex flex-col ${
+          exiting ? "anim-drawer-right-out pointer-events-none" : "anim-drawer-right-in"
+        }`}
+      >
       {/* Drag-Drop Overlay */}
       {isDragging && (
         <div className="absolute inset-3 z-40 rounded-2xl border-2 border-dashed border-ink bg-surface/95 backdrop-blur-xs flex flex-col items-center justify-center gap-2 pointer-events-none">
@@ -884,5 +901,6 @@ export function MaterialsDrawer({
         </form>
       )}
     </aside>
+    </>
   );
 }

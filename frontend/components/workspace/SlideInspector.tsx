@@ -27,6 +27,7 @@ import type {
   SourceFragment,
 } from "../../lib/api";
 import { ModelQuickSwitcher } from "../ModelQuickSwitcher";
+import { Collapse } from "../ui/Collapse";
 import {
   cleanMarkdownExcerpt,
   EditableOutlineField,
@@ -381,10 +382,10 @@ export function SlideInspector({
             </button>
           </div>
 
-          {provenanceOpen && (
+          <Collapse open={provenanceOpen}>
             <div className="px-3.5 pb-3.5 pt-1.5 border-t border-black/[0.06] space-y-2.5">
               {/* Inline Source Binding Picker */}
-              {sourcePickerOpen && (
+              <Collapse open={sourcePickerOpen}>
                 <div className="p-2.5 rounded-xl bg-canvas border border-black/[0.07] space-y-2">
                   <div className="flex items-center justify-between text-[13px] text-ink-secondary">
                     <span>勾选本页引用的原始素材切片</span>
@@ -481,7 +482,7 @@ export function SlideInspector({
                     </div>
                   )}
                 </div>
-              )}
+              </Collapse>
 
               {/* Bound Provenance Excerpts */}
               {matchedFragments.length > 0 ? (
@@ -647,7 +648,7 @@ export function SlideInspector({
                 </div>
               )}
             </div>
-          )}
+          </Collapse>
         </section>
 
         {/* ── TIER 2 (PRIMARY FOCUS): Slide Content Editors + Inline AI Refine Strip ── */}
@@ -692,11 +693,11 @@ export function SlideInspector({
                   )}
                 </div>
               </div>
-              {saveLayoutOpen && onSaveCustomLayout && (
+              <Collapse open={saveLayoutOpen && Boolean(onSaveCustomLayout)}>
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!saveLayoutName.trim() || savingLayout) return;
+                    if (!saveLayoutName.trim() || savingLayout || !onSaveCustomLayout) return;
                     setSavingLayout(true);
                     try {
                       await onSaveCustomLayout(saveLayoutName.trim());
@@ -713,7 +714,6 @@ export function SlideInspector({
                     onChange={(e) => setSaveLayoutName(e.target.value)}
                     placeholder="输入版式名称（如：3卡片KPI页）"
                     className="flex-1 min-w-0 h-8 px-2.5 rounded-lg bg-canvas border border-black/15 text-[13px] text-ink outline-none"
-                    autoFocus
                   />
                   <button
                     type="submit"
@@ -723,7 +723,7 @@ export function SlideInspector({
                     {savingLayout ? "保存…" : "保存"}
                   </button>
                 </form>
-              )}
+              </Collapse>
               <p className="text-[13px] text-ink-secondary leading-relaxed">
                 可直接修改下方文本内容；需要调整卡片、配色、布局或配图时，在「AI 对话」中直接说明即可。
               </p>
@@ -1094,14 +1094,14 @@ export function SlideInspector({
               </div>
             )}
 
-            {customOpen && (
+            <Collapse open={customOpen}>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!customInstruction.trim() || refiningMode) return;
                   void triggerRefine("custom", customInstruction.trim());
                 }}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1.5 pt-0.5"
               >
                 <input
                   type="text"
@@ -1109,7 +1109,6 @@ export function SlideInspector({
                   onChange={(e) => setCustomInstruction(e.target.value)}
                   placeholder="输入整页修改要求（如：更专业简洁、突出关键数据）…"
                   className="flex-1 min-w-0 text-[13px] text-ink placeholder:text-ink-muted bg-surface rounded-xl px-3 py-1.5 border border-black/[0.12] hover:border-black/25 focus:border-ink outline-none transition-colors"
-                  autoFocus
                 />
                 <button
                   type="submit"
@@ -1119,11 +1118,11 @@ export function SlideInspector({
                   {refiningMode === "custom" ? "生成中…" : "生成"}
                 </button>
               </form>
-            )}
+            </Collapse>
 
             {/* Non-Destructive Diff Candidate Card */}
             {refineCandidate && (
-              <div className="p-3.5 rounded-2xl bg-surface border border-ink/25 shadow-[0_4px_16px_rgba(0,0,0,0.06)] space-y-2.5">
+              <div className="p-3.5 rounded-2xl bg-surface border border-ink/25 shadow-[0_4px_16px_rgba(0,0,0,0.06)] space-y-2.5 anim-msg-in">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-semibold text-ink flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 shrink-0" />
@@ -1257,16 +1256,18 @@ export function SlideInspector({
               }`}
             />
           </button>
-          {notesOpen && (
-            <AutoGrowTextarea
-              id="input-notes"
-              value={item.speaker_notes || ""}
-              minRows={3}
-              placeholder="写下有实质补充的口播提示，导出时将写入 PowerPoint 备注栏…"
-              onChange={(val) => onUpdateField("speaker_notes", val)}
-              className="text-[13px] text-ink placeholder:text-ink-muted bg-surface rounded-xl px-3 py-2.5 border border-black/[0.1] hover:border-black/20 focus:border-ink focus:ring-4 focus:ring-black/[0.05] outline-none leading-relaxed transition-all"
-            />
-          )}
+          <Collapse open={notesOpen}>
+            <div className="pt-0.5">
+              <AutoGrowTextarea
+                id="input-notes"
+                value={item.speaker_notes || ""}
+                minRows={3}
+                placeholder="写下有实质补充的口播提示，导出时将写入 PowerPoint 备注栏…"
+                onChange={(val) => onUpdateField("speaker_notes", val)}
+                className="text-[13px] text-ink placeholder:text-ink-muted bg-surface rounded-xl px-3 py-2.5 border border-black/[0.1] hover:border-black/20 focus:border-ink focus:ring-4 focus:ring-black/[0.05] outline-none leading-relaxed transition-[border-color,box-shadow] duration-[160ms]"
+              />
+            </div>
+          </Collapse>
         </section>
       </div>
     </>

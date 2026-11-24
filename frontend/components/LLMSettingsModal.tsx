@@ -24,6 +24,7 @@ import {
   LLMProviderPreset,
   LLMSettingsResponse,
 } from "../lib/api";
+import { usePresence } from "../lib/usePresence";
 import { ProviderIcon } from "./ProviderIcon";
 
 interface LLMSettingsModalProps {
@@ -424,7 +425,9 @@ export function LLMSettingsModal({
     return fetchedModels.filter((m) => m.toLowerCase().includes(q));
   }, [fetchedModels, fetchedSearch]);
 
-  if (!open) return null;
+  const { mounted, exiting } = usePresence(open, 140);
+
+  if (!mounted) return null;
 
   const prof = currentEntry.profile;
   const preset = currentEntry.preset;
@@ -686,13 +689,20 @@ export function LLMSettingsModal({
       aria-label="模型设置"
     >
       {/* Crisp 35% dark overlay */}
-      <div className="fixed inset-0 bg-black/35" onClick={onClose} />
+      <div
+        className={`fixed inset-0 bg-black/35 ${
+          exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
+        }`}
+        onClick={onClose}
+      />
 
       {/* Modal Shell */}
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="relative z-10 w-full max-w-[820px] h-[min(640px,86vh)] rounded-[20px] bg-surface border border-black/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] flex flex-col overflow-hidden outline-none"
+        className={`relative z-10 w-full max-w-[820px] h-[min(640px,86vh)] rounded-[20px] bg-surface border border-black/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] flex flex-col overflow-hidden outline-none ${
+          exiting ? "anim-modal-out pointer-events-none" : "anim-modal-in"
+        }`}
       >
         {/* Top Modal Header */}
         <div className="px-6 py-4 border-b border-black/[0.07] flex items-center justify-between gap-3 shrink-0">

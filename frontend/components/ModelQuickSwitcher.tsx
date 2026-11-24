@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Settings } from "lucide-react";
 import { api, jsonOptions, LLMSettingsResponse } from "../lib/api";
+import { usePresence } from "../lib/usePresence";
 import { ProviderIcon } from "./ProviderIcon";
 
 interface ModelQuickSwitcherProps {
@@ -49,6 +50,7 @@ export function ModelQuickSwitcher({
   compact = false,
 }: ModelQuickSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const { mounted, exiting } = usePresence(open, 130);
   const [switching, setSwitching] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -188,14 +190,18 @@ export function ModelQuickSwitcher({
         >
           {activeModel}
         </span>
-        <ChevronDown className="w-3 h-3 text-ink-muted shrink-0" />
+        <ChevronDown
+          className={`w-3 h-3 text-ink-muted shrink-0 transition-transform duration-[160ms] ${
+            open ? "rotate-180" : ""
+          }`}
+        />
       </button>
 
-      {open && (
+      {mounted && (
         <div
           className={`absolute bottom-full mb-1.5 z-50 w-72 apple-glass dock-shadow rounded-2xl p-1.5 space-y-1.5 ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
+            align === "right" ? "right-0 origin-bottom-right" : "left-0 origin-bottom-left"
+          } ${exiting ? "anim-popover-up-out pointer-events-none" : "anim-popover-up-in"}`}
         >
           <div className="max-h-64 overflow-y-auto clean-scroll space-y-2 p-0.5">
             {groups.map((grp) => (
@@ -221,7 +227,7 @@ export function ModelQuickSwitcher({
                     >
                       <span className="font-mono truncate">{m}</span>
                       {isCurrent && (
-                        <Check className="w-3.5 h-3.5 text-success shrink-0" />
+                        <Check className="w-3.5 h-3.5 text-success shrink-0 anim-check-pop" />
                       )}
                     </button>
                   );

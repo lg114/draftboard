@@ -730,10 +730,14 @@ export default function PreviewPage() {
         {totalSlides > 0 ? (
           presenterMode ? (
             /* ── Dual-Pane Presenter View ── */
-            <div className="w-full max-w-[1380px] flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            <div
+              key="view-presenter"
+              className="w-full max-w-[1380px] flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch anim-msg-in"
+            >
               {/* Left 8 cols: Current Slide + Nav Controls */}
               <div className="lg:col-span-8 flex flex-col justify-center gap-4">
                 <div className="aspect-[16/9] w-full rounded-[4px] bg-surface overflow-hidden slide-shadow relative">
+                  <div key={`pres-${selected}`} className="absolute inset-0 anim-slide-settle">
                   {currentPageSrc ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
@@ -751,6 +755,7 @@ export default function PreviewPage() {
                       brand={project?.brand}
                     />
                   ) : null}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-3 px-1">
@@ -935,9 +940,10 @@ export default function PreviewPage() {
             </div>
           ) : (
             /* ── Cinema Full-Stage View ── */
-            <>
+            <div key="view-cinema" className="w-full flex flex-col items-center gap-5 anim-msg-in">
               <div className="w-full max-w-[1120px] relative group">
                 <div className="aspect-[16/9] w-full rounded-[3px] bg-surface overflow-hidden slide-shadow flex items-center justify-center relative">
+                  <div key={`cin-${selected}`} className="absolute inset-0 anim-slide-settle">
                   {currentPageSrc ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
@@ -955,13 +961,14 @@ export default function PreviewPage() {
                       brand={project?.brand}
                     />
                   ) : null}
+                  </div>
                 </div>
 
                 <button
                   type="button"
                   disabled={selected === 0}
                   onClick={() => setSelected((s) => Math.max(0, s - 1))}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-ink flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-ink flex items-center justify-center opacity-0 group-hover:opacity-100 transition-[opacity,transform] duration-[150ms] active:scale-95 disabled:opacity-0 cursor-pointer"
                   aria-label="上一页"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -972,7 +979,7 @@ export default function PreviewPage() {
                   onClick={() =>
                     setSelected((s) => Math.min(totalSlides - 1, s + 1))
                   }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-ink flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full apple-glass dock-shadow text-ink flex items-center justify-center opacity-0 group-hover:opacity-100 transition-[opacity,transform] duration-[150ms] active:scale-95 disabled:opacity-0 cursor-pointer"
                   aria-label="下一页"
                 >
                   <ChevronRight className="w-5 h-5" />
@@ -1035,7 +1042,7 @@ export default function PreviewPage() {
                   <span>支持 ← / → / 空格翻页，按 P 切换演讲者视图</span>
                 </div>
               </div>
-            </>
+            </div>
           )
         ) : (
           <div className="bg-surface rounded-[18px] p-10 slide-shadow max-w-md w-full text-center space-y-4">

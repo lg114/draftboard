@@ -27,6 +27,7 @@ import type {
   ThemeOption,
 } from "../../lib/api";
 import { CustomSlideLayer, resolveCanvasColor } from "./CustomSlideLayer";
+import { usePresence } from "../../lib/usePresence";
 import {
   inferEffectiveLayout,
   LAYOUT_OPTIONS,
@@ -232,6 +233,8 @@ export function SlideStageCanvas({
   const [scale, setScale] = useState(0.75);
   const [compactDock, setCompactDock] = useState(false);
   const [themePopoverOpen, setThemePopoverOpen] = useState(false);
+  const { mounted: themePopoverMounted, exiting: themePopoverExiting } =
+    usePresence(themePopoverOpen, 130);
   const [themeTab, setThemeTab] = useState<"themes" | "brand">("themes");
   const [brandDraft, setBrandDraft] = useState<BrandKit>({});
   const [savingBrand, setSavingBrand] = useState(false);
@@ -317,7 +320,7 @@ export function SlideStageCanvas({
       >
         {/* Before/After Visual Diff Banner */}
         {diffPreviewActive && (
-          <div className="w-full px-3.5 py-2 rounded-xl bg-warning-bg border border-warning-dot/30 flex flex-wrap items-center justify-between gap-2 text-[13px]">
+          <div className="w-full px-3.5 py-2 rounded-xl bg-warning-bg border border-warning-dot/30 flex flex-wrap items-center justify-between gap-2 text-[13px] anim-msg-in">
             <span className="inline-flex items-center gap-2 text-warning font-medium">
               <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
               <span>正在对比查看「AI 修改前」版本（只读预览）</span>
@@ -408,6 +411,10 @@ export function SlideStageCanvas({
           ref={shellRef}
           className="aspect-[16/9] w-full rounded-[3px] overflow-hidden slide-shadow relative bg-surface"
         >
+          <div
+            key={`stage-${selectedIndex}-${diffPreviewActive ? "diff" : "live"}`}
+            className="absolute inset-0 anim-slide-settle"
+          >
           {showRenderedImage && preview?.pages[selectedIndex] ? (
             <div
               onClick={() =>
@@ -885,12 +892,16 @@ export function SlideStageCanvas({
               )}
             </div>
           ) : null}
+          </div>
         </div>
 
         {/* Always-Single-Line Adaptive Floating Glass Dock OR Selected Custom Element Bar */}
         <div className="relative max-w-full">
           {selectedEl && onUpdateCustomElement ? (
-            <div className="apple-glass dock-shadow rounded-2xl px-2.5 py-1.5 flex items-center gap-2 flex-nowrap max-w-full overflow-x-auto clean-scroll text-[13px]">
+            <div
+              key="selected-element-bar"
+              className="apple-glass dock-shadow rounded-2xl px-2.5 py-1.5 flex items-center gap-2 flex-nowrap max-w-full overflow-x-auto clean-scroll text-[13px] anim-dock-swap"
+            >
               <span className="px-2 py-0.5 rounded-lg bg-black/[0.06] font-semibold text-ink whitespace-nowrap shrink-0">
                 {selectedEl.kind === "text"
                   ? "文本"
@@ -1318,14 +1329,20 @@ export function SlideStageCanvas({
               </button>
             </div>
           ) : (
-            <>
-              {themePopoverOpen && (
+            <div key="standard-layout-dock" className="anim-dock-swap">
+              {themePopoverMounted && (
             <>
               <div
                 className="fixed inset-0 z-40"
                 onClick={() => setThemePopoverOpen(false)}
               />
-              <div className="absolute bottom-full left-0 mb-2.5 w-[348px] apple-glass dock-shadow rounded-2xl p-3 z-50 space-y-2.5">
+              <div
+                className={`absolute bottom-full left-0 mb-2.5 w-[348px] apple-glass dock-shadow rounded-2xl p-3 z-50 space-y-2.5 ${
+                  themePopoverExiting
+                    ? "anim-popover-up-out pointer-events-none"
+                    : "anim-popover-up-in"
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div className="inline-flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5">
                     <button
@@ -1637,7 +1654,7 @@ export function SlideStageCanvas({
               {!compactDock && <span>自动缩字</span>}
             </button>
           </div>
-            </>
+            </div>
           )}
         </div>
       </div>

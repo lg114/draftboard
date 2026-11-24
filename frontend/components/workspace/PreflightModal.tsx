@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { api, type PreflightReport } from "../../lib/api";
+import { usePresence } from "../../lib/usePresence";
 
 interface PreflightModalProps {
   open: boolean;
@@ -78,7 +79,8 @@ export function PreflightModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, runCheck, onClose]);
 
-  if (!open) return null;
+  const { mounted, exiting } = usePresence(open, 140);
+  if (!mounted) return null;
 
   return (
     <div
@@ -86,11 +88,15 @@ export function PreflightModal({
       aria-modal="true"
       aria-label="交付前可信度与排版体检"
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4 sm:p-6"
+      className={`fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4 sm:p-6 ${
+        exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
+      }`}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl max-h-[82vh] bg-surface rounded-2xl border border-black/[0.1] shadow-2xl flex flex-col overflow-hidden"
+        className={`w-full max-w-2xl max-h-[82vh] bg-surface rounded-2xl border border-black/[0.1] shadow-2xl flex flex-col overflow-hidden ${
+          exiting ? "anim-modal-out" : "anim-modal-in"
+        }`}
       >
         <div className="px-5 py-3.5 border-b border-black/[0.08] flex items-center justify-between gap-3 shrink-0 bg-surface-subtle">
           <div className="flex items-center gap-2">
@@ -139,9 +145,9 @@ export function PreflightModal({
               <div className="p-4 rounded-2xl bg-canvas border border-black/[0.08] flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   {report.ready ? (
-                    <CheckCircle2 className="w-8 h-8 text-success shrink-0" />
+                    <CheckCircle2 className="w-8 h-8 text-success shrink-0 anim-check-pop" />
                   ) : (
-                    <AlertCircle className="w-8 h-8 text-danger shrink-0" />
+                    <AlertCircle className="w-8 h-8 text-danger shrink-0 anim-check-pop" />
                   )}
                   <div>
                     <div className="text-[15px] font-semibold text-ink">

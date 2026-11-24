@@ -30,6 +30,7 @@ import {
   ThemeOption,
 } from "../../../lib/api";
 import { LLMSettingsModal } from "../../../components/LLMSettingsModal";
+import { usePresence } from "../../../lib/usePresence";
 import { AgentChatPanel } from "../../../components/workspace/AgentChatPanel";
 import { EmptyStageOnboarding } from "../../../components/workspace/EmptyStageOnboarding";
 import {
@@ -126,6 +127,12 @@ export default function ProjectWorkspacePage() {
   const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [toast, setToast] = useState("");
+  const lastToastRef = useRef("");
+  if (toast) lastToastRef.current = toast;
+  const { mounted: toastMounted, exiting: toastExiting } = usePresence(
+    Boolean(toast),
+    140
+  );
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -1775,42 +1782,45 @@ export default function ProjectWorkspacePage() {
         onConfirmGenerate={() => void confirmGenerate()}
       />
 
-      {showMaterialsDrawer && (
-        <MaterialsDrawer
-          pid={pid}
-          materials={materials}
-          sourceFragments={sourceFragments}
-          outline={outline}
-          currentSlide={currentItem}
-          currentSlideIndex={selectedIndex}
-          isGenerating={isGenerating}
-          onUploadClick={() => fileInputRef.current?.click()}
-          onDropFiles={(files) => void uploadFiles(files)}
-          onPasteNote={uploadPastedNote}
-          onImportUrl={importUrlMaterial}
-          onDeleteMaterial={deleteMaterial}
-          onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
-          onInsertExcerptToSlide={(sid, text) =>
-            insertExcerptToSlide(selectedIndex, sid, text)
-          }
-          onApplyImageToSlide={(imgId, sid) =>
-            applyImageToSlide(selectedIndex, imgId, sid)
-          }
-          onGenerateOutline={(p) => void genOutline(p)}
-          onClose={() => setShowMaterialsDrawer(false)}
-        />
-      )}
+      <MaterialsDrawer
+        open={showMaterialsDrawer}
+        pid={pid}
+        materials={materials}
+        sourceFragments={sourceFragments}
+        outline={outline}
+        currentSlide={currentItem}
+        currentSlideIndex={selectedIndex}
+        isGenerating={isGenerating}
+        onUploadClick={() => fileInputRef.current?.click()}
+        onDropFiles={(files) => void uploadFiles(files)}
+        onPasteNote={uploadPastedNote}
+        onImportUrl={importUrlMaterial}
+        onDeleteMaterial={deleteMaterial}
+        onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
+        onInsertExcerptToSlide={(sid, text) =>
+          insertExcerptToSlide(selectedIndex, sid, text)
+        }
+        onApplyImageToSlide={(imgId, sid) =>
+          applyImageToSlide(selectedIndex, imgId, sid)
+        }
+        onGenerateOutline={(p) => void genOutline(p)}
+        onClose={() => setShowMaterialsDrawer(false)}
+      />
 
-      {/* Calm Floating Toast */}
-      {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap">
-          {toast}
+      {/* Calm Floating Toast (smooth enter & exit) */}
+      {toastMounted && (
+        <div
+          className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap pointer-events-none ${
+            toastExiting ? "anim-toast-out" : "anim-toast-in"
+          }`}
+        >
+          {toast || lastToastRef.current}
         </div>
       )}
 
       {/* Quiet Inline Error Strip (Apple-restrained, dismissible, expandable tech log) */}
       {humanizedError && (
-        <div className="border-b border-danger/20 bg-danger-bg px-5 py-2.5 text-[13px] text-danger shrink-0">
+        <div className="border-b border-danger/20 bg-danger-bg px-5 py-2.5 text-[13px] text-danger shrink-0 anim-msg-in">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-danger shrink-0" />

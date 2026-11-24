@@ -15,6 +15,7 @@ import {
   Undo2,
 } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
+import { usePresence } from "../../lib/usePresence";
 import { BrandLogo } from "../BrandLogo";
 import { ExportFormatMenu } from "./ExportFormatMenu";
 import {
@@ -95,6 +96,10 @@ export function WorkspaceHeader({
   onConfirmGenerate,
 }: WorkspaceHeaderProps) {
   const [isVersionOpen, setIsVersionOpen] = useState(false);
+  const { mounted: versionMounted, exiting: versionExiting } = usePresence(
+    isVersionOpen,
+    130
+  );
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
@@ -255,13 +260,19 @@ export function WorkspaceHeader({
                 </div>
               )}
 
-              {isVersionOpen && sortedOutlines.length > 0 && (
+              {versionMounted && sortedOutlines.length > 0 && (
                 <>
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => setIsVersionOpen(false)}
                   />
-                  <div className="absolute left-0 top-full mt-2 z-50 w-72 apple-glass dock-shadow rounded-2xl p-2 space-y-1">
+                  <div
+                    className={`absolute left-0 top-full mt-2 z-50 w-72 apple-glass dock-shadow rounded-2xl p-2 space-y-1 ${
+                      versionExiting
+                        ? "anim-popover-down-left-out pointer-events-none"
+                        : "anim-popover-down-left-in"
+                    }`}
+                  >
                     <div className="px-2.5 py-1 text-[13px] font-semibold text-ink-secondary">
                       大纲版本历史 ({sortedOutlines.length})
                     </div>

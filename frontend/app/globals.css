@@ -31,6 +31,17 @@
 }
 
 @layer base {
+  :root {
+    /* ── Unified Apple Motion Language Tokens ───────────────────────── */
+    --ease-apple: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-apple-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+    --ease-apple-exit: cubic-bezier(0.4, 0, 1, 1);
+    --dur-micro: 120ms;
+    --dur-fast: 160ms;
+    --dur-base: 220ms;
+    --dur-sheet: 260ms;
+  }
+
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
@@ -43,7 +54,7 @@
   /* Canonical pill input: 12% -> 30% -> full ink focus progression */
   .ui-pill-input {
     @apply h-11 rounded-full bg-canvas border border-black/[0.12] px-5 text-ink placeholder:text-ink-muted outline-none
-      transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none
+      transition-[border-color,background-color,box-shadow] duration-[160ms] ease-out motion-reduce:transition-none
       hover:border-black/30
       focus:bg-surface focus:border-ink focus:ring-4 focus:ring-black/[0.08]
       disabled:opacity-60;
@@ -52,31 +63,40 @@
   /* Canonical box input / textarea for inspector & forms */
   .ui-field {
     @apply rounded-xl bg-surface border border-black/[0.12] text-ink placeholder:text-ink-muted outline-none
-      transition-[border-color,background-color,box-shadow] duration-200 ease-out motion-reduce:transition-none
+      transition-[border-color,background-color,box-shadow] duration-[160ms] ease-out motion-reduce:transition-none
       hover:border-black/30
       focus:border-ink focus:ring-4 focus:ring-black/[0.08]
       disabled:opacity-60;
   }
 
-  /* Primary solid monochrome CTA with readable disabled state */
+  /* Primary solid monochrome CTA with crisp Apple tactile press */
   .ui-btn-primary {
     @apply rounded-full bg-ink hover:bg-ink-hover text-white font-medium
-      transition-colors duration-200 motion-reduce:transition-none cursor-pointer
+      transition-[background-color,transform,opacity] duration-[140ms] ease-out
+      active:scale-[0.975] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
       disabled:bg-disabled-bg disabled:text-ink-secondary disabled:cursor-not-allowed;
   }
 
   /* Secondary outline CTA */
   .ui-btn-outline {
     @apply rounded-full bg-surface border border-black/25 hover:border-ink hover:bg-black/[0.04] text-ink font-medium
-      transition-colors duration-200 motion-reduce:transition-none cursor-pointer
+      transition-[background-color,border-color,transform,opacity] duration-[140ms] ease-out
+      active:scale-[0.975] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
       disabled:bg-surface-muted disabled:border-black/[0.1] disabled:text-ink-muted disabled:cursor-not-allowed;
   }
 
   /* Subtle neutral pill button */
   .ui-btn-subtle {
     @apply rounded-full bg-canvas hover:bg-black/[0.08] text-ink font-medium
-      transition-colors duration-200 motion-reduce:transition-none cursor-pointer
+      transition-[background-color,transform,opacity] duration-[140ms] ease-out
+      active:scale-[0.975] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
       disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Subtle tactile press utility for icon/toolbar buttons */
+  .ui-press {
+    @apply transition-[background-color,color,transform,opacity] duration-[120ms] ease-out
+      active:scale-[0.96] disabled:active:scale-100;
   }
 }
 
@@ -128,10 +148,185 @@
 
 .clickable-slot {
   border-radius: 6px;
-  transition: outline-color 0.15s ease;
+  transition: outline-color var(--dur-micro) var(--ease-apple);
 }
 .clickable-slot:hover {
   outline: 1.5px dashed rgba(29, 29, 31, 0.38);
   outline-offset: 6px;
   cursor: text;
+}
+
+/* ── GPU-Composited Apple Motion Primitives ─────────────────────────── */
+
+@keyframes db-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes db-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes db-modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes db-modal-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(5px) scale(0.98); }
+}
+
+@keyframes db-drawer-right-in {
+  from { opacity: 0.6; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes db-drawer-right-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0.6; transform: translateX(100%); }
+}
+
+@keyframes db-popover-down-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes db-popover-down-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+
+@keyframes db-popover-up-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes db-popover-up-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(4px) scale(0.98); }
+}
+
+@keyframes db-toast-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes db-toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-6px) scale(0.98); }
+}
+
+@keyframes db-dock-swap {
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes db-slide-settle {
+  from { opacity: 0.72; }
+  to { opacity: 1; }
+}
+
+@keyframes db-check-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes db-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.anim-scrim-in {
+  animation: db-fade-in var(--dur-fast) var(--ease-apple) both;
+}
+.anim-scrim-out {
+  animation: db-fade-out var(--dur-micro) var(--ease-apple-exit) both;
+}
+
+.anim-modal-in {
+  animation: db-modal-in var(--dur-base) var(--ease-apple) both;
+}
+.anim-modal-out {
+  animation: db-modal-out var(--dur-micro) var(--ease-apple-exit) both;
+}
+
+.anim-drawer-right-in {
+  animation: db-drawer-right-in var(--dur-sheet) var(--ease-apple) both;
+}
+.anim-drawer-right-out {
+  animation: db-drawer-right-out var(--dur-fast) var(--ease-apple-exit) both;
+}
+
+.anim-popover-down-in {
+  transform-origin: top right;
+  animation: db-popover-down-in var(--dur-fast) var(--ease-apple) both;
+}
+.anim-popover-down-out {
+  transform-origin: top right;
+  animation: db-popover-down-out var(--dur-micro) var(--ease-apple-exit) both;
+}
+
+.anim-popover-down-left-in {
+  transform-origin: top left;
+  animation: db-popover-down-in var(--dur-fast) var(--ease-apple) both;
+}
+.anim-popover-down-left-out {
+  transform-origin: top left;
+  animation: db-popover-down-out var(--dur-micro) var(--ease-apple-exit) both;
+}
+
+.anim-popover-up-in {
+  transform-origin: bottom left;
+  animation: db-popover-up-in var(--dur-fast) var(--ease-apple) both;
+}
+.anim-popover-up-out {
+  transform-origin: bottom left;
+  animation: db-popover-up-out var(--dur-micro) var(--ease-apple-exit) both;
+}
+
+.anim-toast-in {
+  animation: db-toast-in var(--dur-fast) var(--ease-apple) both;
+}
+.anim-toast-out {
+  animation: db-toast-out var(--dur-micro) var(--ease-apple-exit) both;
+}
+
+.anim-dock-swap {
+  animation: db-dock-swap var(--dur-fast) var(--ease-apple) both;
+}
+
+.anim-slide-settle {
+  animation: db-slide-settle var(--dur-micro) var(--ease-apple) both;
+}
+
+.anim-check-pop {
+  animation: db-check-pop 200ms var(--ease-apple-spring) both;
+}
+
+.anim-msg-in {
+  animation: db-msg-in var(--dur-fast) var(--ease-apple) both;
+}
+
+/* Smooth interruptible grid-row disclosure (zero layout jump) */
+.ui-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--dur-base) var(--ease-apple),
+    opacity var(--dur-fast) var(--ease-apple);
+}
+.ui-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.ui-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Strictly honor system Reduce Motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

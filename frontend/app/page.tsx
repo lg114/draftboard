@@ -623,7 +623,7 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={p.project_id}
-                  className="group bg-surface rounded-[16px] border border-black/[0.1] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
+                  className="group bg-surface rounded-[16px] border border-black/[0.1] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-[180ms] ease-out flex flex-col"
                 >
                   {/* Top: Pure 16:9 Slide Content Preview */}
                   <Link

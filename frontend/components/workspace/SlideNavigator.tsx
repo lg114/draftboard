@@ -326,9 +326,9 @@ export function SlideNavigator({
 
               <div className="flex-1 min-w-0 relative">
                 <div
-                  className={`aspect-[16/9] w-full rounded-[4px] overflow-hidden ${
+                  className={`aspect-[16/9] w-full rounded-[5px] overflow-hidden ${
                     isCustomCanvas ? "" : "p-2 flex flex-col"
-                  } relative transition-all ${
+                  } relative transition-[box-shadow,transform,opacity] duration-[160ms] ease-out ${
                     active
                       ? "thumb-selected"
                       : "thumb-idle group-hover:brightness-[0.98]"

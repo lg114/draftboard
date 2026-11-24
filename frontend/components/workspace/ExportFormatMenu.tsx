@@ -8,6 +8,7 @@ import {
   Images,
   Presentation,
 } from "lucide-react";
+import { usePresence } from "../../lib/usePresence";
 
 interface ExportFormatMenuProps {
   pid: string;
@@ -25,6 +26,7 @@ export function ExportFormatMenu({
   canDownloadNotes = true,
 }: ExportFormatMenuProps) {
   const [open, setOpen] = useState(false);
+  const { mounted, exiting } = usePresence(open, 130);
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +62,7 @@ export function ExportFormatMenu({
         />
       </button>
 
-      {open && (
+      {mounted && (
         <>
           <div
             className="fixed inset-0 z-40"
@@ -68,7 +70,9 @@ export function ExportFormatMenu({
           />
           <div
             role="menu"
-            className="absolute right-0 top-full mt-2 z-50 w-64 apple-glass dock-shadow rounded-2xl p-1.5 space-y-0.5"
+            className={`absolute right-0 top-full mt-2 z-50 w-64 apple-glass dock-shadow rounded-2xl p-1.5 space-y-0.5 ${
+              exiting ? "anim-popover-down-out pointer-events-none" : "anim-popover-down-in"
+            }`}
           >
             {includePptx && (
               <a
