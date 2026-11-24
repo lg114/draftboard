@@ -21,9 +21,11 @@ from draftboard.models import CanvasElement, Outline, OutlineItem
 from draftboard.pptx_export import _resolve_image_path
 from draftboard.themes import resolve_theme_id
 
-# Bump when theme definitions or the exporter's layout rules change output
-# for the same logical inputs.
-EXPORT_RULE_VERSION = "1"
+# Bump when theme definitions, exporter layout, or pre-write checks change
+# what a given input is allowed to produce.  "2" rejects brand footers and
+# table cells that overflow the box actually written into the PPTX; cached
+# fingerprints from "1" must not skip that check.
+EXPORT_RULE_VERSION = "2"
 
 _FP_PREFIX = "fp:"
 

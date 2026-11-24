@@ -81,6 +81,19 @@ PAD_X_PT = 8
 PAD_Y_PT = 4
 BULLET_INDENT_PT = 14
 
+# Brand footer is one nowrap line.  Geometry is shared by measurement and write.
+FOOTER_SIZE_PT = 9
+FOOTER_LINE_PT = 12
+FOOTER_WIDTH_PT = 520
+FOOTER_HEIGHT_PT = 20
+FOOTER_Y_PT = 505
+FOOTER_X_PT = 48
+FOOTER_X_BESIDE_LOGO_PT = 128
+
+# Table cells use the same padding and type size the exporter writes.
+TABLE_PAD_X_PT = 8
+TABLE_PAD_Y_PT = 4
+
 _IMAGE_STUB_RE = re.compile(r"^\[image:\s*(.+?)\s*\]$", re.IGNORECASE)
 _IMAGE_EXTS = (".png", ".jpg", ".jpeg")
 
@@ -569,6 +582,7 @@ def _measure_custom_slide(
                     f"[OVERFLOW] Table row height {row_h:.1f}pt is too cramped for {total_rows} rows (need >=20pt/row; increase height h or reduce rows)."
                 )
                 continue
+            _measure_table_cells(slide, el, fonts, errors)
             text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
 
         elif el.kind == "chart":
@@ -781,6 +795,113 @@ def _set_table_cell_borders(
     tcPr.append(_make_ln("a:lnB", bottom_pt))
 
 
+def _table_grid(el: CanvasElement) -> tuple[list[tuple[bool, list[str]]], int]:
+    """Cell text exactly as written: stripped, padded to the column count.
+
+    Returns ``(rows, col_count)``.  Rows are ``(is_header, cells)``.  There
+    is no cell merge.
+    """
+    headers = list(el.headers or [])
+    body_rows = [list(r) for r in (el.rows or [])]
+    col_count = len(headers) if headers else max((len(r) for r in body_rows), default=0)
+    rows: list[tuple[bool, list[str]]] = []
+    if col_count < 1:
+        return rows, 0
+    if headers:
+        rows.append(
+            (True, [str(v or "").strip() for v in (headers + [""] * col_count)[:col_count]])
+        )
+    for row in body_rows:
+        rows.append(
+            (False, [str(v or "").strip() for v in (row + [""] * col_count)[:col_count]])
+        )
+    return rows, col_count
+
+
+def _table_type_size(font_size: int) -> tuple[int, int]:
+    """Font size and line spacing used when a table cell is written."""
+    line_pt = max(font_size + 3, int(round(font_size * 1.25)))
+    return font_size, line_pt
+
+
+def _measure_table_cells(slide: Slide, el: CanvasElement, fonts: FontPair, errors: list[str]) -> None:
+    """Measure each cell in its own column, not across the whole table."""
+    rows, col_count = _table_grid(el)
+    if col_count < 1 or not rows:
+        return
+    col_w = el.w / col_count
+    row_h = el.h / len(rows)
+    size_pt, line_pt = _table_type_size(int(el.table_font_size or 14))
+    for r_idx, (_, cells) in enumerate(rows):
+        for c_idx, text in enumerate(cells):
+            measured = measure_box(
+                [text],
+                fonts=fonts,
+                width_pt=col_w,
+                height_pt=row_h,
+                size_pt=size_pt,
+                line_pt=line_pt,
+                space_after_pt=0,
+                pad_x_pt=TABLE_PAD_X_PT,
+                pad_y_pt=TABLE_PAD_Y_PT,
+            )
+            loc = f"r{r_idx + 1}c{c_idx + 1}"
+            for para in measured.paragraphs:
+                for issue in para.issues:
+                    errors.append(
+                        f"Slide '{slide.slide_id}', element '{el.id}', cell {loc}: "
+                        f"[{issue.code}] {issue.message}"
+                    )
+            if not measured.fits:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}', cell {loc}: "
+                    f"[OVERFLOW] needs {measured.required_height_pt:.1f}pt "
+                    f"(+8% margin) but row height is {row_h:.1f}pt."
+                )
+
+
+def _footer_applies(slide: Slide) -> bool:
+    return not (slide.layout == SlideLayout.COVER and not slide.custom_elements)
+
+
+def _measure_brand_footer(
+    slide: Slide,
+    fonts: FontPair,
+    brand: dict | None,
+    errors: list[str],
+) -> None:
+    """Measure the single nowrap footer line against the box that is written."""
+    if not brand or not isinstance(brand, dict) or not _footer_applies(slide):
+        return
+    footer_text = (brand.get("footer_text") or "").strip()
+    if not footer_text:
+        return
+    measured = measure_box(
+        [footer_text],
+        fonts=fonts,
+        width_pt=FOOTER_WIDTH_PT,
+        height_pt=FOOTER_HEIGHT_PT,
+        size_pt=FOOTER_SIZE_PT,
+        line_pt=FOOTER_LINE_PT,
+        space_after_pt=0,
+        pad_x_pt=0,
+        pad_y_pt=0,
+        wrap=False,
+    )
+    for para in measured.paragraphs:
+        for issue in para.issues:
+            errors.append(
+                f"Slide '{slide.slide_id}', element 'brand-footer': "
+                f"[{issue.code}] {issue.message}"
+            )
+    if not measured.fits:
+        errors.append(
+            f"Slide '{slide.slide_id}', element 'brand-footer': "
+            f"[OVERFLOW] needs {measured.required_height_pt:.1f}pt "
+            f"(+8% margin) but box height is {FOOTER_HEIGHT_PT}pt."
+        )
+
+
 def _export_custom_table(
     pptx_slide,
     el: CanvasElement,
@@ -789,19 +910,11 @@ def _export_custom_table(
 ) -> None:
     """Write a native editable PowerPoint table with editorial theme styling."""
     headers = list(el.headers or [])
-    body_rows = [list(r) for r in (el.rows or [])]
-    col_count = len(headers) if headers else max((len(r) for r in body_rows), default=0)
-    if col_count < 1:
+    rows, col_count = _table_grid(el)
+    if col_count < 1 or not rows:
         return
-
-    all_rows: list[tuple[bool, list[str]]] = []
-    if headers:
-        all_rows.append((True, (headers + [""] * col_count)[:col_count]))
-    for r in body_rows:
-        all_rows.append((False, (r + [""] * col_count)[:col_count]))
+    all_rows = rows
     row_count = len(all_rows)
-    if row_count < 1:
-        return
 
     graphic = pptx_slide.shapes.add_table(
         row_count, col_count, Pt(el.x), Pt(el.y), Pt(el.w), Pt(el.h)
@@ -821,8 +934,7 @@ def _export_custom_table(
     for row in tbl.rows:
         row.height = row_h
 
-    font_size = int(el.table_font_size or 14)
-    line_pt = max(font_size + 3, int(round(font_size * 1.25)))
+    font_size, line_pt = _table_type_size(int(el.table_font_size or 14))
     header_fill_hex = resolve_canvas_hex(el.header_fill, theme, theme.surface_hex) or theme.surface_hex
     header_col_hex = resolve_canvas_hex(el.header_color, theme, theme.title_hex) or theme.title_hex
     cell_col_hex = resolve_canvas_hex(el.cell_color, theme, theme.body_hex) or theme.body_hex
@@ -833,10 +945,10 @@ def _export_custom_table(
         for c_idx, raw_val in enumerate(cells_text):
             cell = tbl.cell(r_idx, c_idx)
             cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-            cell.margin_left = Pt(8)
-            cell.margin_right = Pt(8)
-            cell.margin_top = Pt(4)
-            cell.margin_bottom = Pt(4)
+            cell.margin_left = Pt(TABLE_PAD_X_PT)
+            cell.margin_right = Pt(TABLE_PAD_X_PT)
+            cell.margin_top = Pt(TABLE_PAD_Y_PT)
+            cell.margin_bottom = Pt(TABLE_PAD_Y_PT)
 
             if is_header:
                 cell.fill.solid()
@@ -992,6 +1104,7 @@ def _measure_and_resolve(
     auto_fit: bool,
     *,
     decorative: bool = False,
+    brand: dict | None = None,
 ) -> tuple[dict[tuple[str, str], tuple[int, int, int]], list[str]]:
     resolved: dict[tuple[str, str], tuple[int, int, int]] = {}
     errors: list[str] = []
@@ -999,59 +1112,70 @@ def _measure_and_resolve(
     for slide in artifact.slides:
         if slide.custom_elements:
             _measure_custom_slide(slide, fonts, auto_fit, resolved, errors)
-            continue
-        for role, items in _group_boxes(slide):
-            if role == "image":
-                continue
-            x, y, w, h = _box_for(slide.layout, role, decorative=decorative)
-            candidates = _style_candidates(
-                slide.layout, role, auto_fit, decorative=decorative
-            )
-            chosen_style = None
-            last_measurement = None
-
-            for candidate in candidates:
-                size_pt, line_pt, space_after_pt = candidate
-                m = measure_box(
-                    [content for _, content in items],
-                    fonts=fonts,
-                    width_pt=w,
-                    height_pt=h,
-                    size_pt=size_pt,
-                    line_pt=line_pt,
-                    space_after_pt=space_after_pt,
-                    pad_x_pt=PAD_X_PT,
-                    pad_y_pt=PAD_Y_PT,
-                    indent_pt=BULLET_INDENT_PT if role == "bullet" else 0,
-                )
-                last_measurement = m
-                if m.fits and not m.issues:
-                    chosen_style = candidate
-                    break
-
-            if chosen_style is not None:
-                resolved[(slide.slide_id, role)] = chosen_style
-                continue
-
-            # Report failure on the final (smallest allowed) step
-            assert last_measurement is not None
-            min_size_pt = candidates[-1][0]
-            for (element_id, _), para in zip(items, last_measurement.paragraphs):
-                for issue in para.issues:
-                    errors.append(
-                        f"Slide '{slide.slide_id}', element '{element_id}': "
-                        f"[{issue.code}] {issue.message}"
-                    )
-            if not last_measurement.fits:
-                suffix = f" (even at min {min_size_pt}pt)" if auto_fit and len(candidates) > 1 else ""
-                errors.append(
-                    f"Slide '{slide.slide_id}', role '{role}' "
-                    f"(elements: {', '.join(eid for eid, _ in items)}): "
-                    f"[OVERFLOW] needs {last_measurement.required_height_pt:.1f}pt "
-                    f"(+8% margin) but box height is {h}pt{suffix}."
-                )
+        else:
+            _measure_fixed_slide(slide, fonts, auto_fit, decorative, resolved, errors)
+        _measure_brand_footer(slide, fonts, brand, errors)
 
     return resolved, errors
+
+
+def _measure_fixed_slide(
+    slide: Slide,
+    fonts: FontPair,
+    auto_fit: bool,
+    decorative: bool,
+    resolved: dict[tuple[str, str], tuple[int, int, int]],
+    errors: list[str],
+) -> None:
+    for role, items in _group_boxes(slide):
+        if role == "image":
+            continue
+        _x, _y, w, h = _box_for(slide.layout, role, decorative=decorative)
+        candidates = _style_candidates(slide.layout, role, auto_fit, decorative=decorative)
+        chosen_style = None
+        last_measurement = None
+
+        for candidate in candidates:
+            size_pt, line_pt, space_after_pt = candidate
+            measured = measure_box(
+                [content for _, content in items],
+                fonts=fonts,
+                width_pt=w,
+                height_pt=h,
+                size_pt=size_pt,
+                line_pt=line_pt,
+                space_after_pt=space_after_pt,
+                pad_x_pt=PAD_X_PT,
+                pad_y_pt=PAD_Y_PT,
+                indent_pt=BULLET_INDENT_PT if role == "bullet" else 0,
+            )
+            last_measurement = measured
+            if measured.fits and not measured.issues:
+                chosen_style = candidate
+                break
+
+        if chosen_style is not None:
+            resolved[(slide.slide_id, role)] = chosen_style
+            continue
+
+        assert last_measurement is not None
+        min_size_pt = candidates[-1][0]
+        for (element_id, _), para in zip(items, last_measurement.paragraphs):
+            for issue in para.issues:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{element_id}': "
+                    f"[{issue.code}] {issue.message}"
+                )
+        if not last_measurement.fits:
+            suffix = (
+                f" (even at min {min_size_pt}pt)" if auto_fit and len(candidates) > 1 else ""
+            )
+            errors.append(
+                f"Slide '{slide.slide_id}', role '{role}' "
+                f"(elements: {', '.join(eid for eid, _ in items)}): "
+                f"[OVERFLOW] needs {last_measurement.required_height_pt:.1f}pt "
+                f"(+8% margin) but box height is {h}pt{suffix}."
+            )
 
 
 def _apply_brand_overlay(
@@ -1062,9 +1186,7 @@ def _apply_brand_overlay(
     assets_dir: pathlib.Path | None,
 ) -> None:
     """Apply optional project brand footer text and corner logo on non-cover slides."""
-    if not brand or not isinstance(brand, dict):
-        return
-    if slide.layout == SlideLayout.COVER and not slide.custom_elements:
+    if not brand or not isinstance(brand, dict) or not _footer_applies(slide):
         return
 
     footer_text = (brand.get("footer_text") or "").strip()
@@ -1079,8 +1201,14 @@ def _apply_brand_overlay(
             _add_picture_contain(pptx_slide, logo_path, (840, 14, 72, 24))
 
     if footer_text:
-        fx = 128 if (logo_path is not None and logo_pos == "bottom_left") else 48
-        box = pptx_slide.shapes.add_textbox(Pt(fx), Pt(505), Pt(520), Pt(20))
+        fx = (
+            FOOTER_X_BESIDE_LOGO_PT
+            if (logo_path is not None and logo_pos == "bottom_left")
+            else FOOTER_X_PT
+        )
+        box = pptx_slide.shapes.add_textbox(
+            Pt(fx), Pt(FOOTER_Y_PT), Pt(FOOTER_WIDTH_PT), Pt(FOOTER_HEIGHT_PT)
+        )
         tf = box.text_frame
         tf.word_wrap = False
         tf.auto_size = MSO_AUTO_SIZE.NONE
@@ -1090,7 +1218,9 @@ def _apply_brand_overlay(
         tf.margin_bottom = Pt(0)
         p = tf.paragraphs[0]
         p.alignment = PP_ALIGN.LEFT
-        _fill_paragraph(p, footer_text, 9, 12, theme.muted_rgb, bold=False)
+        _fill_paragraph(
+            p, footer_text, FOOTER_SIZE_PT, FOOTER_LINE_PT, theme.muted_rgb, bold=False
+        )
 
 
 def export_pptx(
@@ -1154,7 +1284,11 @@ def export_pptx(
 
     effective_auto_fit = artifact.auto_fit if auto_fit is None else auto_fit
     resolved_styles, measure_errors = _measure_and_resolve(
-        artifact, fonts, auto_fit=effective_auto_fit, decorative=theme.decorative
+        artifact,
+        fonts,
+        auto_fit=effective_auto_fit,
+        decorative=theme.decorative,
+        brand=brand,
     )
     if measure_errors:
         raise ValueError("Layout check failed:\n" + "\n".join(measure_errors))
