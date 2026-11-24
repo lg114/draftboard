@@ -335,6 +335,10 @@ class Artifact(BaseModel):
         False,
         description="When True, step font size down to floor before failing on overflow",
     )
+    input_fingerprint: Optional[str] = Field(
+        None,
+        description="SHA-256 of the frozen generation inputs. Absent on legacy artifacts.",
+    )
     schema_version: str = Field("1.0", description="Artifact schema version")
 
 
@@ -445,6 +449,10 @@ class ExportResult(BaseModel):
     slide_count: int = Field(0, description="Number of slides in the written file")
     issues: list[ValidationIssue] = Field(
         default_factory=list, description="Problems that blocked the export"
+    )
+    input_fingerprint: Optional[str] = Field(
+        None,
+        description="Fingerprint of the frozen inputs this file was built from.",
     )
 
 

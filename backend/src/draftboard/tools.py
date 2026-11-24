@@ -45,6 +45,13 @@ from draftboard.models import (
     validate_ir,
     validate_outline,
 )
+from draftboard.generation_snapshot import (
+    fingerprint_cache_key,
+    freeze_generation_inputs,
+    load_snapshot_sources,
+    read_project_brand,
+    write_snapshot,
+)
 from draftboard.outline_run import active_outline_run
 from draftboard.pptx_export import export_pptx
 from draftboard.storage import STORAGE_ROOT, ProjectStorage
@@ -718,8 +725,9 @@ def generate_slides(
         approved_outline_version: Outline version that has been confirmed by
             the user.
         template_id: Slide template/theme to apply (default: "default").
-        idempotency_key: Unique string; identical keys return the cached
-            artifact without re-generating slides.
+        idempotency_key: Reuses a cached artifact only when this call's frozen
+            inputs have the same fingerprint. Identical inputs also reuse a
+            completed PPTX across different keys.
         auto_fit: When True, allow exporter to step font size down to floor
             (body >= 14pt, cover title >= 28pt) before blocking on overflow.
 
@@ -731,19 +739,39 @@ def generate_slides(
     """
     storage = _get_storage(project_id)
 
-    # Idempotency check
-    if idempotency_key:
-        cached = storage.load_idempotent_result(idempotency_key)
-        if cached is not None:
-            return Artifact.model_validate(cached)
-
-    # Load and validate outline
+    # Load and validate outline, then freeze every input this deck will use.
     outline = storage.load_outline(approved_outline_version)
     if not outline.is_confirmed:
         raise ValueError(
             f"Outline '{approved_outline_version}' has not been confirmed. "
             "Ask the user to confirm the outline before generating slides."
         )
+    snapshot = freeze_generation_inputs(
+        outline,
+        template_id=template_id,
+        auto_fit=auto_fit,
+        brand=read_project_brand(storage.root),
+        assets_dir=storage.root / "assets",
+    )
+    outline = snapshot.outline
+    template_id = snapshot.template_id
+    auto_fit = snapshot.auto_fit
+
+    reusable = _reusable_artifact(storage, snapshot.fingerprint)
+    if reusable is not None:
+        if idempotency_key:
+            storage.save_idempotent_result(idempotency_key, reusable.model_dump())
+        return reusable
+
+    if idempotency_key:
+        cached = storage.load_idempotent_result(idempotency_key)
+        if cached is not None:
+            cached_artifact = Artifact.model_validate(cached)
+            if (
+                cached_artifact.input_fingerprint == snapshot.fingerprint
+                and _artifact_file_exists(storage, cached_artifact)
+            ):
+                return cached_artifact
 
     # Build slides verbatim from the confirmed outline.  Layout comes from
     # the confirmed item, or the program default: first cover, last closing,
@@ -850,11 +878,15 @@ def generate_slides(
         outline_version=approved_outline_version,
         template_id=template_id,
         auto_fit=auto_fit,
+        input_fingerprint=snapshot.fingerprint,
     )
     ir_errors = validate_ir(artifact)
     if ir_errors:
         raise ValueError("Generated IR is invalid:\n" + "\n".join(ir_errors))
     storage.save_artifact(artifact)
+    write_snapshot(
+        storage.root, artifact.artifact_id, artifact.artifact_revision, snapshot
+    )
 
     if idempotency_key:
         storage.save_idempotent_result(idempotency_key, artifact.model_dump())
@@ -960,9 +992,11 @@ def patch_slide(
             f"of artifact '{artifact_id}'."
         )
 
-    # Increment revision and persist
+    # Increment revision and persist. A patched revision is no longer the
+    # frozen compile, so it must not claim that fingerprint or its snapshot.
     new_revision = storage.next_revision(artifact_id)
     artifact.artifact_revision = new_revision
+    artifact.input_fingerprint = None
     storage.save_artifact(artifact)
 
     if idempotency_key:
@@ -1077,33 +1111,39 @@ def export_deck_impl(
         ExportResult with success flag, file path, and issue list.
     """
     storage = _get_storage(project_id)
-
-    if idempotency_key:
-        cached = storage.load_idempotent_result(idempotency_key)
-        if cached is not None:
-            return ExportResult.model_validate(cached)
-
     artifact = storage.load_artifact(artifact_id, revision)
     exports_dir = storage.root / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
     pptx_path = exports_dir / f"{artifact_id}-r{revision}.pptx"
 
-    meta_brand = None
-    meta_path = storage.root / "meta.json"
-    if meta_path.exists():
-        try:
-            import json as _json
-            meta_obj = _json.loads(meta_path.read_text(encoding="utf-8"))
-            if isinstance(meta_obj, dict) and isinstance(meta_obj.get("brand"), dict):
-                meta_brand = meta_obj["brand"]
-        except Exception:
-            pass
+    existing = _existing_successful_export(storage, artifact)
+    if existing is not None:
+        if idempotency_key:
+            storage.save_idempotent_result(idempotency_key, existing.model_dump())
+        return existing
+
+    if idempotency_key:
+        cached = storage.load_idempotent_result(idempotency_key)
+        if cached is not None and _export_cache_matches(cached, artifact):
+            return ExportResult.model_validate(cached)
+
+    snapshot_sources = load_snapshot_sources(
+        storage.root,
+        artifact.artifact_id,
+        artifact.artifact_revision,
+        artifact.input_fingerprint,
+    )
+    if snapshot_sources is None:
+        assets_dir = storage.root / "assets"
+        meta_brand = read_project_brand(storage.root)
+    else:
+        assets_dir, meta_brand = snapshot_sources
 
     try:
         export_pptx(
             artifact,
             pptx_path,
-            assets_dir=storage.root / "assets",
+            assets_dir=assets_dir,
             brand=meta_brand,
         )
     except (ValueError, FileNotFoundError) as e:
@@ -1128,11 +1168,88 @@ def export_deck_impl(
         artifact_revision=revision,
         pptx_path=str(pptx_path),
         slide_count=len(artifact.slides),
+        input_fingerprint=artifact.input_fingerprint,
     )
     storage.save_export_report(artifact_id, revision, result.model_dump())
+    if artifact.input_fingerprint:
+        storage.save_idempotent_result(
+            fingerprint_cache_key(artifact.input_fingerprint),
+            result.model_dump(),
+        )
     if idempotency_key:
         storage.save_idempotent_result(idempotency_key, result.model_dump())
     return result
+
+
+def _artifact_file_exists(storage, artifact: Artifact) -> bool:
+    try:
+        storage.load_artifact(artifact.artifact_id, artifact.artifact_revision)
+    except KeyError:
+        return False
+    return True
+
+
+def _reusable_artifact(storage, fingerprint: str) -> Optional[Artifact]:
+    cached = storage.load_idempotent_result(fingerprint_cache_key(fingerprint))
+    if not cached or not cached.get("success"):
+        return None
+    path = cached.get("pptx_path")
+    if not path or not pathlib.Path(path).is_file():
+        return None
+    if cached.get("input_fingerprint") != fingerprint:
+        return None
+    try:
+        artifact = storage.load_artifact(cached["artifact_id"], cached["artifact_revision"])
+    except KeyError:
+        return None
+    if artifact.input_fingerprint != fingerprint:
+        return None
+    return artifact
+
+
+def _existing_successful_export(storage, artifact: Artifact) -> Optional[ExportResult]:
+    path = (
+        storage.root
+        / "exports"
+        / f"{artifact.artifact_id}-r{artifact.artifact_revision}.report.json"
+    )
+    if not path.is_file():
+        return None
+    from draftboard.storage import load_json as _load_json
+
+    try:
+        data = _load_json(path)
+    except (OSError, ValueError):
+        return None
+    if not data.get("success"):
+        return None
+    pptx = data.get("pptx_path")
+    if not pptx or not pathlib.Path(pptx).is_file():
+        return None
+    if artifact.input_fingerprint and data.get("input_fingerprint") != artifact.input_fingerprint:
+        return None
+    result = ExportResult.model_validate(data)
+    if (
+        result.artifact_id != artifact.artifact_id
+        or result.artifact_revision != artifact.artifact_revision
+    ):
+        return None
+    return result
+
+
+def _export_cache_matches(cached: dict, artifact: Artifact) -> bool:
+    if not cached.get("success"):
+        return False
+    if cached.get("artifact_id") != artifact.artifact_id:
+        return False
+    if cached.get("artifact_revision") != artifact.artifact_revision:
+        return False
+    pptx = cached.get("pptx_path")
+    if not pptx or not pathlib.Path(pptx).is_file():
+        return False
+    if artifact.input_fingerprint and cached.get("input_fingerprint") != artifact.input_fingerprint:
+        return False
+    return True
 
 
 export_deck = function_tool(export_deck_impl)

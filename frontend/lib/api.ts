@@ -305,7 +305,18 @@ export interface Project {
   latest_auto_fit?: boolean | null;
   latest_report: ExportReport | null;
   download_available: boolean;
+  export_fingerprint?: string | null;
+  export_legacy?: boolean;
+  export_artifact_id?: string | null;
   tasks: Task[];
+}
+
+export interface GenerationSync {
+  current_fingerprint: string;
+  export_fingerprint: string | null;
+  in_sync: boolean;
+  legacy_export: boolean;
+  export_artifact_id: string | null;
 }
 
 export interface Material {

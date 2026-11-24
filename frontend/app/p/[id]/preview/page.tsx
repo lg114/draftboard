@@ -21,6 +21,7 @@ import {
   api,
   ExportReport,
   FALLBACK_THEMES,
+  GenerationSync,
   Outline,
   OutlineItem,
   Preview,
@@ -118,6 +119,7 @@ export default function PreviewPage() {
   const [selected, setSelected] = useState(0);
   const [notice, setNotice] = useState("");
   const [rendering, setRendering] = useState(false);
+  const [historicalExport, setHistoricalExport] = useState(false);
 
   // Presenter View state
   const [presenterMode, setPresenterMode] = useState(false);
@@ -137,6 +139,23 @@ export default function PreviewPage() {
     try {
       proj = await api<Project>(`/api/projects/${pid}`);
       setProject(proj);
+      if (proj.generated_outline_version) {
+        const params = new URLSearchParams({
+          outline_version: proj.generated_outline_version,
+          template_id: proj.theme_id || proj.latest_template_id || "keynote_light",
+          auto_fit: String(Boolean(proj.latest_auto_fit)),
+        });
+        try {
+          const sync = await api<GenerationSync>(
+            `/api/projects/${encodeURIComponent(pid)}/generation-sync?${params}`
+          );
+          setHistoricalExport(!sync.in_sync);
+        } catch {
+          setHistoricalExport(Boolean(proj.export_legacy));
+        }
+      } else {
+        setHistoricalExport(false);
+      }
       const sorted = [...(proj.outlines || [])].sort((a, b) => b.mtime - a.mtime);
       if (sorted.length > 0) {
         const latestVer =
@@ -337,6 +356,11 @@ export default function PreviewPage() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-5 sm:p-6 gap-5">
+        {historicalExport && (
+          <p className="text-[13px] text-warning font-medium">
+            正在放映的是最近一次成功导出的文件，它与当前文稿设置不一致。
+          </p>
+        )}
         {totalSlides > 0 ? (
           presenterMode ? (
             /* ── Dual-Pane Presenter View ── */

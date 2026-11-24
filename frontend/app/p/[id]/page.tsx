@@ -13,6 +13,7 @@ import {
   ChatToolStep,
   ExportReport,
   FALLBACK_THEMES,
+  GenerationSync,
   Issue,
   jsonOptions,
   LLMSettingsResponse,
@@ -430,6 +431,51 @@ export default function ProjectWorkspacePage() {
     if (!outline || !savedOutline) return false;
     return JSON.stringify(outline.items) !== JSON.stringify(savedOutline.items);
   }, [outline, savedOutline]);
+
+  const [generationSync, setGenerationSync] = useState<GenerationSync | null>(
+    null
+  );
+
+  useEffect(() => {
+    const targetPid = createdPidRef.current || pid;
+    if (!targetPid || targetPid === "new" || !version) {
+      setGenerationSync(null);
+      return;
+    }
+    let cancelled = false;
+    setGenerationSync(null);
+    const params = new URLSearchParams({
+      outline_version: version,
+      template_id: selectedThemeId,
+      auto_fit: String(autoFit),
+    });
+    api<GenerationSync>(
+      `/api/projects/${encodeURIComponent(targetPid)}/generation-sync?${params}`
+    )
+      .then((data) => {
+        if (!cancelled) setGenerationSync(data);
+      })
+      .catch(() => {
+        if (!cancelled) setGenerationSync(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    pid,
+    version,
+    selectedThemeId,
+    autoFit,
+    project?.brand,
+    project?.export_fingerprint,
+    materials,
+  ]);
+
+  const exportInSync =
+    !isStale &&
+    generationSync?.in_sync === true &&
+    Boolean(generationSync.current_fingerprint) &&
+    generationSync.current_fingerprint === generationSync.export_fingerprint;
 
   const activeTheme = useMemo(() => {
     const base =
@@ -1693,6 +1739,7 @@ export default function ProjectWorkspacePage() {
         currentStage={currentStage}
         selectedThemeId={selectedThemeId}
         autoFit={autoFit}
+        exportInSync={exportInSync}
         showMaterialsDrawer={showMaterialsDrawer}
         isChatOpen={
           Boolean(outline && outline.items.length > 0)
@@ -1845,6 +1892,7 @@ export default function ProjectWorkspacePage() {
             activeTheme={activeTheme}
             selectedThemeId={selectedThemeId}
             autoFit={autoFit}
+            exportInSync={exportInSync}
             statusText={status}
             isGenerating={isGenerating}
             materials={materials}

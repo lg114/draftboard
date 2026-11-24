@@ -48,6 +48,7 @@ interface SlideStageCanvasProps {
   activeTheme: ThemeOption;
   selectedThemeId: string;
   autoFit: boolean;
+  exportInSync: boolean;
   statusText: string;
   isGenerating: boolean;
   materials?: Material[];
@@ -209,6 +210,7 @@ export function SlideStageCanvas({
   activeTheme,
   selectedThemeId,
   autoFit,
+  exportInSync,
   statusText,
   isGenerating,
   materials = [],
@@ -296,20 +298,12 @@ export function SlideStageCanvas({
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
 
-  // Automatically display rendered PNG only when exported & strictly in sync;
-  // any edit or theme switch seamlessly flips to the live 960x540 canvas!
+  // The PNG is the exported artifact. Show it only when the backend says the
+  // live inputs (outline, theme, brand, auto-fit, referenced images) match
+  // that artifact's fingerprint.
   const hasRenderedPage = Boolean(preview?.pages && preview.pages[selectedIndex]);
-  const settingsInSync =
-    Boolean(project?.latest_template_id) &&
-    project?.latest_template_id === selectedThemeId &&
-    Boolean(project?.latest_auto_fit) === autoFit;
   const showRenderedImage =
-    !diffPreviewActive &&
-    !isStale &&
-    settingsInSync &&
-    Boolean(version) &&
-    version === project?.generated_outline_version &&
-    hasRenderedPage;
+    !diffPreviewActive && exportInSync && hasRenderedPage;
 
   const firstIssueSlide = Array.from(issueSlideIndices).sort((a, b) => a - b)[0];
   const hasLayoutIssues =
@@ -383,6 +377,11 @@ export function SlideStageCanvas({
               <span className="inline-flex items-center gap-2 text-ink font-medium whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-success shrink-0" />
                 <span>已与 PPTX 同步</span>
+              </span>
+            ) : project?.download_available && !exportInSync ? (
+              <span className="inline-flex items-center gap-2 text-warning font-medium truncate">
+                <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+                <span className="truncate">已下载的 PPTX 是更早的导出，与当前设置不一致</span>
               </span>
             ) : (
               <span className="inline-flex items-center gap-2 text-ink-secondary whitespace-nowrap">
