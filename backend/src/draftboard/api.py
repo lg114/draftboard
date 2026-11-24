@@ -29,6 +29,7 @@ import draftboard.tasks as tasks
 import draftboard.tools as tools_module
 import draftboard.user_library as user_library
 from PIL import Image, ImageDraw
+from draftboard.generation_snapshot import freeze_generation_inputs, read_project_brand
 from draftboard.measure import load_fonts
 from draftboard.models import (
     Artifact,
@@ -913,6 +914,7 @@ def get_project(project_id: str):
         "latest_auto_fit": art_meta.get("auto_fit"),
         "latest_report": reports[-1] if reports else None,
         "download_available": latest_success is not None,
+        **_export_identity(project_id),
         "tasks": [t.model_dump() for t in tasks.list_tasks(_root(), project_id)],
     }
 
@@ -1636,6 +1638,65 @@ def refine_outline_item(
     return {
         "outline_item_id": item_id,
         **candidate,
+    }
+
+
+def _export_identity(project_id: str) -> dict:
+    """Fingerprint of the newest successful PPTX. Legacy files stay downloadable."""
+    report = _latest_success_report(project_id)
+    if not report:
+        return {
+            "export_fingerprint": None,
+            "export_legacy": False,
+            "export_artifact_id": None,
+        }
+    try:
+        artifact = _storage(project_id).load_artifact(
+            report["artifact_id"], report["artifact_revision"]
+        )
+    except KeyError:
+        return {
+            "export_fingerprint": None,
+            "export_legacy": False,
+            "export_artifact_id": None,
+        }
+    fingerprint = artifact.input_fingerprint
+    return {
+        "export_fingerprint": fingerprint,
+        "export_legacy": fingerprint is None,
+        "export_artifact_id": artifact.artifact_id,
+    }
+
+
+@app.get("/api/projects/{project_id}/generation-sync")
+def generation_sync(
+    project_id: str,
+    outline_version: str,
+    template_id: str = "keynote_light",
+    auto_fit: bool = False,
+):
+    """Compare the live inputs for this outline with the latest successful PPTX."""
+    _require_project(project_id)
+    storage = _storage(project_id)
+    try:
+        outline = storage.load_outline(outline_version)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    snapshot = freeze_generation_inputs(
+        outline,
+        template_id=template_id,
+        auto_fit=auto_fit,
+        brand=read_project_brand(storage.root),
+        assets_dir=storage.root / "assets",
+    )
+    identity = _export_identity(project_id)
+    export_fp = identity["export_fingerprint"]
+    return {
+        "current_fingerprint": snapshot.fingerprint,
+        "export_fingerprint": export_fp,
+        "in_sync": bool(export_fp) and export_fp == snapshot.fingerprint,
+        "legacy_export": identity["export_legacy"],
+        "export_artifact_id": identity["export_artifact_id"],
     }
 
 

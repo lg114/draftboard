@@ -43,6 +43,8 @@ npm run dev      # http://localhost:3000 (proxies /api/* to :8000)
 npm run build    # exports & embeds UI into backend/src/draftboard/static/
 ```
 
+Recompiling a deck reuses the previous PPTX only when the frozen inputs match: outline content, theme, brand, auto-fit, the bytes of images that deck actually references, and the export-rule version. A brand edit or a replaced image is a different deck. Unreferenced uploads are ignored. The workbench asks `GET /api/projects/{id}/generation-sync` for the same fingerprint instead of comparing outline version, theme, and auto-fit on its own.
+
 ## License
 
 [Apache-2.0](LICENSE)

@@ -35,6 +35,7 @@ interface WorkspaceHeaderProps {
   currentStage: WorkspaceStage;
   selectedThemeId: string;
   autoFit: boolean;
+  exportInSync: boolean;
   showMaterialsDrawer: boolean;
   isChatOpen: boolean;
   llmConfigured?: boolean;
@@ -69,8 +70,7 @@ export function WorkspaceHeader({
   isSaving = false,
   isGenerating,
   currentStage,
-  selectedThemeId,
-  autoFit,
+  exportInSync,
   showMaterialsDrawer,
   isChatOpen,
   llmConfigured = true,
@@ -109,17 +109,7 @@ export function WorkspaceHeader({
       ? sortedOutlines.length - currentOutlineIndex
       : sortedOutlines.length;
 
-  const settingsChangedSinceExport =
-    Boolean(project?.latest_template_id) &&
-    (project?.latest_template_id !== selectedThemeId ||
-      Boolean(project?.latest_auto_fit) !== autoFit);
-
-  const needsReexport =
-    currentStage === "ppt_ready" &&
-    (isStale ||
-      settingsChangedSinceExport ||
-      (outline && !outline.is_confirmed) ||
-      (Boolean(version) && version !== project?.generated_outline_version));
+  const needsReexport = currentStage === "ppt_ready" && !exportInSync;
 
   const hasOutline = Boolean(outline && outline.items.length > 0);
   const stageMeta = PROJECT_STAGE_STEPS[resolveWorkspaceStageKey(currentStage, outline)];

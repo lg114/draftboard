@@ -43,6 +43,8 @@ npm run dev      # http://localhost:3000（自动代理 /api/* 到 :8000）
 npm run build    # 构建并自动同步前端产物到 backend/src/draftboard/static/
 ```
 
+重新编译只有在冻结后的输入一致时才复用上一份 PPTX：大纲内容、主题、品牌、自动缩字、该文稿实际引用的图片字节，以及导出规则版本。改品牌或替换同名图片会生成新文件；没被引用的素材变化不会。工作台通过 `GET /api/projects/{id}/generation-sync` 使用同一套指纹判断是否与当前导出同步，而不是只比较大纲版本、主题和自动缩字。
+
 ## 开源协议
 
 [Apache-2.0](LICENSE)

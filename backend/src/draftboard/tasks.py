@@ -586,6 +586,9 @@ def generate_work(
     import draftboard.tools as tools_module
 
     def work(ctx: TaskContext) -> dict:
+        # The caller key is only an alias. generate_slides / export_deck_impl
+        # reuse a deck only when the frozen input fingerprint matches and the
+        # PPTX file is still present.
         key_suffix = f"{outline_version}-{template_id}-af{int(auto_fit)}"
         ctx.set_step("从已确认大纲生成幻灯片")
         artifact = _raw(tools_module.generate_slides)(

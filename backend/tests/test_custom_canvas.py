@@ -374,7 +374,11 @@ def test_design_custom_slide_end_to_end_native_pptx_and_pdf(tmp_path, monkeypatc
 
     # Verify PDF & PNG previews rendered cleanly (including AUTO_SHAPE cards)
     pdf_files = list(storage.root.rglob("deck.pdf"))
-    png_files = [p for p in storage.root.rglob("*.png") if p.parent.name != "assets"]
+    png_files = [
+        p
+        for p in storage.root.rglob("*.png")
+        if p.parent.name != "assets" and ".snapshot" not in p.as_posix()
+    ]
     assert pdf_files and pdf_files[-1].stat().st_size > 1000
     assert len(png_files) == 4 and all(p.stat().st_size > 1000 for p in png_files)
 
@@ -700,6 +704,10 @@ def test_native_table_and_all_four_charts_export_and_pdf(tmp_path, monkeypatch, 
 
     # Verify ReportLab vector PDF & pypdfium2 PNGs all rendered cleanly
     pdf_files = list(storage.root.rglob("deck.pdf"))
-    png_files = [p for p in storage.root.rglob("*.png") if p.parent.name != "assets"]
+    png_files = [
+        p
+        for p in storage.root.rglob("*.png")
+        if p.parent.name != "assets" and ".snapshot" not in p.as_posix()
+    ]
     assert pdf_files and pdf_files[-1].stat().st_size > 2000
     assert len(png_files) == 4 and all(p.stat().st_size > 1000 for p in png_files)
