@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -19,6 +19,7 @@ interface PreflightModalProps {
   version: string;
   themeId: string;
   autoFit: boolean;
+  onBeforeCheck?: () => Promise<string | void>;
   onJumpToSlide: (slideIndex: number) => void;
   onClose: () => void;
 }
@@ -41,20 +42,27 @@ export function PreflightModal({
   version,
   themeId,
   autoFit,
+  onBeforeCheck,
   onJumpToSlide,
   onClose,
 }: PreflightModalProps) {
   const [report, setReport] = useState<PreflightReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const onBeforeCheckRef = useRef(onBeforeCheck);
+  onBeforeCheckRef.current = onBeforeCheck;
 
   const runCheck = useCallback(async () => {
     if (!pid || pid === "new" || !version) return;
     setLoading(true);
     setError("");
     try {
+      const flushedVer = onBeforeCheckRef.current
+        ? await onBeforeCheckRef.current()
+        : undefined;
+      const targetVer = flushedVer || version;
       const qs = new URLSearchParams({
-        version,
+        version: targetVer,
         theme_id: themeId,
         auto_fit: String(autoFit),
       });

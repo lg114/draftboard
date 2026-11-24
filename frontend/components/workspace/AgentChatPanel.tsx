@@ -578,6 +578,40 @@ export function AgentChatPanel({
     onSendMessage(clean);
   }
 
+  const mentionItems = (() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return [
+      ...(outline?.items || []).map((it, i) => ({
+        kind: "slide" as const,
+        label: `第 ${i + 1} 页`,
+        sub: it.title || "未命名",
+        insert: `@第 ${i + 1} 页 `,
+      })),
+      ...materials.map((m) => ({
+        kind: "material" as const,
+        label: m.asset_id,
+        sub: m.asset_type === "image" ? "图片素材" : "文档素材",
+        insert: `@${m.asset_id} `,
+      })),
+    ]
+      .filter(
+        (item) =>
+          !q ||
+          item.label.toLowerCase().includes(q) ||
+          item.sub.toLowerCase().includes(q)
+      )
+      .slice(0, 10);
+  })();
+
+  const applyMention = (ins: string) => {
+    const next = draft.replace(/@([^\s@]*)$/, ins);
+    setDraft(next);
+    setMentionQuery(null);
+    setMentionIdx(0);
+    inputRef.current?.focus();
+  };
+
   const quickPrompts =
     totalSlides > 0
       ? [
@@ -788,68 +822,38 @@ export function AgentChatPanel({
         )}
 
         {/* @ Mention Autocomplete Popover */}
-        {mentionQuery !== null && (() => {
-          const q = mentionQuery.toLowerCase();
-          const mentionItems: Array<{ kind: "slide" | "material"; label: string; sub: string; insert: string }> = [
-            ...(outline?.items || []).map((it, i) => ({
-              kind: "slide" as const,
-              label: `第 ${i + 1} 页`,
-              sub: it.title || "未命名",
-              insert: `@第 ${i + 1} 页 `,
-            })),
-            ...materials.map((m) => ({
-              kind: "material" as const,
-              label: m.asset_id,
-              sub: m.asset_type === "image" ? "图片素材" : "文档素材",
-              insert: `@${m.asset_id} `,
-            })),
-          ].filter(
-            (item) =>
-              !q ||
-              item.label.toLowerCase().includes(q) ||
-              item.sub.toLowerCase().includes(q)
-          );
-
-          if (mentionItems.length === 0) return null;
-          const applyMention = (ins: string) => {
-            const next = draft.replace(/@([^\s@]*)$/, ins);
-            setDraft(next);
-            setMentionQuery(null);
-            setMentionIdx(0);
-            inputRef.current?.focus();
-          };
-
-          return (
-            <div className="absolute bottom-full left-3.5 right-3.5 mb-1.5 z-30 apple-glass dock-shadow rounded-xl p-1.5 max-h-52 overflow-y-auto clean-scroll space-y-0.5 anim-popover-up-in">
-              <div className="px-2 py-1 text-[13px] font-medium text-ink-muted">
-                引用页面或素材
-              </div>
-              {mentionItems.slice(0, 10).map((it, i) => (
-                <button
-                  key={`${it.kind}-${it.label}-${i}`}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    applyMention(it.insert);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-[13px] cursor-pointer transition-colors ${
-                    i === mentionIdx
-                      ? "bg-black/[0.07] text-ink font-medium"
-                      : "text-ink hover:bg-black/[0.04]"
-                  }`}
-                >
-                  {it.kind === "slide" ? (
-                    <Layers className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
-                  )}
-                  <span className="font-medium shrink-0">{it.label}</span>
-                  <span className="text-ink-muted truncate">{it.sub}</span>
-                </button>
-              ))}
+        {mentionQuery !== null && mentionItems.length > 0 && (
+          <div className="absolute bottom-full left-3.5 right-3.5 mb-1.5 z-30 apple-glass dock-shadow rounded-xl p-1.5 max-h-52 overflow-y-auto clean-scroll space-y-0.5 anim-popover-up-in">
+            <div className="px-2 py-1 flex items-center justify-between text-[13px] font-medium text-ink-muted">
+              <span>引用页面或素材</span>
+              <span>↑↓ 选择 · Enter 确认</span>
             </div>
-          );
-        })()}
+            {mentionItems.map((it, i) => (
+              <button
+                key={`${it.kind}-${it.label}-${i}`}
+                type="button"
+                onMouseEnter={() => setMentionIdx(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyMention(it.insert);
+                }}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-[13px] cursor-pointer transition-colors ${
+                  i === Math.min(mentionIdx, mentionItems.length - 1)
+                    ? "bg-black/[0.07] text-ink font-medium"
+                    : "text-ink hover:bg-black/[0.04]"
+                }`}
+              >
+                {it.kind === "slide" ? (
+                  <Layers className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                )}
+                <span className="font-medium shrink-0">{it.label}</span>
+                <span className="text-ink-muted truncate">{it.sub}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input Box */}
         <div className="rounded-2xl bg-surface border border-black/[0.12] hover:border-black/25 focus-within:border-ink focus-within:ring-4 focus-within:ring-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] duration-200 px-3 pt-2.5 pb-2">
@@ -869,7 +873,35 @@ export function AgentChatPanel({
               }
             }}
             onKeyDown={(e) => {
-              if (mentionQuery !== null && e.key === "Escape") {
+              if (mentionQuery !== null && mentionItems.length > 0) {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMentionQuery(null);
+                  return;
+                }
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionIdx((i) => (i + 1) % mentionItems.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionIdx(
+                    (i) => (i - 1 + mentionItems.length) % mentionItems.length
+                  );
+                  return;
+                }
+                if (
+                  (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  const chosen =
+                    mentionItems[Math.min(mentionIdx, mentionItems.length - 1)];
+                  if (chosen) applyMention(chosen.insert);
+                  return;
+                }
+              } else if (mentionQuery !== null && e.key === "Escape") {
                 e.preventDefault();
                 setMentionQuery(null);
                 return;

@@ -134,8 +134,14 @@ export function MaterialsDrawer({
       const fragIds = new Set(frags.map((f) => f.source_id));
       const pages: number[] = [];
       outline.items.forEach((it, idx) => {
+        const usedInCustom = Boolean(
+          it.custom_elements?.some(
+            (el) => el.kind === "image" && el.image_asset_id === m.asset_id
+          )
+        );
         if (
           it.image_asset_id === m.asset_id ||
+          usedInCustom ||
           it.source_ids.some((sid) => fragIds.has(sid))
         ) {
           pages.push(idx + 1);
@@ -275,7 +281,7 @@ export function MaterialsDrawer({
             </h2>
             <span className="text-[13px] text-ink-secondary tabular-nums">
               {materials.length} 份素材
-              {sourceFragments.length > 0 && `  ${sourceFragments.length} 处切片`}
+              {sourceFragments.length > 0 && ` · ${sourceFragments.length} 处切片`}
             </span>
           </div>
         ) : (
@@ -291,6 +297,8 @@ export function MaterialsDrawer({
             <span className="truncate">
               {view.kind === "paste"
                 ? "粘贴文本笔记"
+                : view.kind === "url"
+                ? "导入网页素材"
                 : view.kind === "regen"
                 ? "重新提炼大纲"
                 : "返回素材列表"}

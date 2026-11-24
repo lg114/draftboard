@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  CanvasElement,
   Issue,
   LLMSettingsResponse,
   Material,
@@ -47,6 +48,10 @@ interface SlideInspectorProps {
   slideIssues: Issue[];
   onUpdateField: (field: EditableOutlineField, value: string) => void;
   onUpdateCustomElementText?: (elementId: string, text: string) => void;
+  onUpdateCustomElement?: (
+    elementId: string,
+    patch: Partial<CanvasElement>
+  ) => void;
   onClearCustomLayout?: () => void;
   onSwitchToChat?: () => void;
   onInspectFragment?: (frag: SourceFragment) => void;
@@ -149,6 +154,7 @@ export function SlideInspector({
   slideIssues,
   onUpdateField,
   onUpdateCustomElementText,
+  onUpdateCustomElement,
   onClearCustomLayout,
   onSwitchToChat,
   onInspectFragment,
@@ -221,6 +227,12 @@ export function SlideInspector({
   );
   const customTextElements = isCustomCanvas
     ? (item.custom_elements || []).filter((el) => el.kind === "text")
+    : [];
+  const customTableElements = isCustomCanvas
+    ? (item.custom_elements || []).filter((el) => el.kind === "table")
+    : [];
+  const customChartElements = isCustomCanvas
+    ? (item.custom_elements || []).filter((el) => el.kind === "chart")
     : [];
   const primaryCustomHeadingId = (() => {
     let bestId: string | null = null;
@@ -771,9 +783,323 @@ export function SlideInspector({
                   );
                 })}
               </div>
-            ) : (
+            ) : customTableElements.length === 0 &&
+              customChartElements.length === 0 ? (
               <div className="p-3.5 rounded-2xl bg-canvas border border-black/[0.07] text-[13px] text-ink-secondary">
-                本页自由画布暂无可编辑文本块。
+                本页自由画布暂无可编辑文本、表格或图表。
+              </div>
+            ) : null}
+
+            {/* Inline Table Data Editors */}
+            {customTableElements.length > 0 && onUpdateCustomElement && (
+              <div className="space-y-3.5 pt-1">
+                {customTableElements.map((el, tIdx) => {
+                  const headers = el.headers || [];
+                  const rows = el.rows || [];
+                  const colCount = Math.max(
+                    headers.length,
+                    rows[0]?.length || 0,
+                    1
+                  );
+                  return (
+                    <div
+                      key={`${el.id}-tbl-${tIdx}`}
+                      className="rounded-2xl bg-surface border border-black/[0.08] p-3 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold text-ink">
+                          {customTableElements.length > 1
+                            ? `表格 ${tIdx + 1}`
+                            : "表格数据"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newRow = Array.from(
+                              { length: colCount },
+                              () => ""
+                            );
+                            onUpdateCustomElement(el.id, {
+                              rows: [...rows, newRow],
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-canvas hover:bg-black/[0.06] text-[13px] font-medium text-ink cursor-pointer transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>加一行</span>
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto clean-scroll">
+                        <table className="w-full border-collapse text-[13px]">
+                          {headers.length > 0 && (
+                            <thead>
+                              <tr>
+                                {headers.map((h, ci) => (
+                                  <th key={ci} className="p-0.5">
+                                    <input
+                                      type="text"
+                                      value={h}
+                                      onChange={(e) => {
+                                        const nextHeaders = [...headers];
+                                        nextHeaders[ci] = e.target.value;
+                                        onUpdateCustomElement(el.id, {
+                                          headers: nextHeaders,
+                                        });
+                                      }}
+                                      placeholder={`列 ${ci + 1}`}
+                                      className="w-full min-w-[68px] px-2 py-1 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] font-semibold text-ink outline-none"
+                                    />
+                                  </th>
+                                ))}
+                                <th className="w-6" />
+                              </tr>
+                            </thead>
+                          )}
+                          <tbody>
+                            {rows.map((row, ri) => (
+                              <tr key={ri}>
+                                {Array.from({ length: colCount }).map(
+                                  (_, ci) => (
+                                    <td key={ci} className="p-0.5">
+                                      <input
+                                        type="text"
+                                        value={row[ci] ?? ""}
+                                        onChange={(e) => {
+                                          const nextRows = rows.map((r, rIdx) => {
+                                            if (rIdx !== ri) return r;
+                                            const copy = Array.from(
+                                              { length: colCount },
+                                              (__, idx) => r[idx] ?? ""
+                                            );
+                                            copy[ci] = e.target.value;
+                                            return copy;
+                                          });
+                                          onUpdateCustomElement(el.id, {
+                                            rows: nextRows,
+                                          });
+                                        }}
+                                        className="w-full min-w-[68px] px-2 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink outline-none"
+                                      />
+                                    </td>
+                                  )
+                                )}
+                                <td className="p-0.5 text-center">
+                                  {rows.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onUpdateCustomElement(el.id, {
+                                          rows: rows.filter(
+                                            (_, rIdx) => rIdx !== ri
+                                          ),
+                                        })
+                                      }
+                                      title="删除该行"
+                                      className="p-1 rounded-md text-ink-muted hover:text-danger hover:bg-danger-bg cursor-pointer transition-colors"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Inline Chart Data Editors */}
+            {customChartElements.length > 0 && onUpdateCustomElement && (
+              <div className="space-y-3.5 pt-1">
+                {customChartElements.map((el, cIdx) => {
+                  const cats = el.chart_categories || [];
+                  const series = el.chart_series || [];
+                  return (
+                    <div
+                      key={`${el.id}-chart-${cIdx}`}
+                      className="rounded-2xl bg-surface border border-black/[0.08] p-3 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold text-ink">
+                          {customChartElements.length > 1
+                            ? `图表 ${cIdx + 1}`
+                            : "图表数据"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextCats = [
+                              ...cats,
+                              `项 ${cats.length + 1}`,
+                            ];
+                            const nextSeries = series.map((s) => ({
+                              ...s,
+                              values: [...s.values, 0],
+                            }));
+                            onUpdateCustomElement(el.id, {
+                              chart_categories: nextCats,
+                              chart_series: nextSeries,
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-canvas hover:bg-black/[0.06] text-[13px] font-medium text-ink cursor-pointer transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>加一项</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-12 gap-1.5">
+                        <input
+                          type="text"
+                          value={el.chart_title || ""}
+                          onChange={(e) =>
+                            onUpdateCustomElement(el.id, {
+                              chart_title: e.target.value,
+                            })
+                          }
+                          placeholder="图表标题（选填）"
+                          className="col-span-8 px-2.5 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={el.value_suffix || ""}
+                          onChange={(e) =>
+                            onUpdateCustomElement(el.id, {
+                              value_suffix: e.target.value,
+                            })
+                          }
+                          placeholder="单位如 %"
+                          title="数值单位后缀（如 %、万、ms）"
+                          className="col-span-4 px-2 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
+                        />
+                      </div>
+
+                      {cats.length > 0 && series.length > 0 && (
+                        <div className="overflow-x-auto clean-scroll">
+                          <table className="w-full border-collapse text-[13px]">
+                            <thead>
+                              <tr>
+                                <th className="p-0.5 text-left text-[13px] font-medium text-ink-muted">
+                                  分类
+                                </th>
+                                {series.map((s, si) => (
+                                  <th key={si} className="p-0.5">
+                                    <input
+                                      type="text"
+                                      value={s.name}
+                                      onChange={(e) => {
+                                        const nextSeries = series.map(
+                                          (itemS, idxS) =>
+                                            idxS === si
+                                              ? {
+                                                  ...itemS,
+                                                  name: e.target.value,
+                                                }
+                                              : itemS
+                                        );
+                                        onUpdateCustomElement(el.id, {
+                                          chart_series: nextSeries,
+                                        });
+                                      }}
+                                      placeholder={`系列 ${si + 1}`}
+                                      className="w-full min-w-[64px] px-2 py-1 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] font-semibold text-ink outline-none"
+                                    />
+                                  </th>
+                                ))}
+                                <th className="w-6" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cats.map((cat, ri) => (
+                                <tr key={ri}>
+                                  <td className="p-0.5">
+                                    <input
+                                      type="text"
+                                      value={cat}
+                                      onChange={(e) => {
+                                        const nextCats = [...cats];
+                                        nextCats[ri] = e.target.value;
+                                        onUpdateCustomElement(el.id, {
+                                          chart_categories: nextCats,
+                                        });
+                                      }}
+                                      className="w-full min-w-[68px] px-2 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink outline-none"
+                                    />
+                                  </td>
+                                  {series.map((s, si) => (
+                                    <td key={si} className="p-0.5">
+                                      <input
+                                        type="number"
+                                        step="any"
+                                        value={
+                                          Number.isFinite(s.values[ri])
+                                            ? s.values[ri]
+                                            : 0
+                                        }
+                                        onChange={(e) => {
+                                          const parsed = parseFloat(
+                                            e.target.value
+                                          );
+                                          const num = Number.isFinite(parsed)
+                                            ? parsed
+                                            : 0;
+                                          const nextSeries = series.map(
+                                            (itemS, idxS) => {
+                                              if (idxS !== si) return itemS;
+                                              const nextVals = [...itemS.values];
+                                              nextVals[ri] = num;
+                                              return {
+                                                ...itemS,
+                                                values: nextVals,
+                                              };
+                                            }
+                                          );
+                                          onUpdateCustomElement(el.id, {
+                                            chart_series: nextSeries,
+                                          });
+                                        }}
+                                        className="w-full min-w-[64px] px-2 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink font-mono tabular-nums outline-none"
+                                      />
+                                    </td>
+                                  ))}
+                                  <td className="p-0.5 text-center">
+                                    {cats.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onUpdateCustomElement(el.id, {
+                                            chart_categories: cats.filter(
+                                              (_, idxC) => idxC !== ri
+                                            ),
+                                            chart_series: series.map((s) => ({
+                                              ...s,
+                                              values: s.values.filter(
+                                                (_, idxV) => idxV !== ri
+                                              ),
+                                            })),
+                                          });
+                                        }}
+                                        title="删除该项"
+                                        className="p-1 rounded-md text-ink-muted hover:text-danger hover:bg-danger-bg cursor-pointer transition-colors"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

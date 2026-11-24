@@ -1061,7 +1061,21 @@ def preflight_check(
         if (it.speaker_notes or "").strip():
             notes_count += 1
 
-        if not is_custom:
+        if is_custom and it.custom_elements:
+            for el in it.custom_elements:
+                if el.kind == "image":
+                    img_ref = (el.image_asset_id or "").strip()
+                    if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:
+                        findings.append(
+                            {
+                                "slide_index": idx,
+                                "slide_number": page_no,
+                                "category": "media",
+                                "severity": "error",
+                                "message": f"第 {page_no} 页自由画布中的图片素材「{img_ref or '未指定'}」已缺失，请重新指定或删除该图片元素。",
+                            }
+                        )
+        elif not is_custom:
             if eff_layout == "text_image":
                 img_ref = (it.image_asset_id or "").strip()
                 if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:

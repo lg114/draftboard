@@ -863,8 +863,8 @@ export default function ProjectWorkspacePage() {
   }
 
   const saveOutline = useCallback(
-    async (silent = false) => {
-      if (!outline) return;
+    async (silent = false): Promise<string | null> => {
+      if (!outline) return null;
       setRawError(null);
       setIsSaving(true);
       try {
@@ -884,10 +884,12 @@ export default function ProjectWorkspacePage() {
         }
         const proj = await api<Project>(`/api/projects/${pid}`);
         setProject(proj);
+        return updated.outline_version;
       } catch (e) {
         if (!silent) {
           setRawError((e as Error).message);
         }
+        return null;
       } finally {
         setIsSaving(false);
       }
@@ -1155,18 +1157,22 @@ export default function ProjectWorkspacePage() {
     elementId: string,
     patch: Partial<CanvasElement>
   ) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const elems = item.custom_elements;
-      if (!elems || elems.length === 0) return null;
-      const nextElements = elems.map((el) =>
-        el.id === elementId ? { ...el, ...patch } : el
-      );
-      items[index] = { ...item, custom_elements: nextElements };
-      return { ...prev, items };
-    });
+    const patchKeys = Object.keys(patch).sort().join(",");
+    mutateOutline(
+      (prev) => {
+        if (!prev.items[index]) return null;
+        const items = [...prev.items];
+        const item = items[index];
+        const elems = item.custom_elements;
+        if (!elems || elems.length === 0) return null;
+        const nextElements = elems.map((el) =>
+          el.id === elementId ? { ...el, ...patch } : el
+        );
+        items[index] = { ...item, custom_elements: nextElements };
+        return { ...prev, items };
+      },
+      { coalesceKey: `customEl:${index}:${elementId}:${patchKeys}` }
+    );
   }
 
   function deleteCustomElement(index: number, elementId: string) {
@@ -2345,6 +2351,9 @@ export default function ProjectWorkspacePage() {
                   onUpdateCustomElementText={(elId, text) =>
                     updateCustomElementText(selectedIndex, elId, text)
                   }
+                  onUpdateCustomElement={(elId, patch) =>
+                    updateCustomElement(selectedIndex, elId, patch)
+                  }
                   onClearCustomLayout={() => clearCustomLayout(selectedIndex)}
                   onSwitchToChat={() => setRightPanelTab("chat")}
                   onInspectFragment={setInspectedFragment}
@@ -2505,6 +2514,13 @@ export default function ProjectWorkspacePage() {
         version={version}
         themeId={selectedThemeId}
         autoFit={autoFit}
+        onBeforeCheck={async () => {
+          if (isStale && isOutlineReadyForAutoSave(outline)) {
+            const flushed = await saveOutline(true);
+            return flushed || undefined;
+          }
+          return undefined;
+        }}
         onJumpToSlide={setSelectedIndex}
         onClose={() => setShowPreflight(false)}
       />

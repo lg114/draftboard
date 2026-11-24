@@ -306,3 +306,44 @@ def test_brand_kit_override_and_saved_layouts_crud(client):
     deleted = client.delete(f"/api/layouts/custom/{lid}")
     assert deleted.status_code == 200
     assert not any(item["id"] == lid for item in client.get("/api/layouts/custom").json()["layouts"])
+
+
+def test_preflight_catches_missing_image_in_custom_canvas(client):
+    demo = client.post("/api/projects/demo")
+    assert demo.status_code == 200
+    pid = demo.json()["project_id"]
+    proj = client.get(f"/api/projects/{pid}").json()
+    ver = proj["outlines"][0]["outline_version"]
+    outline = client.get(f"/api/projects/{pid}/outlines/{ver}").json()
+
+    # Inject a broken image element into slide 2's custom canvas
+    items = outline["items"]
+    items[1]["custom_elements"].append(
+        {
+            "id": "broken_img",
+            "kind": "image",
+            "x": 60,
+            "y": 320,
+            "w": 220,
+            "h": 140,
+            "image_asset_id": "nonexistent_deleted.png",
+        }
+    )
+    updated = client.put(
+        f"/api/projects/{pid}/outlines/{ver}",
+        json={"items": items},
+    )
+    assert updated.status_code == 200
+    new_ver = updated.json()["outline_version"]
+
+    pf = client.get(
+        f"/api/projects/{pid}/preflight?version={new_ver}&theme_id=keynote_light"
+    ).json()
+    assert pf["ready"] is False
+    assert pf["summary"]["media_ok"] is False
+    assert any(
+        f["category"] == "media"
+        and f["severity"] == "error"
+        and "nonexistent_deleted.png" in f["message"]
+        for f in pf["findings"]
+    )

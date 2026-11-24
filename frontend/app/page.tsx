@@ -647,6 +647,12 @@ export default function ProjectsPage() {
                           <input
                             value={editNameValue}
                             onChange={(e) => setEditNameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                e.preventDefault();
+                                setEditingId(null);
+                              }
+                            }}
                             autoFocus
                             className="flex-1 min-w-0 text-[14.5px] font-semibold bg-surface border border-ink rounded-lg px-2.5 py-1 text-ink outline-none"
                           />
@@ -661,28 +667,28 @@ export default function ProjectsPage() {
                             type="button"
                             onClick={() => setEditingId(null)}
                             className="p-1.5 rounded-lg bg-black/[0.06] text-ink-secondary cursor-pointer"
-                            title="取消"
+                            title="取消 (Esc)"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </form>
                       ) : confirmDeleteId === p.project_id ? (
                         <div className="flex items-center justify-between gap-2 py-0.5 px-2 rounded-lg bg-danger-bg border border-danger/20">
-                          <span className="text-[12.5px] font-medium text-danger truncate">
+                          <span className="text-[13px] font-medium text-danger truncate">
                             确认删除此文稿？
                           </span>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
                               onClick={() => void handleDelete(p.project_id)}
-                              className="px-2.5 py-0.5 rounded-full bg-danger hover:bg-danger-hover text-white text-[12px] font-medium cursor-pointer"
+                              className="px-2.5 py-0.5 rounded-full bg-danger hover:bg-danger-hover text-white text-[13px] font-medium cursor-pointer"
                             >
                               删除
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="px-2 py-0.5 rounded-full text-ink-secondary hover:text-ink text-[12px] cursor-pointer"
+                              className="px-2 py-0.5 rounded-full text-ink-secondary hover:text-ink text-[13px] cursor-pointer"
                             >
                               取消
                             </button>
@@ -761,7 +767,7 @@ export default function ProjectsPage() {
                         ))}
                       </div>
                       <span
-                        className={`text-[12.5px] font-medium tabular-nums shrink-0 inline-flex items-center gap-1 ${
+                        className={`text-[13px] font-medium tabular-nums shrink-0 inline-flex items-center gap-1 ${
                           stageInfo.step === 4
                             ? "text-ink"
                             : "text-ink-secondary"
