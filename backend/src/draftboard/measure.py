@@ -171,6 +171,7 @@ def measure_box(
     pad_y_pt: float = 4,
     indent_pt: float = 0,
     margin: float = HEIGHT_MARGIN,
+    wrap: bool = True,
 ) -> BoxMeasurement:
     """Estimate wrapping and required height for one text box.
 
@@ -178,6 +179,10 @@ def measure_box(
     explicit in-paragraph line break.  space_after is counted for every
     paragraph including the last (conservative).  An empty paragraph still
     occupies one line.
+
+    ``wrap=False`` matches a text frame with word wrap off: each explicit
+    line must fit the width by itself and is reported as OVERLONG_WORD when
+    it does not.  Nothing is truncated.
     """
     avail = width_pt - 2 * pad_x_pt - indent_pt
     missing: set[str] = set()
@@ -206,9 +211,22 @@ def measure_box(
         lines: list[str] = []
         issues: list[MeasureIssue] = []
         for seg in text.split("\n"):
-            seg_lines, seg_issues = _wrap_segment(seg, avail, width_of)
-            lines.extend(seg_lines)
-            issues.extend(seg_issues)
+            if wrap:
+                seg_lines, seg_issues = _wrap_segment(seg, avail, width_of)
+                lines.extend(seg_lines)
+                issues.extend(seg_issues)
+                continue
+            lines.append(seg)
+            if seg and sum(width_of(ch) for ch in seg) > avail:
+                issues.append(
+                    MeasureIssue(
+                        code="OVERLONG_WORD",
+                        message=(
+                            "Unbreakable text exceeds the line width "
+                            f"({avail:.1f}pt): {seg[:40]!r}"
+                        ),
+                    )
+                )
         paragraphs.append(ParagraphMeasurement(lines=lines, issues=issues))
 
     for ch in sorted(missing):
