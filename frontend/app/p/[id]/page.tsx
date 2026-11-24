@@ -126,12 +126,32 @@ export default function ProjectWorkspacePage() {
   const [rawError, setRawError] = useState<string | null>(null);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [toast, setToast] = useState("");
-  const lastToastRef = useRef("");
+  const [toast, setToast] = useState<{
+    text: string;
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
+  const lastToastRef = useRef<{
+    text: string;
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
   if (toast) lastToastRef.current = toast;
   const { mounted: toastMounted, exiting: toastExiting } = usePresence(
     Boolean(toast),
     140
+  );
+  const [confirmClearChat, setConfirmClearChat] = useState(false);
+  const clearChatConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const handleUndoRef = useRef<() => void>(() => {});
+  const selectedCustomElIdRef = useRef<string | null>(null);
+  const handleSelectedCustomElementChange = useCallback(
+    (elId: string | null) => {
+      selectedCustomElIdRef.current = elId;
+    },
+    []
   );
 
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -175,11 +195,25 @@ export default function ProjectWorkspacePage() {
     }
   };
 
-  const flashToast = useCallback((text: string, durationMs = 2800) => {
-    setToast(text);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(""), durationMs);
-  }, []);
+  const flashToast = useCallback(
+    (
+      text: string,
+      durationMs = 2800,
+      action?: { label: string; onClick: () => void }
+    ) => {
+      setToast({
+        text,
+        actionLabel: action?.label,
+        onAction: action?.onClick,
+      });
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(
+        () => setToast(null),
+        action ? Math.max(durationMs, 4200) : durationMs
+      );
+    },
+    []
+  );
 
   useEffect(() => {
     api<{ themes: ThemeOption[] }>("/api/themes")
@@ -877,6 +911,17 @@ export default function ProjectWorkspacePage() {
     return () => clearTimeout(timer);
   }, [outline, isStale, isGenerating, isSaving, saveOutline]);
 
+  // Warn before closing/reloading the browser tab when local edits haven't flushed yet
+  useEffect(() => {
+    if (!isStale) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isStale]);
+
   async function confirmGenerate() {
     if (!version || !outline) return;
     setRawError(null);
@@ -966,6 +1011,7 @@ export default function ProjectWorkspacePage() {
     );
     flashToast("已撤销");
   }, [undoStack, outline, flashToast]);
+  handleUndoRef.current = handleUndo;
 
   const handleRedo = useCallback(() => {
     if (redoStack.length === 0 || !outline) return;
@@ -1007,6 +1053,32 @@ export default function ProjectWorkspacePage() {
       nextLayout === "text_image" && !item.image_asset_id
         ? materials.find((m) => m.asset_type === "image")
         : undefined;
+
+    // Smart auto-split when switching to two_column and right column is empty
+    let autoSplitLeft: string | null = null;
+    let autoSplitRight: string | null = null;
+    if (
+      nextLayout === "two_column" &&
+      !(item.column_right && item.column_right.trim())
+    ) {
+      const raw = item.summary.trim();
+      let parts = raw
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length < 2) {
+        parts = raw
+          .split(/(?<=[。；;！!？?])/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (parts.length >= 2) {
+        const mid = Math.ceil(parts.length / 2);
+        autoSplitLeft = parts.slice(0, mid).join("\n");
+        autoSplitRight = parts.slice(mid).join("\n");
+      }
+    }
+
     mutateOutline((prev) => {
       if (!prev.items[selectedIndex]) return null;
       const items = [...prev.items];
@@ -1014,14 +1086,27 @@ export default function ProjectWorkspacePage() {
       items[selectedIndex] = {
         ...cur,
         layout: nextLayout,
+        summary: autoSplitLeft ?? cur.summary,
+        column_right: autoSplitRight ?? cur.column_right,
         image_asset_id: firstImage ? firstImage.asset_id : cur.image_asset_id,
         custom_bg: null,
         custom_elements: null,
       };
       return { ...prev, items };
     });
+
+    const undoAction = {
+      label: "撤销",
+      onClick: () => handleUndoRef.current(),
+    };
     if (wasCustom) {
-      flashToast(`已恢复为「${LAYOUT_LABELS[nextLayout] || nextLayout}」标准版式`);
+      flashToast(
+        `已切回「${LAYOUT_LABELS[nextLayout] || nextLayout}」标准版式`,
+        4200,
+        undoAction
+      );
+    } else if (autoSplitRight) {
+      flashToast("已自动将正文拆分为左右双栏", 4000, undoAction);
     }
   }
 
@@ -1099,7 +1184,102 @@ export default function ProjectWorkspacePage() {
       };
       return { ...prev, items };
     });
-    flashToast("已删除元素（可按 Ctrl+Z 撤销）");
+    flashToast("已删除选中元素", 4200, {
+      label: "撤销",
+      onClick: () => handleUndoRef.current(),
+    });
+  }
+
+  function addCustomElement(index: number, element: CanvasElement) {
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
+      const items = [...prev.items];
+      const item = items[index];
+      const elems = item.custom_elements || [];
+      items[index] = {
+        ...item,
+        custom_bg: item.custom_bg || "theme:bg",
+        custom_elements: [...elems, element],
+      };
+      return { ...prev, items };
+    });
+    const labels: Record<CanvasElement["kind"], string> = {
+      text: "文本框",
+      card: "卡片背景",
+      line: "分割线",
+      image: "图片元素",
+      table: "表格",
+      chart: "图表",
+    };
+    flashToast(`已添加${labels[element.kind] || "元素"}`);
+  }
+
+  function duplicateCustomElement(
+    index: number,
+    elementId: string
+  ): string | null {
+    const cur = outlineRef.current?.items[index];
+    const elems = cur?.custom_elements;
+    if (!elems) return null;
+    const origIdx = elems.findIndex((e) => e.id === elementId);
+    if (origIdx < 0) return null;
+    const orig = elems[origIdx];
+    const newId = `el_${orig.kind}_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 5)}`;
+    const clone: CanvasElement = JSON.parse(JSON.stringify(orig));
+    clone.id = newId;
+    if (clone.kind === "line") {
+      const maxX = Math.min(960, 960 - clone.w);
+      const maxY = Math.min(540, 540 - clone.h);
+      clone.x = Math.round(Math.min(maxX, clone.x + 18));
+      clone.y = Math.round(Math.min(maxY, clone.y + 18));
+    } else {
+      clone.x = Math.round(Math.min(960 - clone.w, clone.x + 18));
+      clone.y = Math.round(Math.min(540 - clone.h, clone.y + 18));
+    }
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
+      const items = [...prev.items];
+      const item = items[index];
+      const curElems = item.custom_elements || [];
+      const idx = curElems.findIndex((e) => e.id === elementId);
+      if (idx < 0) return null;
+      const nextElements = [...curElems];
+      nextElements.splice(idx + 1, 0, clone);
+      items[index] = { ...item, custom_elements: nextElements };
+      return { ...prev, items };
+    });
+    flashToast("已复制选中元素");
+    return newId;
+  }
+
+  function reorderCustomElement(
+    index: number,
+    elementId: string,
+    dir: "front" | "back"
+  ) {
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
+      const items = [...prev.items];
+      const item = items[index];
+      const elems = item.custom_elements;
+      if (!elems || elems.length < 2) return null;
+      const idx = elems.findIndex((e) => e.id === elementId);
+      if (idx < 0) return null;
+      if (dir === "front" && idx === elems.length - 1) return null;
+      if (dir === "back" && idx === 0) return null;
+      const nextElements = [...elems];
+      const [picked] = nextElements.splice(idx, 1);
+      if (dir === "front") {
+        nextElements.push(picked);
+      } else {
+        nextElements.unshift(picked);
+      }
+      items[index] = { ...item, custom_elements: nextElements };
+      return { ...prev, items };
+    });
+    flashToast(dir === "front" ? "已置于顶层" : "已置于底层");
   }
 
   function clearCustomLayout(index: number) {
@@ -1127,7 +1307,10 @@ export default function ProjectWorkspacePage() {
       };
       return { ...prev, items };
     });
-    flashToast("已恢复为标准版式");
+    flashToast("已恢复为标准版式", 4200, {
+      label: "撤销",
+      onClick: () => handleUndoRef.current(),
+    });
   }
 
   function toggleSourceId(index: number, sourceId: string) {
@@ -1350,12 +1533,42 @@ export default function ProjectWorkspacePage() {
     });
   }
 
+  function duplicateItem(index: number) {
+    const src = outlineRef.current?.items[index];
+    if (!src) return;
+    const stamp = Date.now().toString(36);
+    const cloned = JSON.parse(JSON.stringify(src)) as Outline["items"][number];
+    cloned.outline_item_id = `slide-${stamp}`;
+    if (cloned.custom_elements && cloned.custom_elements.length > 0) {
+      cloned.custom_elements = cloned.custom_elements.map((el, i) => ({
+        ...el,
+        id: `el_${el.kind}_${stamp}_${i}`,
+      }));
+    }
+    mutateOutline((prev) => {
+      if (!prev.items[index]) return null;
+      const items = [...prev.items];
+      items.splice(index + 1, 0, cloned);
+      return { ...prev, items };
+    });
+    setSelectedIndex(index + 1);
+    flashToast(`已复制第 ${index + 1} 页`, 4200, {
+      label: "撤销",
+      onClick: () => handleUndoRef.current(),
+    });
+  }
+
   function deleteItem(index: number) {
+    if (!outline || outline.items.length <= 1) return;
     mutateOutline((prev) => {
       if (prev.items.length <= 1) return null;
       const items = prev.items.filter((_, i) => i !== index);
       setSelectedIndex(Math.max(0, Math.min(index, items.length - 1)));
       return { ...prev, items };
+    });
+    flashToast(`已删除第 ${index + 1} 页`, 4500, {
+      label: "撤销",
+      onClick: () => handleUndoRef.current(),
     });
   }
 
@@ -1696,6 +1909,9 @@ export default function ProjectWorkspacePage() {
         handleRedo();
         return;
       }
+      if (selectedCustomElIdRef.current) {
+        return;
+      }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex((i) => Math.max(0, i - 1));
@@ -1776,6 +1992,11 @@ export default function ProjectWorkspacePage() {
         onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
         onSelectVersion={(v) => void showOutline(v)}
         onSaveOutline={() => void saveOutline(false)}
+        onFlushBeforeLeave={async () => {
+          if (isStale && isOutlineReadyForAutoSave(outline)) {
+            await saveOutline(true);
+          }
+        }}
         onRenameProject={renameProject}
         onUploadClick={() => fileInputRef.current?.click()}
         onGenerateOutline={() => void genOutline()}
@@ -1807,16 +2028,32 @@ export default function ProjectWorkspacePage() {
         onClose={() => setShowMaterialsDrawer(false)}
       />
 
-      {/* Calm Floating Toast (smooth enter & exit) */}
-      {toastMounted && (
-        <div
-          className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap pointer-events-none ${
-            toastExiting ? "anim-toast-out" : "anim-toast-in"
-          }`}
-        >
-          {toast || lastToastRef.current}
-        </div>
-      )}
+      {/* Calm Floating Toast (smooth enter & exit, optional inline Undo action) */}
+      {toastMounted && (toast || lastToastRef.current) && (() => {
+        const activeToast = toast || lastToastRef.current!;
+        return (
+          <div
+            className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap flex items-center gap-3 ${
+              activeToast.onAction ? "pointer-events-auto" : "pointer-events-none"
+            } ${toastExiting ? "anim-toast-out" : "anim-toast-in"}`}
+          >
+            <span>{activeToast.text}</span>
+            {activeToast.actionLabel && activeToast.onAction && (
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = activeToast.onAction;
+                  setToast(null);
+                  fn?.();
+                }}
+                className="px-2.5 py-0.5 rounded-full bg-ink text-white text-[13px] font-medium hover:bg-ink-hover transition-colors cursor-pointer"
+              >
+                {activeToast.actionLabel}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Quiet Inline Error Strip (Apple-restrained, dismissible, expandable tech log) */}
       {humanizedError && (
@@ -1875,10 +2112,12 @@ export default function ProjectWorkspacePage() {
               outline={outline}
               selectedIndex={selectedIndex}
               activeTheme={activeTheme}
+              brand={project?.brand ?? null}
               issueSlideIndices={issueSlideIndices}
               onSelectIndex={setSelectedIndex}
               onMoveItem={moveItem}
               onReorderItem={reorderItem}
+              onDuplicateItem={duplicateItem}
               onDeleteItem={deleteItem}
               onAddItem={addItem}
             />
@@ -1935,6 +2174,14 @@ export default function ProjectWorkspacePage() {
             onDeleteCustomElement={(elId) =>
               deleteCustomElement(selectedIndex, elId)
             }
+            onAddCustomElement={(el) => addCustomElement(selectedIndex, el)}
+            onDuplicateCustomElement={(elId) =>
+              duplicateCustomElement(selectedIndex, elId)
+            }
+            onReorderCustomElement={(elId, dir) =>
+              reorderCustomElement(selectedIndex, elId, dir)
+            }
+            onSelectedCustomElementChange={handleSelectedCustomElementChange}
           />
 
           {rightOpen && (
@@ -1987,17 +2234,50 @@ export default function ProjectWorkspacePage() {
                   </div>
                 ) : (
                   chatMessages.length > 0 &&
-                  !isChatStreaming && (
+                  !isChatStreaming &&
+                  (confirmClearChat ? (
+                    <div className="flex items-center gap-1 shrink-0 anim-msg-in">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmClearChat(false);
+                          if (clearChatConfirmTimerRef.current) {
+                            clearTimeout(clearChatConfirmTimerRef.current);
+                          }
+                          void clearChat();
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-danger text-white text-[13px] font-medium hover:bg-danger-hover transition-colors cursor-pointer"
+                      >
+                        确认清空
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClearChat(false)}
+                        className="px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] cursor-pointer"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => void clearChat()}
+                      onClick={() => {
+                        setConfirmClearChat(true);
+                        if (clearChatConfirmTimerRef.current) {
+                          clearTimeout(clearChatConfirmTimerRef.current);
+                        }
+                        clearChatConfirmTimerRef.current = setTimeout(
+                          () => setConfirmClearChat(false),
+                          4000
+                        );
+                      }}
                       title="清空本项目的历史对话"
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>清空</span>
                     </button>
-                  )
+                  ))
                 )}
               </div>
 
@@ -2121,17 +2401,51 @@ export default function ProjectWorkspacePage() {
                   <span>AI 对话</span>
                 </span>
                 <div className="flex items-center gap-1">
-                  {chatMessages.length > 0 && !isChatStreaming && (
-                    <button
-                      type="button"
-                      onClick={() => void clearChat()}
-                      title="清空本项目的历史对话"
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>清空</span>
-                    </button>
-                  )}
+                  {chatMessages.length > 0 &&
+                    !isChatStreaming &&
+                    (confirmClearChat ? (
+                      <div className="flex items-center gap-1 shrink-0 anim-msg-in">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmClearChat(false);
+                            if (clearChatConfirmTimerRef.current) {
+                              clearTimeout(clearChatConfirmTimerRef.current);
+                            }
+                            void clearChat();
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-danger text-white text-[13px] font-medium hover:bg-danger-hover transition-colors cursor-pointer"
+                        >
+                          确认清空
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmClearChat(false)}
+                          className="px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] cursor-pointer"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmClearChat(true);
+                          if (clearChatConfirmTimerRef.current) {
+                            clearTimeout(clearChatConfirmTimerRef.current);
+                          }
+                          clearChatConfirmTimerRef.current = setTimeout(
+                            () => setConfirmClearChat(false),
+                            4000
+                          );
+                        }}
+                        title="清空本项目的历史对话"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>清空</span>
+                      </button>
+                    ))}
                   <button
                     type="button"
                     onClick={() => setOnboardingChatOpen(false)}

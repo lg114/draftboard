@@ -11,6 +11,8 @@ import {
   Download,
   Image as ImageIcon,
   ImageDown,
+  Maximize2,
+  Minimize2,
   Monitor,
   Pause,
   Play,
@@ -487,8 +489,9 @@ export default function PreviewPage() {
   const [rendering, setRendering] = useState(false);
   const [historicalExport, setHistoricalExport] = useState(false);
 
-  // Presenter View state
+  // Presenter View & Fullscreen state
   const [presenterMode, setPresenterMode] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [noteFontSize, setNoteFontSize] = useState(16);
   const [timerRunning, setTimerRunning] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -569,23 +572,101 @@ export default function PreviewPage() {
   }, [timerRunning]);
 
   useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+        return;
+      }
+      if (isFullscreen) {
+        setIsFullscreen(false);
+        return;
+      }
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        setIsFullscreen(true);
+      }
+    } catch {
+      // Fallback to viewport fullscreen theater if browser disallows native API
+      setIsFullscreen((v) => !v);
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "p") {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === "Escape" && isFullscreen && !document.fullscreenElement) {
+        setIsFullscreen(false);
+        return;
+      }
+      if (
+        e.key.toLowerCase() === "f" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        totalSlides > 0
+      ) {
+        e.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
+      if (
+        e.key.toLowerCase() === "p" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        if (isFullscreen) {
+          if (document.fullscreenElement) {
+            void document.exitFullscreen().catch(() => {});
+          }
+          setIsFullscreen(false);
+        }
         setPresenterMode((v) => !v);
         return;
       }
       if (!totalSlides) return;
-      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault();
         setSelected((s) => Math.max(0, s - 1));
-      } else if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") {
+      } else if (
+        e.key === "ArrowRight" ||
+        e.key === "ArrowDown" ||
+        e.key === "PageDown" ||
+        e.key === " "
+      ) {
         e.preventDefault();
         setSelected((s) => Math.min(totalSlides - 1, s + 1));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setSelected(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setSelected(totalSlides - 1);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [totalSlides]);
+  }, [totalSlides, isFullscreen, toggleFullscreen]);
 
   async function renderNow() {
     setRendering(true);
@@ -676,6 +757,18 @@ export default function PreviewPage() {
                 <span>演讲者视图</span>
               </button>
             </div>
+          )}
+
+          {totalSlides > 0 && (
+            <button
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              title="进入全屏放映 (快捷键 F)"
+              className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.06] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">全屏</span>
+            </button>
           )}
 
           {report?.success && (
@@ -1039,7 +1132,7 @@ export default function PreviewPage() {
                   <span className="font-medium text-ink">
                     第 {selected + 1} / {totalSlides} 页
                   </span>
-                  <span>支持 ← / → / 空格翻页，按 P 切换演讲者视图</span>
+                  <span>支持 ← / → / 空格翻页，按 F 全屏放映，按 P 切换演讲者视图</span>
                 </div>
               </div>
             </div>
@@ -1074,6 +1167,87 @@ export default function PreviewPage() {
           </div>
         )}
       </main>
+
+      {/* True Distraction-Free Fullscreen Theater Overlay (F to toggle, Esc to exit) */}
+      {isFullscreen && totalSlides > 0 && (
+        <div
+          className="fixed inset-0 z-50 bg-black flex items-center justify-center group/fs select-none"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
+            if (relX < 0.25) {
+              setSelected((s) => Math.max(0, s - 1));
+            } else {
+              setSelected((s) => Math.min(totalSlides - 1, s + 1));
+            }
+          }}
+        >
+          <div className="w-[min(100vw,calc(100vh*16/9))] aspect-[16/9] bg-surface overflow-hidden relative shadow-2xl">
+            <div
+              key={`fs-${selected}`}
+              className="absolute inset-0 anim-slide-settle"
+            >
+              {currentPageSrc ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={currentPageSrc}
+                  alt={`第 ${selected + 1} 页`}
+                  className="w-full h-full object-contain select-none"
+                />
+              ) : currentOutlineItem ? (
+                <LiveSlidePreviewBox
+                  pid={pid}
+                  item={currentOutlineItem}
+                  index={selected}
+                  total={totalSlides}
+                  theme={activeTheme}
+                  brand={project?.brand}
+                />
+              ) : null}
+            </div>
+          </div>
+
+          {/* Hover-only subtle floating HUD at bottom center */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="fixed bottom-5 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/65 backdrop-blur-md border border-white/15 text-white flex items-center gap-2 text-[13px] opacity-0 group-hover/fs:opacity-100 focus-within:opacity-100 transition-opacity duration-200"
+          >
+            <button
+              type="button"
+              disabled={selected === 0}
+              onClick={() => setSelected((s) => Math.max(0, s - 1))}
+              aria-label="上一页"
+              className="p-1 rounded-full hover:bg-white/15 disabled:opacity-30 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="tabular-nums px-1 font-medium">
+              {selected + 1} / {totalSlides}
+            </span>
+            <button
+              type="button"
+              disabled={selected === totalSlides - 1}
+              onClick={() =>
+                setSelected((s) => Math.min(totalSlides - 1, s + 1))
+              }
+              aria-label="下一页"
+              className="p-1 rounded-full hover:bg-white/15 disabled:opacity-30 cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <span className="w-px h-3.5 bg-white/20 mx-0.5" />
+            <button
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              title="退出全屏 (Esc / F)"
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-white/15 cursor-pointer"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>退出全屏</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

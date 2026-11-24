@@ -5,13 +5,18 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  ArrowDownToLine,
+  ArrowUpToLine,
   Bold,
   ChevronDown,
+  Copy,
   Image as ImageIcon,
   Minus,
   Pencil,
   Plus,
+  Square,
   Trash2,
+  Type,
   X,
 } from "lucide-react";
 import type {
@@ -65,6 +70,10 @@ interface SlideStageCanvasProps {
   onFocusField: (fieldId: string) => void;
   onUpdateCustomElement?: (elementId: string, patch: Partial<CanvasElement>) => void;
   onDeleteCustomElement?: (elementId: string) => void;
+  onAddCustomElement?: (element: CanvasElement) => void;
+  onDuplicateCustomElement?: (elementId: string) => string | null;
+  onReorderCustomElement?: (elementId: string, dir: "front" | "back") => void;
+  onSelectedCustomElementChange?: (elementId: string | null) => void;
 }
 
 /**
@@ -227,6 +236,10 @@ export function SlideStageCanvas({
   onFocusField,
   onUpdateCustomElement,
   onDeleteCustomElement,
+  onAddCustomElement,
+  onDuplicateCustomElement,
+  onReorderCustomElement,
+  onSelectedCustomElementChange,
 }: SlideStageCanvasProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const colRef = useRef<HTMLDivElement | null>(null);
@@ -235,6 +248,9 @@ export function SlideStageCanvas({
   const [themePopoverOpen, setThemePopoverOpen] = useState(false);
   const { mounted: themePopoverMounted, exiting: themePopoverExiting } =
     usePresence(themePopoverOpen, 130);
+  const [addPopoverOpen, setAddPopoverOpen] = useState(false);
+  const { mounted: addPopoverMounted, exiting: addPopoverExiting } =
+    usePresence(addPopoverOpen, 130);
   const [themeTab, setThemeTab] = useState<"themes" | "brand">("themes");
   const [brandDraft, setBrandDraft] = useState<BrandKit>({});
   const [savingBrand, setSavingBrand] = useState(false);
@@ -252,16 +268,8 @@ export function SlideStageCanvas({
 
   useEffect(() => {
     setSelectedElId(null);
+    setAddPopoverOpen(false);
   }, [selectedIndex, version]);
-
-  useEffect(() => {
-    if (!selectedElId) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedElId(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selectedElId]);
 
   useEffect(() => {
     const update = () => {
@@ -303,10 +311,171 @@ export function SlideStageCanvas({
 
   // The PNG is the exported artifact. Show it only when the backend says the
   // live inputs (outline, theme, brand, auto-fit, referenced images) match
-  // that artifact's fingerprint.
+  // that artifact's fingerprint. Keep freeform canvas slides interactive on
+  // the stage so users can always click/drag/delete individual elements.
   const hasRenderedPage = Boolean(preview?.pages && preview.pages[selectedIndex]);
-  const showRenderedImage =
+  const isSyncedArtifact =
     !diffPreviewActive && exportInSync && hasRenderedPage;
+  const showRenderedImage = isSyncedArtifact && !isCustomCanvas;
+
+  const handleQuickAddElement = (kind: "text" | "card" | "line" | "image") => {
+    if (!onAddCustomElement) return;
+    const id = `el_${kind}_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 5)}`;
+    const count = item?.custom_elements?.length ?? 0;
+    const jitter = (count % 5) * 14;
+    let nextEl: CanvasElement;
+    if (kind === "text") {
+      nextEl = {
+        id,
+        kind: "text",
+        x: 300 + jitter,
+        y: 220 + jitter,
+        w: 360,
+        h: 72,
+        text: "新文本框（双击编辑）",
+        font_size: 20,
+        color: "theme:body",
+        align: "left",
+      };
+    } else if (kind === "card") {
+      nextEl = {
+        id,
+        kind: "card",
+        x: 320 + jitter,
+        y: 180 + jitter,
+        w: 300,
+        h: 168,
+        fill: "theme:surface",
+        border_color: "theme:divider",
+        border_width: 1,
+        radius: 12,
+      };
+    } else if (kind === "line") {
+      nextEl = {
+        id,
+        kind: "line",
+        x: 280,
+        y: 270 + jitter,
+        w: 400,
+        h: 0,
+        color: "theme:divider",
+        line_width: 2,
+      };
+    } else {
+      const firstImg = imageAssets[0];
+      if (!firstImg) return;
+      nextEl = {
+        id,
+        kind: "image",
+        x: 310 + jitter,
+        y: 140 + jitter,
+        w: 340,
+        h: 240,
+        image_asset_id: firstImg.asset_id,
+        fit: "contain",
+        radius: 8,
+      };
+    }
+    onAddCustomElement(nextEl);
+    setSelectedElId(id);
+    setAddPopoverOpen(false);
+  };
+
+  useEffect(() => {
+    onSelectedCustomElementChange?.(selectedEl ? selectedEl.id : null);
+  }, [selectedEl, onSelectedCustomElementChange]);
+
+  useEffect(() => {
+    if (!selectedEl || diffPreviewActive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      if (e.key === "Escape") {
+        setSelectedElId(null);
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const inEditable = Boolean(
+        target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.tagName === "SELECT" ||
+            target.isContentEditable)
+      );
+      if (inEditable) return;
+
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === "d" &&
+        onDuplicateCustomElement
+      ) {
+        e.preventDefault();
+        const createdId = onDuplicateCustomElement(selectedEl.id);
+        if (createdId) setSelectedElId(createdId);
+        return;
+      }
+
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        onDeleteCustomElement &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        onDeleteCustomElement(selectedEl.id);
+        setSelectedElId(null);
+        return;
+      }
+
+      if (
+        (e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown") &&
+        onUpdateCustomElement &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx =
+          e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy =
+          e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        let nx: number;
+        let ny: number;
+        if (selectedEl.kind === "line") {
+          const minX = Math.min(0, -selectedEl.w);
+          const maxX = Math.min(960, 960 - selectedEl.w);
+          const minY = Math.min(0, -selectedEl.h);
+          const maxY = Math.min(540, 540 - selectedEl.h);
+          nx = Math.round(Math.max(minX, Math.min(maxX, selectedEl.x + dx)));
+          ny = Math.round(Math.max(minY, Math.min(maxY, selectedEl.y + dy)));
+        } else {
+          nx = Math.round(
+            Math.max(0, Math.min(960 - selectedEl.w, selectedEl.x + dx))
+          );
+          ny = Math.round(
+            Math.max(0, Math.min(540 - selectedEl.h, selectedEl.y + dy))
+          );
+        }
+        if (nx !== selectedEl.x || ny !== selectedEl.y) {
+          onUpdateCustomElement(selectedEl.id, { x: nx, y: ny });
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    selectedEl,
+    diffPreviewActive,
+    onDeleteCustomElement,
+    onDuplicateCustomElement,
+    onUpdateCustomElement,
+  ]);
 
   const firstIssueSlide = Array.from(issueSlideIndices).sort((a, b) => a - b)[0];
   const hasLayoutIssues =
@@ -376,7 +545,7 @@ export function SlideStageCanvas({
                   <span className="shrink-0">点击定位 ›</span>
                 )}
               </button>
-            ) : showRenderedImage ? (
+            ) : isSyncedArtifact ? (
               <span className="inline-flex items-center gap-2 text-ink font-medium whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-success shrink-0" />
                 <span>已与 PPTX 同步</span>
@@ -395,6 +564,13 @@ export function SlideStageCanvas({
           </div>
 
           <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
+            {isCustomCanvas && !diffPreviewActive && (
+              <span className="hidden lg:inline text-[13px] text-ink-muted">
+                {selectedEl
+                  ? "方向键微调 · Shift×10 · Ctrl+D 复制 · Delete 删除"
+                  : "点击画布元素可直接拖拽微调 · 双击改文字"}
+              </span>
+            )}
             {isCustomCanvas && (
               <span className="px-2 py-0.5 rounded-full bg-black/[0.06] text-[13px] font-medium text-ink">
                 自由画布
@@ -1305,6 +1481,41 @@ export function SlideStageCanvas({
 
               <div className="w-px h-5 bg-black/[0.08] shrink-0" />
 
+              {onReorderCustomElement && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onReorderCustomElement(selectedEl.id, "front")}
+                    title="置于顶层"
+                    className="p-1.5 rounded-xl text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer"
+                  >
+                    <ArrowUpToLine className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onReorderCustomElement(selectedEl.id, "back")}
+                    title="置于底层"
+                    className="p-1.5 rounded-xl text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer"
+                  >
+                    <ArrowDownToLine className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {onDuplicateCustomElement && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const createdId = onDuplicateCustomElement(selectedEl.id);
+                    if (createdId) setSelectedElId(createdId);
+                  }}
+                  title="复制元素 (Ctrl/⌘+D)"
+                  className="p-1.5 rounded-xl text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer shrink-0"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {onDeleteCustomElement && (
                 <button
                   type="button"
@@ -1312,7 +1523,7 @@ export function SlideStageCanvas({
                     onDeleteCustomElement(selectedEl.id);
                     setSelectedElId(null);
                   }}
-                  title="删除选中元素（支持 Ctrl+Z 撤销）"
+                  title="删除选中元素（Delete / Backspace，支持 Ctrl+Z 撤销）"
                   className="p-1.5 rounded-xl text-ink-muted hover:text-danger hover:bg-danger-bg transition-colors cursor-pointer shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1603,7 +1814,11 @@ export function SlideStageCanvas({
             <div className="w-px h-5 bg-black/[0.08] shrink-0" />
 
             {/* Segmented Layout Control — crisp white sliding pill on gray track (Item 4) */}
-            <div className="flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0">
+            <div
+              className={`flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5 flex-nowrap shrink-0 transition-opacity ${
+                isCustomCanvas ? "opacity-75 hover:opacity-100" : ""
+              }`}
+            >
               {LAYOUT_OPTIONS.map((opt) => {
                 const active = !isCustomCanvas && layout === opt.value;
                 return (
@@ -1613,7 +1828,7 @@ export function SlideStageCanvas({
                     onClick={() => onSelectLayout(opt.value)}
                     title={
                       isCustomCanvas
-                        ? `切换回「${opt.label}」标准版式`
+                        ? `切换回「${opt.label}」标准版式（将退出自由画布，可随时撤销）`
                         : opt.label
                     }
                     className={`px-2.5 py-1 rounded-[9px] text-[13px] flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
@@ -1653,6 +1868,87 @@ export function SlideStageCanvas({
               </span>
               {!compactDock && <span>自动缩字</span>}
             </button>
+
+            {isCustomCanvas && !diffPreviewActive && onAddCustomElement && (
+              <>
+                <div className="w-px h-5 bg-black/[0.08] shrink-0" />
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThemePopoverOpen(false);
+                      setAddPopoverOpen((v) => !v);
+                    }}
+                    title="向当前自由画布添加元素"
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      addPopoverOpen
+                        ? "bg-ink text-white"
+                        : "text-ink hover:bg-black/[0.06]"
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5 shrink-0" />
+                    {!compactDock && <span>添加</span>}
+                  </button>
+
+                  {addPopoverMounted && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setAddPopoverOpen(false)}
+                      />
+                      <div
+                        className={`absolute bottom-full right-0 mb-2.5 w-[176px] apple-glass dock-shadow rounded-2xl p-1.5 z-50 space-y-0.5 ${
+                          addPopoverExiting
+                            ? "anim-popover-up-out pointer-events-none"
+                            : "anim-popover-up-in"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAddElement("text")}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-medium text-ink hover:bg-black/[0.06] transition-colors cursor-pointer text-left"
+                        >
+                          <Type className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                          <span>文本框</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAddElement("card")}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-medium text-ink hover:bg-black/[0.06] transition-colors cursor-pointer text-left"
+                        >
+                          <Square className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                          <span>卡片背景</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAddElement("line")}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-medium text-ink hover:bg-black/[0.06] transition-colors cursor-pointer text-left"
+                        >
+                          <Minus className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                          <span>分割线</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={imageAssets.length === 0}
+                          onClick={() => handleQuickAddElement("image")}
+                          title={
+                            imageAssets.length === 0
+                              ? "请先上传图片素材"
+                              : "插入第一张已上传的图片"
+                          }
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-medium text-ink hover:bg-black/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer text-left"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+                          <span>
+                            {imageAssets.length > 0 ? "图片元素" : "图片（需先上传）"}
+                          </span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
             </div>
           )}

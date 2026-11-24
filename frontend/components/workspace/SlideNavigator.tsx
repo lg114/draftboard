@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import type { Outline, OutlineItem, ThemeOption } from "../../lib/api";
-import { AutoScaledCustomSlide } from "./CustomSlideLayer";
+import { useEffect, useRef, useState } from "react";
+import { Copy, Image as ImageIcon } from "lucide-react";
+import type { BrandKit, Outline, OutlineItem, ThemeOption } from "../../lib/api";
+import { CustomSlideLayer } from "./CustomSlideLayer";
 import { inferEffectiveLayout, normalizeEscapedNewlines } from "./layoutUtils";
 
 interface SlideNavigatorProps {
@@ -10,203 +11,430 @@ interface SlideNavigatorProps {
   outline: Outline;
   selectedIndex: number;
   activeTheme: ThemeOption;
+  brand?: BrandKit | null;
   issueSlideIndices: Set<number>;
   onSelectIndex: (idx: number) => void;
   onMoveItem: (idx: number, delta: number) => void;
   onReorderItem?: (fromIdx: number, toIdx: number) => void;
+  onDuplicateItem?: (idx: number) => void;
   onDeleteItem: (idx: number) => void;
   onAddItem: () => void;
 }
 
-function ThumbSkeleton({
+/**
+ * True 960x540 proportional slide thumbnail renderer matching the main stage
+ * and presenter filmstrip 1:1 (including all 6 standard layouts, custom canvas
+ * elements, and optional brand logo/footer overlay).
+ */
+function ProportionalSlideThumb({
   pid,
   item,
   index,
   total,
   theme,
+  brand,
+  scale,
 }: {
   pid: string;
   item: OutlineItem;
   index: number;
   total: number;
   theme: ThemeOption;
+  brand?: BrandKit | null;
+  scale: number;
 }) {
-  const layout = inferEffectiveLayout(item.layout, index, total);
   const sw = theme.swatches;
+  const isCustomCanvas = Boolean(
+    item.custom_elements && item.custom_elements.length > 0
+  );
+  const layout = inferEffectiveLayout(item.layout, index, total);
   const isHero = layout === "cover" || layout === "closing";
+  const slideBg = isHero ? sw.cover_bg : sw.bg;
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
   const cleanSummary = normalizeEscapedNewlines(item.summary || "");
   const cleanColRight = normalizeEscapedNewlines(item.column_right || "");
 
-  if (layout === "cover") {
-    return (
-      <div className="flex-1 flex flex-col justify-between px-1 py-0.5 min-h-0">
-        <div
-          className="w-5 h-[2px] rounded-full mt-1"
-          style={{ backgroundColor: sw.accent }}
-        />
-        <div className="space-y-0.5 my-auto">
+  const brandOverlay =
+    brand && (brand.footer_text || brand.logo_asset_id) ? (
+      <>
+        {brand.logo_asset_id && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={`/api/projects/${encodeURIComponent(pid)}/assets/${encodeURIComponent(
+              brand.logo_asset_id
+            )}`}
+            alt=""
+            style={{
+              position: "absolute",
+              left: brand.logo_position === "bottom_left" ? 48 : 840,
+              top: brand.logo_position === "bottom_left" ? 502 : 14,
+              width: 72,
+              height: 24,
+              objectFit: "contain",
+            }}
+          />
+        )}
+        {brand.footer_text && (
           <div
-            className="text-[9.5px] font-bold leading-tight line-clamp-2 tracking-tight"
-            style={{ color: titleCol }}
+            style={{
+              position: "absolute",
+              left:
+                brand.logo_asset_id && brand.logo_position === "bottom_left"
+                  ? 128
+                  : 48,
+              top: 506,
+              fontSize: 11,
+              color: sw.muted,
+            }}
           >
-            {item.title || "未命名"}
-          </div>
-          {cleanSummary && (
-            <div
-              className="text-[6.5px] leading-snug line-clamp-1 opacity-80"
-              style={{ color: bodyCol }}
-            >
-              {cleanSummary}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (layout === "closing") {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-1.5 gap-1 min-h-0">
-        <div
-          className="w-5 h-[2px] rounded-full"
-          style={{ backgroundColor: sw.accent }}
-        />
-        <div
-          className="text-[9px] font-bold leading-tight line-clamp-2"
-          style={{ color: titleCol }}
-        >
-          {item.title || "未命名"}
-        </div>
-        {cleanSummary && (
-          <div
-            className="text-[6.5px] leading-snug line-clamp-1 opacity-80"
-            style={{ color: bodyCol }}
-          >
-            {cleanSummary}
+            {brand.footer_text}
           </div>
         )}
-      </div>
-    );
-  }
-
-  if (layout === "two_column") {
-    return (
-      <>
-        <div
-          className="text-[8px] font-bold truncate pb-1 border-b relative"
-          style={{ color: titleCol, borderColor: sw.divider }}
-        >
-          {item.title || "未命名"}
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 flex-1 pt-1 min-h-0 overflow-hidden">
-          <div
-            className="text-[6.5px] leading-snug line-clamp-4 pr-1 border-r whitespace-pre-wrap"
-            style={{ color: bodyCol, borderColor: sw.divider }}
-          >
-            {cleanSummary}
-          </div>
-          <div
-            className="text-[6.5px] leading-snug line-clamp-4 whitespace-pre-wrap"
-            style={{ color: bodyCol }}
-          >
-            {cleanColRight || "右栏"}
-          </div>
-        </div>
       </>
-    );
-  }
+    ) : null;
 
-  if (layout === "text_image") {
+  if (isCustomCanvas && item.custom_elements) {
     return (
       <>
-        <div
-          className="text-[8px] font-bold truncate pb-1 border-b"
-          style={{ color: titleCol, borderColor: sw.divider }}
-        >
-          {item.title || "未命名"}
-        </div>
-        <div className="grid grid-cols-12 gap-1.5 flex-1 pt-1 min-h-0 items-stretch overflow-hidden">
+        <CustomSlideLayer
+          pid={pid}
+          customBg={item.custom_bg}
+          elements={item.custom_elements}
+          theme={theme}
+          scale={scale}
+          interactive={false}
+        />
+        {brandOverlay && (
           <div
-            className="col-span-6 text-[6.5px] leading-snug line-clamp-4 whitespace-pre-wrap"
-            style={{ color: bodyCol }}
+            className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 pointer-events-none"
+            style={{ transform: `scale(${scale})` }}
           >
-            {cleanSummary}
+            {brandOverlay}
           </div>
-          <div
-            className="col-span-6 h-full rounded-[4px] overflow-hidden flex items-center justify-center border"
-            style={{ backgroundColor: sw.surface, borderColor: sw.divider }}
-          >
-            {item.image_asset_id ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={`/api/projects/${pid}/assets/${encodeURIComponent(
-                  item.image_asset_id
-                )}`}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div
-                className="w-4 h-4 rounded-sm opacity-35"
-                style={{ backgroundColor: sw.accent }}
-              />
-            )}
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  if (layout === "bullets") {
-    const bulletLines = cleanSummary
-      .split("\n")
-      .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
-      .filter(Boolean)
-      .slice(0, 3);
-    return (
-      <>
-        <div
-          className="text-[8px] font-bold truncate pb-1 border-b"
-          style={{ color: titleCol, borderColor: sw.divider }}
-        >
-          {item.title || "未命名"}
-        </div>
-        <ul className="pt-1 space-y-0.5 flex-1 overflow-hidden">
-          {bulletLines.map((line, i) => (
-            <li
-              key={i}
-              className="flex items-start gap-1 text-[6px] leading-tight"
-              style={{ color: bodyCol }}
-            >
-              <span
-                className="w-1 h-1 rounded-full mt-[2.5px] shrink-0"
-                style={{ backgroundColor: sw.accent }}
-              />
-              <span className="truncate">{line}</span>
-            </li>
-          ))}
-        </ul>
+        )}
       </>
     );
   }
 
   return (
-    <>
-      <div
-        className="text-[8px] font-bold truncate pb-1 border-b"
-        style={{ color: titleCol, borderColor: sw.divider }}
-      >
-        {item.title || "未命名"}
-      </div>
-      <div
-        className="text-[6.5px] leading-snug line-clamp-4 pt-1 flex-1 overflow-hidden whitespace-pre-wrap"
-        style={{ color: bodyCol }}
-      >
-        {cleanSummary}
-      </div>
-    </>
+    <div
+      className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 pointer-events-none select-none"
+      style={{ transform: `scale(${scale})`, backgroundColor: slideBg }}
+    >
+      {layout === "cover" ? (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 144,
+              width: 60,
+              height: 3.5,
+              borderRadius: 99,
+              backgroundColor: sw.accent,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 172,
+              width: 864,
+              fontSize: 44,
+              lineHeight: "54px",
+              fontWeight: 700,
+              letterSpacing: "-0.028em",
+              color: titleCol,
+            }}
+          >
+            {item.title || "未命名标题"}
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 298,
+              width: 820,
+              fontSize: 20,
+              lineHeight: "31px",
+              whiteSpace: "pre-wrap",
+              color: bodyCol,
+            }}
+          >
+            {cleanSummary}
+          </div>
+        </>
+      ) : layout === "closing" ? (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: 452,
+              top: 140,
+              width: 56,
+              height: 3,
+              borderRadius: 99,
+              backgroundColor: sw.accent,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 168,
+              width: 864,
+              fontSize: 34,
+              lineHeight: "44px",
+              fontWeight: 700,
+              letterSpacing: "-0.022em",
+              color: titleCol,
+              textAlign: "center",
+            }}
+          >
+            {item.title || "谢谢聆听"}
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 250,
+              width: 864,
+              fontSize: 20,
+              lineHeight: "32px",
+              whiteSpace: "pre-wrap",
+              color: bodyCol,
+              textAlign: "center",
+            }}
+          >
+            {cleanSummary}
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              left: 220,
+              top: 444,
+              width: 520,
+              height: 1,
+              backgroundColor: sw.divider,
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 28,
+              width: 864,
+              fontSize: 26,
+              lineHeight: "34px",
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              color: titleCol,
+            }}
+          >
+            {item.title || "未命名标题"}
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 102,
+              width: 864,
+              height: 1,
+              backgroundColor: sw.divider,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 101.5,
+              width: 44,
+              height: 2,
+              borderRadius: 99,
+              backgroundColor: sw.accent,
+            }}
+          />
+
+          {layout === "bullets" ? (
+            <ul
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 126,
+                width: 864,
+                fontSize: 20,
+                lineHeight: "31px",
+                color: bodyCol,
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+              }}
+            >
+              {cleanSummary
+                .split("\n")
+                .map((l) => l.replace(/^[-*•·]\s+/, "").trim())
+                .filter(Boolean)
+                .slice(0, 6)
+                .map((line, i) => (
+                  <li
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 12,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "99px",
+                        backgroundColor: sw.accent,
+                        marginTop: 12,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>{line}</span>
+                  </li>
+                ))}
+            </ul>
+          ) : layout === "two_column" ? (
+            <>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 480,
+                  top: 126,
+                  width: 1,
+                  height: 350,
+                  backgroundColor: sw.divider,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: 48,
+                  top: 128,
+                  width: 412,
+                  fontSize: 20,
+                  lineHeight: "29px",
+                  whiteSpace: "pre-wrap",
+                  color: bodyCol,
+                }}
+              >
+                {cleanSummary}
+              </div>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 500,
+                  top: 128,
+                  width: 412,
+                  fontSize: 20,
+                  lineHeight: "29px",
+                  whiteSpace: "pre-wrap",
+                  color: bodyCol,
+                }}
+              >
+                {cleanColRight}
+              </div>
+            </>
+          ) : layout === "text_image" ? (
+            <>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 48,
+                  top: 126,
+                  width: 388,
+                  fontSize: 20,
+                  lineHeight: "29px",
+                  whiteSpace: "pre-wrap",
+                  color: bodyCol,
+                }}
+              >
+                {cleanSummary}
+              </div>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 456,
+                  top: 120,
+                  width: 456,
+                  height: 372,
+                  backgroundColor: item.image_asset_id
+                    ? "transparent"
+                    : sw.surface,
+                  borderRadius: item.image_asset_id ? 0 : 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {item.image_asset_id ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={`/api/projects/${encodeURIComponent(
+                      pid
+                    )}/assets/${encodeURIComponent(item.image_asset_id)}`}
+                    alt=""
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                    }}
+                  />
+                ) : (
+                  <ImageIcon
+                    className="w-10 h-10 opacity-40"
+                    style={{ color: sw.muted }}
+                  />
+                )}
+              </div>
+            </>
+          ) : (
+            <div
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 126,
+                width: 864,
+                fontSize: 20,
+                lineHeight: "30px",
+                whiteSpace: "pre-wrap",
+                color: bodyCol,
+              }}
+            >
+              {cleanSummary}
+            </div>
+          )}
+        </>
+      )}
+
+      {brandOverlay}
+
+      {layout !== "cover" && (
+        <div
+          style={{
+            position: "absolute",
+            right: 48,
+            bottom: 18,
+            fontSize: 12,
+            color: sw.muted,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {String(index + 1).padStart(2, "0")} /{" "}
+          {String(total).padStart(2, "0")}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -215,20 +443,37 @@ export function SlideNavigator({
   outline,
   selectedIndex,
   activeTheme,
+  brand = null,
   issueSlideIndices,
   onSelectIndex,
   onMoveItem,
   onReorderItem,
+  onDuplicateItem,
   onDeleteItem,
   onAddItem,
 }: SlideNavigatorProps) {
   const sw = activeTheme.swatches;
   const total = outline.items.length;
+  const firstThumbRef = useRef<HTMLDivElement | null>(null);
+  const [thumbScale, setThumbScale] = useState(0.18);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     index: number;
     position: "before" | "after";
   } | null>(null);
+
+  useEffect(() => {
+    const el = firstThumbRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setThumbScale(w / 960);
+    };
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [total]);
 
   const handleDrop = (e: React.DragEvent, targetIdx: number) => {
     e.preventDefault();
@@ -253,9 +498,6 @@ export function SlideNavigator({
       <div className="flex-1 px-3 py-3.5 space-y-3 overflow-y-auto clean-scroll">
         {outline.items.map((item, idx) => {
           const active = idx === selectedIndex;
-          const isCustomCanvas = Boolean(
-            item.custom_elements && item.custom_elements.length > 0
-          );
           const layout = inferEffectiveLayout(item.layout, idx, total);
           const isHero = layout === "cover" || layout === "closing";
           const bg = isHero ? sw.cover_bg : sw.bg;
@@ -326,9 +568,8 @@ export function SlideNavigator({
 
               <div className="flex-1 min-w-0 relative">
                 <div
-                  className={`aspect-[16/9] w-full rounded-[5px] overflow-hidden ${
-                    isCustomCanvas ? "" : "p-2 flex flex-col"
-                  } relative transition-[box-shadow,transform,opacity] duration-[160ms] ease-out ${
+                  ref={idx === 0 ? firstThumbRef : undefined}
+                  className={`aspect-[16/9] w-full rounded-[5px] overflow-hidden relative transition-[box-shadow,transform,opacity] duration-[160ms] ease-out ${
                     active
                       ? "thumb-selected"
                       : "thumb-idle group-hover:brightness-[0.98]"
@@ -343,22 +584,15 @@ export function SlideNavigator({
                       title={hasError ? "该页存在排版或校验问题" : "待补充出处"}
                     />
                   )}
-                  {isCustomCanvas && item.custom_elements ? (
-                    <AutoScaledCustomSlide
-                      pid={pid}
-                      customBg={item.custom_bg}
-                      elements={item.custom_elements}
-                      theme={activeTheme}
-                    />
-                  ) : (
-                    <ThumbSkeleton
-                      pid={pid}
-                      item={item}
-                      index={idx}
-                      total={total}
-                      theme={activeTheme}
-                    />
-                  )}
+                  <ProportionalSlideThumb
+                    pid={pid}
+                    item={item}
+                    index={idx}
+                    total={total}
+                    theme={activeTheme}
+                    brand={brand}
+                    scale={thumbScale}
+                  />
                 </div>
 
                 {/* Hover-only translucent micro controls */}
@@ -384,15 +618,28 @@ export function SlideNavigator({
                   >
                     ↓
                   </button>
-                  {total > 1 && (
+                  {onDuplicateItem && (
                     <button
                       type="button"
-                      onClick={() => onDeleteItem(idx)}
-                      title="删除此页"
-                      className="px-1 py-0.5 text-ink hover:text-danger hover:bg-black/[0.06] rounded cursor-pointer text-[10px] leading-none"
+                      onClick={() => onDuplicateItem(idx)}
+                      title="复制此页"
+                      className="p-0.5 text-ink-secondary hover:text-ink hover:bg-black/[0.06] rounded cursor-pointer transition-colors"
                     >
-                      ×
+                      <Copy className="w-2.5 h-2.5" />
                     </button>
+                  )}
+                  {total > 1 && (
+                    <>
+                      <span className="w-px h-3 bg-black/15 mx-0.5" />
+                      <button
+                        type="button"
+                        onClick={() => onDeleteItem(idx)}
+                        title="删除此页（可立即撤销）"
+                        className="px-1 py-0.5 text-ink-muted hover:text-danger hover:bg-danger-bg rounded cursor-pointer text-[10px] leading-none transition-colors"
+                      >
+                        ×
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

@@ -564,7 +564,7 @@ interface CustomSlideLayerProps {
 
 interface DragSession {
   elementId: string;
-  mode: "move" | "resize";
+  mode: "move" | "resize" | "line-start" | "line-end";
   startClientX: number;
   startClientY: number;
   origX: number;
@@ -722,6 +722,59 @@ export function CustomSlideLayer({
         liveBoxRef.current = nextBox;
         setLiveBox(nextBox);
         setGuides({ x: snapped.guideX, y: snapped.guideY });
+      } else if (d.mode === "line-start") {
+        const endX = d.origX + d.origW;
+        const endY = d.origY + d.origH;
+        let nx = Math.max(0, Math.min(960, d.origX + dx));
+        let ny = Math.max(0, Math.min(540, d.origY + dy));
+        if (e.shiftKey) {
+          if (Math.abs(endX - nx) >= Math.abs(endY - ny)) {
+            ny = endY;
+          } else {
+            nx = endX;
+          }
+        }
+        let nw = endX - nx;
+        let nh = endY - ny;
+        if (Math.hypot(nw, nh) < 12) {
+          nw = nw >= 0 ? 12 : -12;
+          nx = endX - nw;
+        }
+        const nextBox = {
+          id: d.elementId,
+          x: Math.round(nx),
+          y: Math.round(ny),
+          w: Math.round(nw),
+          h: Math.round(nh),
+        };
+        liveBoxRef.current = nextBox;
+        setLiveBox(nextBox);
+        setGuides({ x: null, y: null });
+      } else if (d.mode === "line-end") {
+        let ex = Math.max(0, Math.min(960, d.origX + d.origW + dx));
+        let ey = Math.max(0, Math.min(540, d.origY + d.origH + dy));
+        if (e.shiftKey) {
+          if (Math.abs(ex - d.origX) >= Math.abs(ey - d.origY)) {
+            ey = d.origY;
+          } else {
+            ex = d.origX;
+          }
+        }
+        let nw = ex - d.origX;
+        let nh = ey - d.origY;
+        if (Math.hypot(nw, nh) < 12) {
+          nw = nw >= 0 ? 12 : -12;
+        }
+        const nextBox = {
+          id: d.elementId,
+          x: d.origX,
+          y: d.origY,
+          w: Math.round(nw),
+          h: Math.round(nh),
+        };
+        liveBoxRef.current = nextBox;
+        setLiveBox(nextBox);
+        setGuides({ x: null, y: null });
       } else {
         const minW = d.kind === "chart" ? 180 : d.kind === "table" ? 160 : 32;
         const minH = d.kind === "chart" ? 120 : d.kind === "table" ? 60 : 24;
@@ -767,7 +820,7 @@ export function CustomSlideLayer({
   const startDrag = (
     e: React.PointerEvent,
     el: CanvasElement,
-    mode: "move" | "resize"
+    mode: "move" | "resize" | "line-start" | "line-end"
   ) => {
     if (!interactive || e.button !== 0) return;
     e.stopPropagation();
@@ -851,10 +904,48 @@ export function CustomSlideLayer({
                 strokeWidth={lw}
                 strokeLinecap="round"
               />
-              {isSelected && (
+              {isSelected && onUpdateElement && (
                 <>
-                  <circle cx={el.x} cy={el.y} r={4.5} fill={sw.accent} />
-                  <circle cx={el.x + el.w} cy={el.y + el.h} r={4.5} fill={sw.accent} />
+                  <circle
+                    cx={el.x}
+                    cy={el.y}
+                    r={11}
+                    fill="transparent"
+                    style={{ pointerEvents: "all", cursor: "grab" }}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => startDrag(e, el, "line-start")}
+                  >
+                    <title>拖拽起点（按住 Shift 吸附水平/垂直）</title>
+                  </circle>
+                  <circle
+                    cx={el.x}
+                    cy={el.y}
+                    r={5}
+                    fill={sw.accent}
+                    stroke={sw.surface}
+                    strokeWidth={1.75}
+                    style={{ pointerEvents: "none" }}
+                  />
+                  <circle
+                    cx={el.x + el.w}
+                    cy={el.y + el.h}
+                    r={11}
+                    fill="transparent"
+                    style={{ pointerEvents: "all", cursor: "grab" }}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => startDrag(e, el, "line-end")}
+                  >
+                    <title>拖拽终点（按住 Shift 吸附水平/垂直）</title>
+                  </circle>
+                  <circle
+                    cx={el.x + el.w}
+                    cy={el.y + el.h}
+                    r={5}
+                    fill={sw.accent}
+                    stroke={sw.surface}
+                    strokeWidth={1.75}
+                    style={{ pointerEvents: "none" }}
+                  />
                 </>
               )}
             </svg>

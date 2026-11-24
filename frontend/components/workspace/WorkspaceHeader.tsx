@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Check,
@@ -55,6 +56,7 @@ interface WorkspaceHeaderProps {
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
+  onFlushBeforeLeave?: () => Promise<void>;
   onRenameProject?: (newName: string) => Promise<void>;
   onUploadClick: () => void;
   onGenerateOutline: () => void;
@@ -90,12 +92,37 @@ export function WorkspaceHeader({
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
+  onFlushBeforeLeave,
   onRenameProject,
   onUploadClick,
   onGenerateOutline,
   onConfirmGenerate,
 }: WorkspaceHeaderProps) {
+  const router = useRouter();
   const [isVersionOpen, setIsVersionOpen] = useState(false);
+
+  const handleGuardedNavigate = async (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) => {
+    if (
+      !isStale ||
+      !onFlushBeforeLeave ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.shiftKey ||
+      e.altKey ||
+      e.button !== 0
+    ) {
+      return;
+    }
+    e.preventDefault();
+    try {
+      await onFlushBeforeLeave();
+    } finally {
+      router.push(href);
+    }
+  };
   const { mounted: versionMounted, exiting: versionExiting } = usePresence(
     isVersionOpen,
     130
@@ -149,6 +176,7 @@ export function WorkspaceHeader({
 
         <Link
           href="/"
+          onClick={(e) => void handleGuardedNavigate(e, "/")}
           className="hover:opacity-85 transition-opacity shrink-0"
           title="返回文稿列表"
         >
@@ -235,15 +263,15 @@ export function WorkspaceHeader({
                 </button>
               )}
 
-              {(onUndo || onRedo) && (
-                <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-black/[0.08]">
+              {(onUndo || onRedo) && (canUndo || canRedo) && (
+                <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-black/[0.08] anim-msg-in">
                   <button
                     type="button"
                     disabled={!canUndo}
                     onClick={onUndo}
                     aria-label="撤销"
                     title="撤销 (Ctrl/⌘+Z)"
-                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none ui-press cursor-pointer"
                   >
                     <Undo2 className="w-3.5 h-3.5" />
                   </button>
@@ -253,7 +281,7 @@ export function WorkspaceHeader({
                     onClick={onRedo}
                     aria-label="重做"
                     title="重做 (Ctrl/⌘+Shift+Z)"
-                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none ui-press cursor-pointer"
                   >
                     <Redo2 className="w-3.5 h-3.5" />
                   </button>
@@ -332,30 +360,27 @@ export function WorkspaceHeader({
 
       {/* Right: Quiet Utilities + Primary Action + Right Inspector Toggle */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* 4-Step Progress Indicator (replaces "素材 · 0" during initial import) */}
-        <div
-          className={`items-center gap-2.5 px-2.5 py-1 rounded-full ${
-            currentStage === "no_materials" ||
-            currentStage === "has_materials_no_outline"
-              ? "flex"
-              : "hidden lg:flex"
-          }`}
-          aria-label={`当前步骤 ${stageMeta.step}/4：${stageMeta.label}`}
-        >
-          <div className="flex items-center gap-1 w-[72px]">
-            {[1, 2, 3, 4].map((idx) => (
-              <span
-                key={idx}
-                className={`h-[3px] flex-1 rounded-full transition-colors ${
-                  idx <= stageMeta.step ? "bg-ink" : "bg-black/[0.12]"
-                }`}
-              />
-            ))}
+        {/* 4-Step Progress Indicator — only shown during pre-outline onboarding where stage guidance matters */}
+        {!hasOutline && (
+          <div
+            className="flex items-center gap-2.5 px-2.5 py-1 rounded-full"
+            aria-label={`当前步骤 ${stageMeta.step}/4：${stageMeta.label}`}
+          >
+            <div className="flex items-center gap-1 w-[72px]">
+              {[1, 2, 3, 4].map((idx) => (
+                <span
+                  key={idx}
+                  className={`h-[3px] flex-1 rounded-full transition-colors ${
+                    idx <= stageMeta.step ? "bg-ink" : "bg-black/[0.12]"
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="text-[13px] font-medium text-ink tabular-nums whitespace-nowrap">
+              {stageMeta.step}/4 {stageMeta.label}
+            </span>
           </div>
-          <span className="text-[13px] font-medium text-ink tabular-nums whitespace-nowrap">
-            {stageMeta.step}/4 {stageMeta.label}
-          </span>
-        </div>
+        )}
 
         {currentStage !== "no_materials" && (
           <button
@@ -405,6 +430,7 @@ export function WorkspaceHeader({
         {(project?.download_available || hasOutline) && (
           <Link
             href={`/p/${pid}/preview`}
+            onClick={(e) => void handleGuardedNavigate(e, `/p/${pid}/preview`)}
             className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors flex items-center gap-1.5 whitespace-nowrap"
             title="全屏放映与演讲者视图"
           >
@@ -419,7 +445,7 @@ export function WorkspaceHeader({
           <div className="flex items-center gap-1.5">
             <ExportFormatMenu
               pid={pid}
-              label="导出"
+              label="更多格式"
               canDownloadRendered={false}
               canDownloadNotes={true}
             />
@@ -427,9 +453,9 @@ export function WorkspaceHeader({
               type="button"
               onClick={onConfirmGenerate}
               disabled={isGenerating || !version}
-              className="px-4 py-1.5 rounded-full text-[13px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45"
+              className="ui-btn-primary px-4 py-1.5 text-[13px] whitespace-nowrap disabled:opacity-45"
             >
-              {isGenerating ? "编译中…" : "确认并生成 PPTX"}
+              {isGenerating ? "编译中…" : "生成 PPTX"}
             </button>
           </div>
         )}
@@ -440,7 +466,7 @@ export function WorkspaceHeader({
               <>
                 <ExportFormatMenu
                   pid={pid}
-                  label="旧版导出"
+                  label="更多格式"
                   includePptx={true}
                   canDownloadRendered={true}
                   canDownloadNotes={true}
@@ -449,7 +475,8 @@ export function WorkspaceHeader({
                   type="button"
                   onClick={onConfirmGenerate}
                   disabled={isGenerating}
-                  className="px-3.5 py-1.5 rounded-full text-[13px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 flex items-center gap-1.5"
+                  title="内容或主题已更新，点击重新编译最新版 PPTX 与 PDF"
+                  className="ui-btn-primary px-3.5 py-1.5 text-[13px] whitespace-nowrap disabled:opacity-45 flex items-center gap-1.5"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
@@ -463,8 +490,8 @@ export function WorkspaceHeader({
                   type="button"
                   onClick={onConfirmGenerate}
                   disabled={isGenerating}
-                  className="p-1.5 rounded-full text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer disabled:opacity-45"
-                  title="重新生成 PPTX"
+                  className="p-1.5 rounded-full text-ink-secondary hover:text-ink hover:bg-black/[0.06] ui-press cursor-pointer disabled:opacity-45"
+                  title="重新编译 PPTX"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
@@ -479,7 +506,7 @@ export function WorkspaceHeader({
                 <a
                   href={`/api/projects/${pid}/download`}
                   download
-                  className="px-4 py-1.5 rounded-full text-[13px] font-medium bg-ink hover:bg-ink-hover text-white transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                  className="ui-btn-primary px-4 py-1.5 text-[13px] flex items-center gap-1.5 whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>下载 PPTX</span>

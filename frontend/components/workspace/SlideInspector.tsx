@@ -725,7 +725,7 @@ export function SlideInspector({
                 </form>
               </Collapse>
               <p className="text-[13px] text-ink-secondary leading-relaxed">
-                可直接修改下方文本内容；需要调整卡片、配色、布局或配图时，在「AI 对话」中直接说明即可。
+                点击左侧画布元素可直接拖拽对齐、缩放、改字号配色或切换图表类型；也可以在下方改文字，或用「AI 对话」重构整页布局。
               </p>
               {onSwitchToChat && (
                 <button
