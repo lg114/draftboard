@@ -317,9 +317,9 @@ export function SlideStageCanvas({
   };
 
   return (
-    <main className="flex-1 bg-ui-bg p-2.5 sm:p-3 flex flex-col min-w-0 min-h-0 overflow-hidden">
-      {/* Raised dark stage surface (--ui-surface) matching mockup */}
-      <div className="flex-1 min-h-0 bg-ui-surface rounded-xl border border-ui-border-subtle flex flex-col overflow-hidden relative">
+    <main className="flex-1 bg-ui-bg px-1 pb-3 pt-0.5 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      {/* Gently raised dark stage surface (--ui-surface, no outer frame border) */}
+      <div className="flex-1 min-h-0 bg-ui-surface rounded-xl flex flex-col overflow-hidden relative">
         {/* Before/After Visual Diff Banner */}
         {diffPreviewActive && (
           <div className="px-4 py-2 bg-ui-warning-bg border-b border-ui-warning/25 flex flex-wrap items-center justify-between gap-2 text-[13px] shrink-0 anim-msg-in">
@@ -500,6 +500,13 @@ export function SlideStageCanvas({
         </div>
 
         {/* Pure 16:9 Slide Canvas Viewport */}
+        {(() => {
+          const slideBg = isCustomCanvas
+            ? item?.custom_bg || sw.bg
+            : layout === "cover" || layout === "closing"
+            ? sw.cover_bg
+            : sw.bg;
+          return (
         <div
           ref={viewportRef}
           onClick={() => {
@@ -511,9 +518,10 @@ export function SlideStageCanvas({
             onClick={(e) => e.stopPropagation()}
             style={{
               width: renderedWidth,
-              height: Math.round((renderedWidth * 9) / 16),
+              height: Math.floor((renderedWidth * 9) / 16),
+              backgroundColor: slideBg,
             }}
-            className="shrink-0 rounded-[2px] overflow-hidden slide-shadow relative bg-white"
+            className="shrink-0 rounded-[2px] overflow-hidden relative"
           >
             <div
               key={`stage-${selectedIndex}-${diffPreviewActive ? "diff" : "live"}`}
@@ -528,7 +536,8 @@ export function SlideStageCanvas({
                         : "input-title"
                     )
                   }
-                  className="absolute inset-0 bg-white flex items-center justify-center cursor-text"
+                  style={{ backgroundColor: slideBg }}
+                  className="absolute inset-0 flex items-center justify-center cursor-text"
                   title="点击右侧属性编辑内容（当前展示已导出的渲染图）"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -581,6 +590,8 @@ export function SlideStageCanvas({
             </div>
           </div>
         </div>
+          );
+        })()}
 
         {/* Contextual Floating Bar ONLY when a free-canvas element is selected */}
         {selectedEl && onUpdateCustomElement && (

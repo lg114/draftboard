@@ -297,7 +297,7 @@ export function StandardSlideEditor({
       )}
 
       {/* Lightweight Inline AI Refine Action Strip */}
-      <div className="space-y-2 pt-2 border-t border-ui-border-subtle">
+      <div className="space-y-2 pt-1">
         <div className="flex items-center justify-between gap-2">
           <span
             className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-ui-text-muted"
@@ -375,10 +375,10 @@ export function StandardSlideEditor({
           <button
             type="button"
             onClick={() => setCustomOpen((v) => !v)}
-            className={`px-2.5 py-1 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer border ${
+            className={`px-2.5 py-1 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer ${
               customOpen
-                ? "bg-ui-bg-selected border-ui-accent text-ui-text"
-                : "bg-ui-surface-input border-ui-border-subtle text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover"
+                ? "bg-ui-bg-selected ring-1 ring-ui-accent text-ui-text"
+                : "bg-ui-surface-input text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover"
             }`}
           >
             自定义

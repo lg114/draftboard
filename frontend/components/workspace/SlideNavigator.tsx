@@ -135,9 +135,9 @@ export function SlideNavigator({
   };
 
   return (
-    <aside className="w-[216px] xl:w-[244px] shrink-0 bg-ui-bg border-r border-ui-border-subtle flex flex-col min-h-0 select-none">
+    <aside className="w-[216px] xl:w-[244px] shrink-0 bg-ui-bg flex flex-col min-h-0 select-none">
       {/* Top Rail Header: 页面 / 材料 tabs + add + collapse (<) */}
-      <div className="h-10 px-3 flex items-center justify-between gap-2 shrink-0">
+      <div className="h-10 px-3.5 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-3.5 text-[13px]">
           <button
             type="button"
@@ -392,7 +392,7 @@ export function SlideNavigator({
           <button
             type="button"
             onClick={onAddItem}
-            className="w-full py-2 rounded-lg border border-dashed border-ui-border-subtle hover:border-ui-border text-[13px] text-ui-text-muted hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5"
+            className="w-full py-2 rounded-lg text-[13px] text-ui-text-muted hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>新建页面</span>
@@ -400,10 +400,10 @@ export function SlideNavigator({
         </div>
       )}
 
-      {/* Bottom Footer: 项目设置 (matching mockup) */}
+      {/* Bottom Footer: 项目设置 (matching mockup, seamless on --ui-bg) */}
       <div
         ref={settingsWrapRef}
-        className="px-3 py-2.5 border-t border-ui-border-subtle shrink-0 relative"
+        className="px-3 py-3 shrink-0 relative"
       >
         <button
           type="button"

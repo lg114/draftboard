@@ -292,7 +292,7 @@ export default function PreviewPage() {
   return (
     <div className="min-h-screen flex flex-col bg-ui-bg text-ui-text">
       {/* Unified Dark Cinema / Presenter Top Bar */}
-      <header className="h-12 bg-ui-bg border-b border-ui-border-subtle px-4 flex items-center justify-between gap-3 sticky top-0 z-30">
+      <header className="h-12 bg-ui-bg px-4 flex items-center justify-between gap-3 sticky top-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href={`/p/${pid}`}

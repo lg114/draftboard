@@ -181,7 +181,7 @@ export function SlideInspector({
   const innerContent = (
     <>
       {!embedded && (
-        <div className="px-4 py-2.5 border-b border-ui-border-subtle flex items-center justify-between sticky top-0 bg-ui-bg z-10">
+        <div className="px-4 py-2.5 flex items-center justify-between sticky top-0 bg-ui-bg z-10">
           <div className="flex items-center gap-2 whitespace-nowrap">
             <span className="text-[13.5px] font-semibold text-ui-text">
               第 {slideIndex + 1} 页
@@ -196,7 +196,7 @@ export function SlideInspector({
       <div className="p-4 space-y-5 flex-1">
         {/* Compact Layout & Theme Controls (moved cleanly from removed bottom dock) */}
         {(onSelectLayout || onOpenThemeModal) && (
-          <section className="space-y-2.5 pb-4 border-b border-ui-border-subtle">
+          <section className="space-y-2.5">
             <div className="flex items-center justify-between gap-2 text-[12.5px]">
               <span className="font-medium text-ui-text-muted">
                 页面版式与样式
@@ -234,10 +234,10 @@ export function SlideInspector({
                           ? `切换回「${opt.label}」标准版式（退出自由画布，可撤销）`
                           : opt.label
                       }
-                      className={`px-2 py-1.5 rounded-lg text-[12.5px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                      className={`px-2 py-1.5 rounded-lg text-[12.5px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                         active
-                          ? "bg-ui-bg-selected border-ui-accent text-ui-text font-medium"
-                          : "bg-ui-surface-input border-ui-border-subtle text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover"
+                          ? "bg-ui-bg-selected ring-1 ring-ui-accent text-ui-text font-medium"
+                          : "bg-ui-surface-input text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover"
                       }`}
                     >
                       <LayoutIcon layout={opt.value} />
@@ -257,9 +257,7 @@ export function SlideInspector({
                   aria-checked={autoFit}
                   onClick={onToggleAutoFit}
                   className={`w-8 h-[18px] rounded-full p-[2px] flex items-center transition-colors cursor-pointer ${
-                    autoFit
-                      ? "bg-ui-accent"
-                      : "bg-ui-control-active border border-ui-border-subtle"
+                    autoFit ? "bg-ui-accent" : "bg-ui-control-active"
                   }`}
                 >
                   <span
@@ -358,7 +356,7 @@ export function SlideInspector({
 
         {/* Saved Reusable Custom Layouts Library */}
         {savedLayouts.length > 0 && onApplySavedLayout && (
-          <section className="pt-3 border-t border-ui-border-subtle space-y-2">
+          <section className="space-y-2">
             <div className="text-[12.5px] font-medium text-ui-text-muted">
               已收藏自由版式（点击套用）
             </div>
@@ -366,7 +364,7 @@ export function SlideInspector({
               {savedLayouts.map((preset) => (
                 <div
                   key={preset.id}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-ui-surface-input border border-ui-border-subtle hover:border-ui-border transition-colors"
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-ui-surface-input hover:bg-ui-control-hover transition-colors"
                 >
                   <button
                     type="button"
@@ -397,7 +395,7 @@ export function SlideInspector({
         )}
 
         {/* TIER 3: Collapsible Speaker Notes */}
-        <section className="pt-3 border-t border-ui-border-subtle space-y-2">
+        <section className="space-y-2">
           <button
             type="button"
             onClick={() => setNotesOpen((v) => !v)}
@@ -445,7 +443,7 @@ export function SlideInspector({
   }
 
   return (
-    <aside className="w-[320px] xl:w-[356px] shrink-0 bg-ui-bg border-l border-ui-border-subtle flex flex-col min-h-0 overflow-y-auto clean-scroll">
+    <aside className="w-[320px] xl:w-[356px] shrink-0 bg-ui-bg flex flex-col min-h-0 overflow-y-auto clean-scroll">
       {innerContent}
     </aside>
   );

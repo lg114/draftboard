@@ -265,10 +265,10 @@ export function EmptyStageOnboarding({
         className="flex-1 min-h-0 overflow-y-auto bg-ui-bg flex items-center justify-center p-6 sm:p-10"
       >
         <div
-          className={`w-full max-w-[740px] rounded-xl bg-ui-surface border transition-colors duration-200 flex flex-col items-center justify-center text-center p-8 sm:p-11 space-y-5 ${
+          className={`w-full max-w-[740px] rounded-xl bg-ui-surface transition-colors duration-200 flex flex-col items-center justify-center text-center p-8 sm:p-11 space-y-5 ${
             isDragging
-              ? "border-ui-focus border-dashed bg-ui-bg-selected"
-              : "border-ui-border-subtle"
+              ? "border border-ui-focus border-dashed bg-ui-bg-selected"
+              : ""
           }`}
         >
           <div className="w-12 h-12 rounded-xl bg-ui-surface-input border border-ui-border-subtle flex items-center justify-center text-ui-icon">
@@ -385,8 +385,8 @@ export function EmptyStageOnboarding({
       className="flex-1 min-h-0 overflow-y-auto bg-ui-bg flex items-center justify-center p-6 sm:p-10"
     >
       <div
-        className={`w-full max-w-[740px] rounded-xl bg-ui-surface border transition-colors duration-200 flex flex-col items-center justify-center text-center p-8 sm:p-11 space-y-5 ${
-          isDragging ? "border-ui-focus border-dashed" : "border-ui-border-subtle"
+        className={`w-full max-w-[740px] rounded-xl bg-ui-surface transition-colors duration-200 flex flex-col items-center justify-center text-center p-8 sm:p-11 space-y-5 ${
+          isDragging ? "border border-ui-focus border-dashed" : ""
         }`}
       >
         <div className="w-12 h-12 rounded-xl bg-ui-surface-input border border-ui-border-subtle flex items-center justify-center text-ui-accent-text">

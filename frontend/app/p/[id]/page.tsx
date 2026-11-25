@@ -432,10 +432,10 @@ export default function ProjectWorkspacePage() {
 
           {ws.rightOpen && (
             <aside
-              className={`w-[316px] xl:w-[356px] shrink-0 bg-ui-bg border-l border-ui-border-subtle flex flex-col min-h-0 ${NARROW_OVERLAY_ASIDE}`}
+              className={`w-[316px] xl:w-[356px] shrink-0 bg-ui-bg flex flex-col min-h-0 ${NARROW_OVERLAY_ASIDE}`}
             >
               {/* Right Rail Top Bar: AI 助手 / 属性 tabs + clear + close (×) */}
-              <div className="h-10 px-4 border-b border-ui-border-subtle/70 flex items-center justify-between gap-2 shrink-0 select-none">
+              <div className="h-10 px-4 flex items-center justify-between gap-2 shrink-0 select-none">
                 <div className="flex items-center gap-4 text-[13px]">
                   <button
                     type="button"
@@ -575,9 +575,9 @@ export default function ProjectWorkspacePage() {
           )}
           {ws.onboardingChatOpen && (
             <aside
-              className={`w-[332px] xl:w-[372px] shrink-0 bg-ui-bg border-l border-ui-border-subtle flex flex-col min-h-0 ${NARROW_OVERLAY_ASIDE}`}
+              className={`w-[332px] xl:w-[372px] shrink-0 bg-ui-bg flex flex-col min-h-0 ${NARROW_OVERLAY_ASIDE}`}
             >
-              <div className="h-10 px-4 border-b border-ui-border-subtle/70 flex items-center justify-between gap-2 shrink-0">
+              <div className="h-10 px-4 flex items-center justify-between gap-2 shrink-0">
                 <span className="text-[13px] font-medium text-ui-text">
                   AI 助手
                 </span>

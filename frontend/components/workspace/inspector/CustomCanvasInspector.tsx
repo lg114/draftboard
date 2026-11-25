@@ -49,7 +49,7 @@ export function CustomCanvasInspector({
 
   return (
     <section className="space-y-4">
-      <div className="p-3 rounded-xl bg-ui-surface border border-ui-border-subtle space-y-2.5">
+      <div className="p-3 rounded-xl bg-ui-surface space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Layers className="w-4 h-4 text-ui-icon shrink-0" />
@@ -167,7 +167,7 @@ export function CustomCanvasInspector({
         </div>
       ) : customTableElements.length === 0 &&
         customChartElements.length === 0 ? (
-        <div className="p-3 rounded-xl bg-ui-surface border border-ui-border-subtle text-[13px] text-ui-text-muted">
+        <div className="p-3 rounded-xl bg-ui-surface text-[13px] text-ui-text-muted">
           本页自由画布暂无可编辑文本、表格或图表。
         </div>
       ) : null}
@@ -182,7 +182,7 @@ export function CustomCanvasInspector({
             return (
               <div
                 key={`${el.id}-tbl-${tIdx}`}
-                className="rounded-xl bg-ui-surface border border-ui-border-subtle p-3 space-y-2.5"
+                className="rounded-xl bg-ui-surface p-3 space-y-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-semibold text-ui-text">

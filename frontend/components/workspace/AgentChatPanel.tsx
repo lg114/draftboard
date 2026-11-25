@@ -698,7 +698,7 @@ export function AgentChatPanel({
                     type="button"
                     disabled={isStreaming}
                     onClick={() => onSendMessage(prompt)}
-                    className="w-full text-left px-3 py-2 rounded-lg bg-ui-surface-input hover:bg-ui-control-hover border border-ui-border-subtle text-[13px] text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer leading-snug"
+                    className="w-full text-left px-3 py-2 rounded-lg bg-ui-bg-hover hover:bg-ui-control-hover text-[13px] text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer leading-snug"
                   >
                     {prompt}
                   </button>
@@ -819,7 +819,7 @@ export function AgentChatPanel({
           </div>
         )}
 
-        <div className="rounded-xl bg-ui-surface-input border border-ui-border-subtle hover:border-ui-border focus-within:border-ui-focus focus-within:ring-2 focus-within:ring-ui-focus/25 transition-[border-color,box-shadow] duration-150 px-3 pt-2.5 pb-2">
+        <div className="rounded-xl bg-ui-surface-input focus-within:ring-1 focus-within:ring-ui-focus transition-shadow duration-150 px-3 pt-2.5 pb-2">
           <textarea
             ref={inputRef}
             rows={1}
@@ -955,7 +955,7 @@ export function AgentChatPanel({
                 onClick={submitDraft}
                 title="发送 (Enter)"
                 aria-label="发送消息"
-                className="w-7 h-7 rounded-lg bg-ui-accent hover:bg-ui-accent-hover active:bg-ui-accent-active text-ui-on-accent flex items-center justify-center transition-colors cursor-pointer disabled:bg-ui-control-active disabled:text-ui-text-disabled disabled:cursor-not-allowed shrink-0"
+                className="w-7 h-7 rounded-lg bg-ui-accent hover:bg-ui-accent-hover active:bg-ui-accent-active text-ui-on-accent flex items-center justify-center transition-[background-color,opacity] cursor-pointer disabled:opacity-45 disabled:hover:bg-ui-accent disabled:cursor-not-allowed shrink-0"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>

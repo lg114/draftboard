@@ -343,7 +343,9 @@ export function MaterialsDrawer({
       {view.kind === "list" && (
         <>
           <div
-            className={`${padX} py-2.5 border-b border-ui-border-subtle space-y-2.5 shrink-0`}
+            className={`${padX} py-2 space-y-2.5 shrink-0 ${
+              embedded ? "" : "border-b border-ui-border-subtle"
+            }`}
           >
             <div className={embedded ? "flex flex-wrap gap-1.5" : "grid grid-cols-3 gap-2"}>
               <button
@@ -520,7 +522,9 @@ export function MaterialsDrawer({
 
           {materials.length > 0 && (
             <div
-              className={`${padX} py-2.5 border-t border-ui-border-subtle flex items-center justify-between gap-2 shrink-0`}
+              className={`${padX} py-2.5 flex items-center justify-between gap-2 shrink-0 ${
+                embedded ? "" : "border-t border-ui-border-subtle"
+              }`}
             >
               <button
                 type="button"

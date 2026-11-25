@@ -75,13 +75,11 @@ export function ProvenanceSection({
 
   return (
     <section
-      className={`rounded-xl border overflow-hidden transition-colors ${
-        isSupported
-          ? "bg-ui-surface border-ui-border-subtle"
-          : "bg-ui-warning-bg border-ui-warning/30"
+      className={`rounded-xl overflow-hidden transition-colors ${
+        isSupported ? "bg-ui-surface" : "bg-ui-warning-bg"
       }`}
     >
-      <div className="px-3 py-2 flex items-center justify-between gap-2">
+      <div className="px-3 py-2.5 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setProvenanceOpen((v) => !v)}
@@ -123,7 +121,7 @@ export function ProvenanceSection({
             setProvenanceOpen(true);
             setSourcePickerOpen((v) => !v);
           }}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-surface-input hover:bg-ui-control-hover border border-ui-border-subtle text-[12px] font-medium text-ui-text-secondary hover:text-ui-text cursor-pointer transition-colors shrink-0"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-surface-input hover:bg-ui-control-hover text-[12px] font-medium text-ui-text-secondary hover:text-ui-text cursor-pointer transition-colors shrink-0"
         >
           <Link2 className="w-3 h-3" />
           <span>{sourcePickerOpen ? "收起" : "关联材料"}</span>
@@ -131,10 +129,10 @@ export function ProvenanceSection({
       </div>
 
       <Collapse open={provenanceOpen}>
-        <div className="px-3 pb-3 pt-2 border-t border-ui-border-subtle space-y-2">
+        <div className="px-3 pb-3 pt-1 space-y-2">
           {/* Inline Source Binding Picker */}
           <Collapse open={sourcePickerOpen}>
-            <div className="p-2.5 rounded-lg bg-ui-bg border border-ui-border-subtle space-y-2">
+            <div className="p-2.5 rounded-lg bg-ui-bg space-y-2">
               <div className="flex items-center justify-between text-[12px] text-ui-text-muted">
                 <span>勾选本页引用的原始切片</span>
                 <button
@@ -160,10 +158,10 @@ export function ProvenanceSection({
                         key={frag.source_id}
                         type="button"
                         onClick={() => onToggleSourceId(frag.source_id)}
-                        className={`w-full text-left p-2 rounded-lg transition-all flex items-start gap-2 cursor-pointer border ${
+                        className={`w-full text-left p-2 rounded-lg transition-all flex items-start gap-2 cursor-pointer ${
                           bound
-                            ? "bg-ui-bg-selected border-ui-accent"
-                            : "bg-ui-surface-input hover:bg-ui-control-hover border-ui-border-subtle"
+                            ? "bg-ui-bg-selected ring-1 ring-ui-accent"
+                            : "bg-ui-surface-input hover:bg-ui-control-hover"
                         }`}
                       >
                         <div
@@ -246,7 +244,7 @@ export function ProvenanceSection({
                   return (
                     <div
                       key={frag.source_id}
-                      className="p-2.5 rounded-lg bg-ui-surface-input border border-ui-border-subtle space-y-2 group"
+                      className="p-2.5 rounded-lg bg-ui-bg space-y-2 group"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
@@ -308,7 +306,7 @@ export function ProvenanceSection({
                 return (
                   <div
                     key={frag.source_id}
-                    className="p-2.5 rounded-lg bg-ui-surface-input border border-ui-border-subtle space-y-1.5 group"
+                    className="p-2.5 rounded-lg bg-ui-bg space-y-1.5 group"
                   >
                     <div className="flex items-center justify-between gap-2 text-[12.5px]">
                       <div className="flex items-center gap-1.5 min-w-0">

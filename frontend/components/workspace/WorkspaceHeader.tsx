@@ -166,7 +166,7 @@ export function WorkspaceHeader({
     PROJECT_STAGE_STEPS[resolveWorkspaceStageKey(currentStage, outline)];
 
   return (
-    <header className="h-12 bg-ui-bg border-b border-ui-border-subtle px-3.5 flex items-center justify-between gap-3 sticky top-0 z-40 shrink-0 select-none">
+    <header className="h-12 bg-ui-bg px-4 flex items-center justify-between gap-3 sticky top-0 z-40 shrink-0 select-none">
       {/* Left: Brand / Reopen Left Rail / Project Name / Save & Version */}
       <div className="flex items-center gap-2.5 min-w-0">
         {hasOutline && !leftOpen && (

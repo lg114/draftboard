@@ -27,7 +27,10 @@ def _web_dir() -> pathlib.Path:
 
 @router.api_route("/", methods=["GET", "HEAD"])
 def index():
-    return FileResponse(_web_dir() / "index.html")
+    return FileResponse(
+        _web_dir() / "index.html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/_next/{subpath:path}")
@@ -93,7 +96,11 @@ def frontend_project_routes(rest_of_path: str):
     body = template_path.read_text(encoding="utf-8").replace(
         "__placeholder__", pid
     )
-    return Response(content=body, media_type=media_type)
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.api_route("/{filename}", methods=["GET", "HEAD"])

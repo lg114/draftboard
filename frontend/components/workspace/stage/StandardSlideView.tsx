@@ -612,9 +612,17 @@ export function SlideRenderer({
     return inner;
   }
 
+  const isHero = layout === "cover" || layout === "closing";
+  const hostBg = isCustom
+    ? item.custom_bg || sw.bg
+    : isHero
+    ? sw.cover_bg
+    : sw.bg;
+
   return (
     <div
       ref={hostRef}
+      style={{ backgroundColor: hostBg }}
       className="w-full h-full relative overflow-hidden select-none"
     >
       {inner}
