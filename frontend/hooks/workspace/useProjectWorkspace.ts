@@ -446,9 +446,6 @@ export function useProjectWorkspace() {
         );
         flashToast(`已抓取网页素材「${res.title || res.asset_id}」`);
         await refresh(targetPid);
-      } catch (e) {
-        setRawError((e as Error).message);
-        throw e;
       } finally {
         generation.setStatus("");
       }

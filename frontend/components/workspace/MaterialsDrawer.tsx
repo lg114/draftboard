@@ -91,6 +91,7 @@ export function MaterialsDrawer({
   const [urlValue, setUrlValue] = useState("");
   const [urlTitle, setUrlTitle] = useState("");
   const [fetchingUrl, setFetchingUrl] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [confirmDeleteAsset, setConfirmDeleteAsset] = useState<string | null>(
     null
   );
@@ -206,6 +207,8 @@ export function MaterialsDrawer({
       setNoteTitle("");
       setNoteContent("");
       setView({ kind: "list" });
+    } catch {
+      // Handled by workspace error banner
     } finally {
       setSavingNote(false);
     }
@@ -217,9 +220,23 @@ export function MaterialsDrawer({
       await onDeleteMaterial(assetId);
       setConfirmDeleteAsset(null);
       setView({ kind: "list" });
+    } catch {
+      // Handled by workspace error banner
     } finally {
       setDeletingAsset(false);
     }
+  }
+
+  function handleFallbackToPasteFromUrl() {
+    const cleanUrl = urlValue.trim();
+    if (urlTitle.trim() && !noteTitle.trim()) {
+      setNoteTitle(urlTitle.trim());
+    }
+    if (cleanUrl && !noteContent.trim()) {
+      setNoteContent(`> 来源链接：${cleanUrl}\n\n`);
+    }
+    setUrlError(null);
+    setView({ kind: "paste" });
   }
 
   const currentLayout = currentSlide
@@ -778,18 +795,27 @@ export function MaterialsDrawer({
       {/* ── VIEW 3B: Import Web URL ─────────────────────────────────────────── */}
       {view.kind === "url" && onImportUrl && (
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => {
             e.preventDefault();
             if (!urlValue.trim()) return;
-            setFetchingUrl(true);
-            try {
-              await onImportUrl(urlValue.trim(), urlTitle.trim() || undefined);
-              setUrlValue("");
-              setUrlTitle("");
-              setView({ kind: "list" });
-            } finally {
-              setFetchingUrl(false);
-            }
+            void (async () => {
+              setFetchingUrl(true);
+              setUrlError(null);
+              try {
+                await onImportUrl(urlValue.trim(), urlTitle.trim() || undefined);
+                setUrlValue("");
+                setUrlTitle("");
+                setUrlError(null);
+                setView({ kind: "list" });
+              } catch (err) {
+                setUrlError(
+                  (err as Error).message ||
+                    "未能提取到网页正文，建议换具体文章链接或改为手动粘贴正文。"
+                );
+              } finally {
+                setFetchingUrl(false);
+              }
+            })();
           }}
           className="flex-1 min-h-0 flex flex-col"
         >
@@ -802,6 +828,18 @@ export function MaterialsDrawer({
                 自动提取网页正文转为可溯源 Markdown 切片。
               </p>
             </div>
+            {urlError && (
+              <div className="p-3 rounded-xl bg-danger-bg border border-danger/20 space-y-2 text-[13px] text-danger">
+                <p className="leading-relaxed">{urlError}</p>
+                <button
+                  type="button"
+                  onClick={handleFallbackToPasteFromUrl}
+                  className="px-3 py-1 rounded-full bg-surface border border-danger/25 text-ink font-medium hover:bg-canvas transition-colors cursor-pointer"
+                >
+                  改为手动粘贴正文
+                </button>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="block text-[13px] font-semibold text-ink">
                 网页链接
@@ -810,7 +848,10 @@ export function MaterialsDrawer({
                 type="url"
                 required
                 value={urlValue}
-                onChange={(e) => setUrlValue(e.target.value)}
+                onChange={(e) => {
+                  setUrlValue(e.target.value);
+                  if (urlError) setUrlError(null);
+                }}
                 placeholder="https://example.com/article"
                 className="w-full h-10 px-3.5 text-[13.5px] ui-field font-mono"
                 autoFocus
@@ -833,7 +874,10 @@ export function MaterialsDrawer({
           <div className="px-5 py-3.5 border-t border-black/[0.07] bg-surface-subtle flex items-center justify-end gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => setView({ kind: "list" })}
+              onClick={() => {
+                setUrlError(null);
+                setView({ kind: "list" });
+              }}
               className="px-4 h-9 rounded-full text-[13px] font-medium text-ink-secondary hover:text-ink cursor-pointer"
             >
               取消

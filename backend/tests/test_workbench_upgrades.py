@@ -159,6 +159,37 @@ def test_url_material_import_and_ssrf_guard(client, monkeypatch):
     assert "核心结论" in md and "市场规模增长 30%" in md
     assert "导航忽略" not in md and "alert" not in md
 
+    # HTML charset decoding supports legacy GBK pages and rejects stub/login shells
+    gbk_html = '<html><head><meta charset="gbk"><title>中文报告</title></head><body><p>季度增长显著</p></body></html>'.encode(
+        "gbk"
+    )
+    decoded = tools_module._decode_html_bytes(gbk_html, "text/html")
+    assert "中文报告" in decoded and "季度增长显著" in decoded
+
+    class _StubResp:
+        def __init__(self, body: bytes, ctype: str = "text/html; charset=utf-8"):
+            self._body = body
+            self.headers = {"Content-Type": ctype}
+
+        def read(self, _limit: int = -1) -> bytes:
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        tools_module.urllib.request,
+        "urlopen",
+        lambda req, timeout=15.0: _StubResp(
+            b"<html><head><title>Baidu</title></head><body><p>\xe8\xaf\xb7\xe5\x85\x88\xe7\x99\xbb\xe5\xbd\x95</p></body></html>"
+        ),
+    )
+    with pytest.raises(ValueError, match="未提取到足够的可读正文"):
+        tools_module.extract_url_to_markdown("https://example.com/login-wall")
+
     # Mocked public URL fetch succeeds and indexes traceable source fragments
     monkeypatch.setattr(
         tools_module,

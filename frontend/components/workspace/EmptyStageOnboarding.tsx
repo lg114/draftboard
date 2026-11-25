@@ -58,6 +58,7 @@ export function EmptyStageOnboarding({
   const [urlValue, setUrlValue] = useState("");
   const [urlTitle, setUrlTitle] = useState("");
   const [fetchingUrl, setFetchingUrl] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [outlinePrompt, setOutlinePrompt] = useState("");
 
   async function handleSaveNote(e: React.FormEvent) {
@@ -69,6 +70,8 @@ export function EmptyStageOnboarding({
       setNoteTitle("");
       setNoteContent("");
       setPasteMode(false);
+    } catch {
+      // Top workspace error banner handles save failure cleanly
     } finally {
       setSavingNote(false);
     }
@@ -78,14 +81,34 @@ export function EmptyStageOnboarding({
     e.preventDefault();
     if (!urlValue.trim() || !onImportUrl) return;
     setFetchingUrl(true);
+    setUrlError(null);
     try {
       await onImportUrl(urlValue.trim(), urlTitle.trim() || undefined);
       setUrlValue("");
       setUrlTitle("");
+      setUrlError(null);
       setUrlMode(false);
+    } catch (err) {
+      setUrlError(
+        (err as Error).message ||
+          "未能提取到网页正文，建议换具体文章链接或改为手动粘贴正文。"
+      );
     } finally {
       setFetchingUrl(false);
     }
+  }
+
+  function handleFallbackToPasteFromUrl() {
+    const cleanUrl = urlValue.trim();
+    if (urlTitle.trim() && !noteTitle.trim()) {
+      setNoteTitle(urlTitle.trim());
+    }
+    if (cleanUrl && !noteContent.trim()) {
+      setNoteContent(`> 来源链接：${cleanUrl}\n\n`);
+    }
+    setUrlError(null);
+    setUrlMode(false);
+    setPasteMode(true);
   }
 
   if (urlMode && onImportUrl) {
@@ -103,12 +126,32 @@ export function EmptyStageOnboarding({
               自动提取网页正文并转为可溯源的 Markdown 素材切片（支持公开文章、文档与博客）。
             </p>
           </div>
+          {urlError && (
+            <div className="p-3.5 rounded-xl bg-danger-bg border border-danger/20 space-y-2.5 text-[13px] text-danger">
+              <p className="leading-relaxed">{urlError}</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleFallbackToPasteFromUrl}
+                  className="px-3 py-1 rounded-full bg-surface border border-danger/25 text-ink font-medium hover:bg-canvas transition-colors cursor-pointer"
+                >
+                  改为手动粘贴正文
+                </button>
+                <span className="text-danger/80 text-[12.5px]">
+                  将自动保留上方来源链接，直接复制网页文字粘入即可
+                </span>
+              </div>
+            </div>
+          )}
           <div className="space-y-3">
             <input
               type="url"
               required
               value={urlValue}
-              onChange={(e) => setUrlValue(e.target.value)}
+              onChange={(e) => {
+                setUrlValue(e.target.value);
+                if (urlError) setUrlError(null);
+              }}
               placeholder="https://example.com/article"
               className="ui-field w-full h-11 px-4 text-[14px] bg-canvas focus:bg-surface font-mono"
               autoFocus
@@ -124,7 +167,10 @@ export function EmptyStageOnboarding({
           <div className="flex items-center justify-end gap-3 pt-1">
             <button
               type="button"
-              onClick={() => setUrlMode(false)}
+              onClick={() => {
+                setUrlError(null);
+                setUrlMode(false);
+              }}
               className="h-10 px-4 rounded-full bg-transparent hover:bg-black/[0.05] text-ink-secondary hover:text-ink text-[13.5px] font-medium transition-colors cursor-pointer"
             >
               返回

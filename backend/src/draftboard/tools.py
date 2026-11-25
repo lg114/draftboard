@@ -14,6 +14,7 @@ import ipaddress
 import pathlib
 import re
 import socket
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -384,6 +385,35 @@ def _validate_public_url(url: str) -> str:
     return url.strip()
 
 
+_MIN_WEB_BODY_CHARS = 24
+
+
+def _decode_html_bytes(raw: bytes, content_type: str = "") -> str:
+    """Decode fetched web bytes respecting HTTP Content-Type / HTML meta charset."""
+    import codecs
+
+    candidates: list[str] = []
+    m_ct = re.search(r"charset\s*=\s*['\"]?([a-zA-Z0-9._-]+)", content_type or "", re.I)
+    if m_ct:
+        candidates.append(m_ct.group(1).strip())
+    head_ascii = raw[:4096].decode("ascii", errors="ignore")
+    m_meta = re.search(r"charset\s*=\s*['\"]?([a-zA-Z0-9._-]+)", head_ascii, re.I)
+    if m_meta:
+        candidates.append(m_meta.group(1).strip())
+    candidates.append("utf-8")
+
+    for enc in candidates:
+        norm = enc.lower()
+        if norm in ("gb2312", "gbk"):
+            norm = "gb18030"
+        try:
+            codecs.lookup(norm)
+            return raw.decode(norm, errors="replace")
+        except LookupError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def extract_url_to_markdown(url: str, timeout: float = 15.0) -> tuple[str, str]:
     """Fetch a public web page and convert readable content to Markdown.
 
@@ -397,22 +427,39 @@ def extract_url_to_markdown(url: str, timeout: float = 15.0) -> tuple[str, str]:
             "Accept": "text/html,text/plain,text/markdown;q=0.9,*/*;q=0.5",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        ctype = (resp.headers.get("Content-Type") or "").lower()
-        raw = resp.read(2 * 1024 * 1024)  # 2MB safety cap
-    text = raw.decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            raw = resp.read(2 * 1024 * 1024)  # 2MB safety cap
+    except urllib.error.HTTPError as exc:
+        raise ValueError(
+            f"目标网页返回 HTTP {exc.code}，无法自动抓取。建议直接复制正文后粘贴导入。"
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise ValueError(
+            "无法连接目标网页或请求超时，请检查链接是否可公开访问，或直接复制正文粘贴导入。"
+        ) from exc
+
+    text = _decode_html_bytes(raw, ctype)
 
     if "text/plain" in ctype or "text/markdown" in ctype:
-        first_line = next((ln.lstrip("# ").strip() for ln in text.splitlines() if ln.strip()), "")
+        cleaned_plain = text.strip()
+        if len(re.sub(r"\s+", "", cleaned_plain)) < _MIN_WEB_BODY_CHARS:
+            raise ValueError(
+                "该链接内容过短，未提取到足够正文。建议改用完整文档链接或手动粘贴正文。"
+            )
+        first_line = next((ln.lstrip("# ").strip() for ln in cleaned_plain.splitlines() if ln.strip()), "")
         title = first_line[:60] or urllib.parse.urlparse(safe_url).hostname or "网页素材"
-        body = f"> 来源链接：{safe_url}\n\n{text.strip()}"
+        body = f"> 来源链接：{safe_url}\n\n{cleaned_plain}"
         return title, body
 
     parser = _ReadableHTMLParser()
     parser.feed(text)
     md = parser.get_markdown()
-    if not md:
-        raise ValueError("该网页未提取到可读正文内容（可能需要登录或依赖前端动态渲染）")
+    if len(re.sub(r"\s+", "", md)) < _MIN_WEB_BODY_CHARS:
+        raise ValueError(
+            "该网页未提取到足够的可读正文（可能是首页、需要登录或依赖前端动态渲染）。建议换具体文章链接，或改为手动粘贴正文。"
+        )
     title = parser.page_title or urllib.parse.urlparse(safe_url).hostname or "网页素材"
     body = f"# {title}\n\n> 来源链接：{safe_url}\n\n{md}"
     return title, body

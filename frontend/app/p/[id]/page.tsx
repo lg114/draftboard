@@ -215,13 +215,17 @@ export default function ProjectWorkspacePage() {
               <span className="font-medium truncate">{ws.humanizedError}</span>
             </div>
             <div className="flex items-center gap-3 shrink-0 text-[13px]">
-              <button
-                type="button"
-                onClick={handleOpenLLMSettings}
-                className="text-danger font-medium underline underline-offset-2 hover:opacity-80 cursor-pointer"
-              >
-                检查模型设置
-              </button>
+              {/(模型|api[\s_-]?key|llm|401|429|鉴权|额度|限流|密钥|ollama|provider|base_url)/i.test(
+                `${ws.humanizedError} ${ws.rawError || ""}`
+              ) && (
+                <button
+                  type="button"
+                  onClick={handleOpenLLMSettings}
+                  className="text-danger font-medium underline underline-offset-2 hover:opacity-80 cursor-pointer"
+                >
+                  检查模型设置
+                </button>
+              )}
               {ws.rawError && ws.rawError !== ws.humanizedError && (
                 <button
                   type="button"
