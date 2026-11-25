@@ -1,0 +1,29 @@
+services:
+  draftboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: draftboard:local
+    restart: unless-stopped
+    # Bound to localhost by default so local files and configured API keys
+    # are not exposed to the LAN. For LAN/remote hosting, switch to
+    # "8000:8000" behind an authenticated reverse proxy.
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DRAFTBOARD_STORAGE_ROOT: /data/projects
+    # Optional: load model keys from backend/.env if present; not required
+    # for the built-in example or UI-configured profiles.
+    env_file:
+      - path: ./backend/.env
+        required: false
+    # Persists projects (/data/projects), LLM profiles (/data/settings.json),
+    # and saved custom layouts (/data/saved_layouts.json) in one volume.
+    volumes:
+      - draftboard_data:/data
+    # Allows reaching a host-local Ollama server at http://host.docker.internal:11434/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  draftboard_data:

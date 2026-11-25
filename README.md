@@ -101,6 +101,16 @@ uvx --python 3.12 draftboard@latest serve
 pip install draftboard && draftboard serve
 ```
 
+### Docker
+
+The image bundles the built frontend and open-source TrueType Latin + CJK fonts (`fonts-liberation` and `fonts-wqy-microhei`), so no font configuration is required on Linux.
+
+```bash
+docker compose up -d --build
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Projects, model profiles, and saved custom layouts persist in the `draftboard_data` volume (`/data`). By default the port binds to `127.0.0.1:8000`; to reach a host-local Ollama instance from inside the container, use `http://host.docker.internal:11434/v1`.
+
 Model keys are optional and only used for outline generation and chat. See [backend/.env.example](backend/.env.example). The example deck does not use them.
 
 ### Frontend (optional)

@@ -101,6 +101,16 @@ uvx --python 3.12 draftboard@latest serve
 pip install draftboard && draftboard serve
 ```
 
+### Docker 部署
+
+镜像已内置构建好的前端界面与开源 TrueType 中英文字体（`fonts-liberation` + `fonts-wqy-microhei`），在 Linux 上无需手动配置字体路径。
+
+```bash
+docker compose up -d --build
+```
+
+打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。项目数据、模型配置和收藏版式统一持久化在 `draftboard_data` 数据卷（`/data`）中。端口默认仅绑定到本机 `127.0.0.1:8000`；如需在容器内连接宿主机运行的 Ollama，接口地址填 `http://host.docker.internal:11434/v1`。
+
 模型密钥只用于大纲生成和对话，可不配。配置方式见 [backend/.env.example](backend/.env.example)。
 
 ### 前端开发（可选）

@@ -1,0 +1,38 @@
+# Version control and CI
+.git
+.gitignore
+.gitattributes
+.github
+
+# Secrets and local environment files (never bake into image layers)
+.env
+**/.env
+*.pem
+
+# Python caches, virtualenvs, test artifacts, and local data
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+backend/.venv
+backend/dist
+backend/pytest-of-*
+backend/web-data
+backend/tests
+backend/examples
+backend/THIRD_PARTY_LICENSES.md
+dist
+
+# Frontend build caches and dependencies (rebuilt in frontend-builder stage)
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/tsconfig.tsbuildinfo
+backend/src/draftboard/static
+
+# Documentation and non-runtime files
+docs
+*.md
+*.docx
+LICENSE
+docker-compose.yml
+Dockerfile

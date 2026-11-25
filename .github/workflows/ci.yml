@@ -58,3 +58,93 @@ jobs:
         with:
           name: license-gate-violation
           path: backend/THIRD_PARTY_LICENSES.md
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        working-directory: .
+        run: docker build -t draftboard:ci .
+
+      - name: Run container end-to-end smoke test
+        working-directory: .
+        run: |
+          docker run -d --name draftboard-smoke -p 127.0.0.1:8000:8000 draftboard:ci
+          python3 - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          BASE = "http://127.0.0.1:8000"
+
+          def req(path, method="GET", payload=None):
+              data = json.dumps(payload).encode("utf-8") if payload is not None else None
+              headers = {"Content-Type": "application/json"} if data is not None else {}
+              r = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(r, timeout=30) as resp:
+                  return resp.status, resp.read()
+
+          for _ in range(30):
+              try:
+                  status, body = req("/api/health")
+                  if status == 200 and json.loads(body).get("status") == "ok":
+                      break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise RuntimeError("Container failed to become healthy")
+
+          status, html = req("/")
+          assert status == 200 and b"<html" in html.lower(), "Frontend index missing"
+
+          _, demo_raw = req("/api/projects/demo", method="POST")
+          pid = json.loads(demo_raw)["project_id"]
+
+          _, proj_raw = req(f"/api/projects/{pid}")
+          ver = json.loads(proj_raw)["outlines"][0]["outline_version"]
+
+          status, _ = req(f"/api/projects/{pid}/outlines/{ver}/confirm", method="POST")
+          assert status == 200
+
+          status, gen_raw = req(
+              f"/api/projects/{pid}/generate",
+              method="POST",
+              payload={"outline_version": ver, "template_id": "keynote_light", "auto_fit": True},
+          )
+          assert status == 202
+          tid = json.loads(gen_raw)["task_id"]
+
+          for _ in range(60):
+              _, task_raw = req(f"/api/projects/{pid}/tasks/{tid}")
+              task = json.loads(task_raw)
+              if task["status"] == "succeeded":
+                  break
+              if task["status"] == "failed":
+                  raise RuntimeError(f"Generate task failed: {task}")
+              time.sleep(0.5)
+          else:
+              raise RuntimeError("Generate task timed out")
+
+          _, pptx = req(f"/api/projects/{pid}/download")
+          assert pptx.startswith(b"PK") and len(pptx) > 10_000, "Invalid PPTX export"
+
+          _, pdf = req(f"/api/projects/{pid}/download/pdf")
+          assert pdf.startswith(b"%PDF") and len(pdf) > 5_000, "Invalid PDF export"
+
+          _, imgs = req(f"/api/projects/{pid}/download/images")
+          assert imgs.startswith(b"PK") and len(imgs) > 10_000, "Invalid PNG archive"
+
+          print(f"Docker smoke passed: pptx={len(pptx)}B pdf={len(pdf)}B png_zip={len(imgs)}B")
+          PY
+
+      - name: Print container logs on failure
+        if: failure()
+        working-directory: .
+        run: docker logs draftboard-smoke || true
+
+      - name: Cleanup container
+        if: always()
+        working-directory: .
+        run: docker rm -f draftboard-smoke || true
