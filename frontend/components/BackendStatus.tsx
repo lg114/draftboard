@@ -12,11 +12,12 @@ export function BackendStatus() {
     let mounted = true;
 
     async function checkHealth() {
+      if (typeof document !== "undefined" && document.hidden) return;
       const start = performance.now();
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
-        const res = await fetch("/api/projects", {
+        const res = await fetch("/api/health", {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -36,11 +37,17 @@ export function BackendStatus() {
       }
     }
 
+    const onVisibility = () => {
+      if (!document.hidden) void checkHealth();
+    };
+
     void checkHealth();
     const interval = setInterval(checkHealth, 8000);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       mounted = false;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
@@ -56,7 +63,7 @@ export function BackendStatus() {
           ? `连接异常 · ${latency}ms`
           : "未检测到后端服务，请启动 draftboard serve"
       }
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger-bg border border-danger/20 text-[12px] font-medium text-danger select-none"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger-bg border border-danger/20 text-[13px] font-medium text-danger select-none"
     >
       <span className="w-1.5 h-1.5 rounded-full bg-danger" />
       <span>服务离线</span>

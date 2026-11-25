@@ -1609,7 +1609,11 @@ export function SlideStageCanvas({
                         <div className="flex items-center gap-1.5">
                           <input
                             type="color"
-                            value={brandDraft.accent_hex || sw.accent}
+                            value={
+                              /^#[0-9a-fA-F]{6}$/.test(brandDraft.accent_hex || "")
+                                ? brandDraft.accent_hex!
+                                : sw.accent
+                            }
                             onChange={(e) =>
                               setBrandDraft((d) => ({ ...d, accent_hex: e.target.value }))
                             }
@@ -1631,7 +1635,11 @@ export function SlideStageCanvas({
                         <div className="flex items-center gap-1.5">
                           <input
                             type="color"
-                            value={brandDraft.bg_hex || sw.bg}
+                            value={
+                              /^#[0-9a-fA-F]{6}$/.test(brandDraft.bg_hex || "")
+                                ? brandDraft.bg_hex!
+                                : sw.bg
+                            }
                             onChange={(e) =>
                               setBrandDraft((d) => ({ ...d, bg_hex: e.target.value }))
                             }

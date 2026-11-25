@@ -347,3 +347,65 @@ def test_preflight_catches_missing_image_in_custom_canvas(client):
         and "nonexistent_deleted.png" in f["message"]
         for f in pf["findings"]
     )
+
+
+def test_health_and_delete_material_cleans_brand_logo_and_custom_images(client):
+    assert client.get("/api/health").json() == {"status": "ok"}
+
+    demo = client.post("/api/projects/demo").json()
+    pid = demo["project_id"]
+
+    # Upload an image and bind it both as brand logo and as a freeform canvas image
+    img = Image.new("RGB", (64, 32), (30, 80, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    up = client.post(
+        f"/api/projects/{pid}/materials",
+        files={"file": ("brand_logo.png", buf.getvalue(), "image/png")},
+    )
+    assert up.status_code == 200
+
+    assert (
+        client.patch(
+            f"/api/projects/{pid}/brand",
+            json={"logo_asset_id": "brand_logo", "footer_text": "Keep Footer"},
+        ).status_code
+        == 200
+    )
+
+    proj = client.get(f"/api/projects/{pid}").json()
+    ver = proj["outlines"][0]["outline_version"]
+    outline = client.get(f"/api/projects/{pid}/outlines/{ver}").json()
+    items = outline["items"]
+    items[1]["custom_elements"].append(
+        {
+            "id": "custom_logo_img",
+            "kind": "image",
+            "x": 60,
+            "y": 320,
+            "w": 160,
+            "h": 80,
+            "image_asset_id": "brand_logo",
+        }
+    )
+    assert (
+        client.put(
+            f"/api/projects/{pid}/outlines/{ver}",
+            json={"items": items},
+        ).status_code
+        == 200
+    )
+
+    # Deleting the material must clean up both brand.logo_asset_id and custom_elements image
+    del_res = client.delete(f"/api/projects/{pid}/materials/brand_logo")
+    assert del_res.status_code == 200
+
+    proj_after = client.get(f"/api/projects/{pid}").json()
+    assert proj_after["brand"]["logo_asset_id"] is None
+    assert proj_after["brand"]["footer_text"] == "Keep Footer"
+
+    outline_after = client.get(f"/api/projects/{pid}/outlines/{ver}").json()
+    assert not any(
+        el["id"] == "custom_logo_img"
+        for el in (outline_after["items"][1].get("custom_elements") or [])
+    )

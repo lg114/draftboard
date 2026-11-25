@@ -294,9 +294,15 @@ export default function ProjectWorkspacePage() {
         const data = await api<Outline>(
           `/api/projects/${targetPid}/outlines/${v}`
         );
+        outlineRef.current = data;
         setOutline(data);
         setSavedOutline(JSON.parse(JSON.stringify(data)));
         setVersion(v);
+        setUndoStack([]);
+        setRedoStack([]);
+        lastCoalesceRef.current = null;
+        setDiffPreviewVersion(null);
+        setDiffPreviewOutline(null);
         setSelectedIndex((prev) =>
           Math.min(prev, Math.max(0, data.items.length - 1))
         );
@@ -1519,6 +1525,7 @@ export default function ProjectWorkspacePage() {
   }
 
   function addItem() {
+    const nextIdx = (outlineRef.current?.items.length ?? 0);
     mutateOutline((prev) => {
       const items = [
         ...prev.items,
@@ -1534,9 +1541,9 @@ export default function ProjectWorkspacePage() {
           speaker_notes: null,
         },
       ];
-      setSelectedIndex(items.length - 1);
       return { ...prev, items };
     });
+    setSelectedIndex(nextIdx);
   }
 
   function duplicateItem(index: number) {
@@ -1565,13 +1572,14 @@ export default function ProjectWorkspacePage() {
   }
 
   function deleteItem(index: number) {
-    if (!outline || outline.items.length <= 1) return;
+    const curLen = outlineRef.current?.items.length ?? 0;
+    if (curLen <= 1) return;
     mutateOutline((prev) => {
       if (prev.items.length <= 1) return null;
       const items = prev.items.filter((_, i) => i !== index);
-      setSelectedIndex(Math.max(0, Math.min(index, items.length - 1)));
       return { ...prev, items };
     });
+    setSelectedIndex(Math.max(0, Math.min(index, curLen - 2)));
     flashToast(`已删除第 ${index + 1} 页`, 4500, {
       label: "撤销",
       onClick: () => handleUndoRef.current(),

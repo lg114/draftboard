@@ -480,6 +480,12 @@ def create_project(req: Optional[CreateProjectRequest] = Body(default=None)):
         raise HTTPException(500, f"创建项目目录失败: {exc}")
 
 
+@app.get("/api/health")
+def health_check():
+    """Lightweight liveness probe (zero disk scanning)."""
+    return {"status": "ok"}
+
+
 @app.get("/api/projects")
 def list_projects():
     root = _root()
@@ -1075,7 +1081,7 @@ def preflight_check(
                                 "message": f"第 {page_no} 页自由画布中的图片素材「{img_ref or '未指定'}」已缺失，请重新指定或删除该图片元素。",
                             }
                         )
-        elif not is_custom:
+        else:
             if eff_layout == "text_image":
                 img_ref = (it.image_asset_id or "").strip()
                 if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:
@@ -1108,20 +1114,20 @@ def preflight_check(
                         "message": f"第 {page_no} 页正文偏密（{len(it.summary.strip())} 字），建议精简要点或改用卡片排版。",
                     }
                 )
-        else:
-            for cel in it.custom_elements or []:
-                if cel.kind == "image":
-                    img_ref = (cel.image_asset_id or "").strip()
-                    if not img_ref or _resolve_image_path(img_ref, assets_dir) is None:
-                        findings.append(
-                            {
-                                "slide_index": idx,
-                                "slide_number": page_no,
-                                "category": "media",
-                                "severity": "error",
-                                "message": f"第 {page_no} 页自由画布图片元素 '{cel.id}' 缺失素材文件。",
-                            }
-                        )
+
+    brand_cfg = read_project_brand(storage.root)
+    if brand_cfg and brand_cfg.get("logo_asset_id"):
+        logo_ref = str(brand_cfg["logo_asset_id"]).strip()
+        if logo_ref and _resolve_image_path(logo_ref, assets_dir) is None:
+            findings.append(
+                {
+                    "slide_index": 0,
+                    "slide_number": 1,
+                    "category": "media",
+                    "severity": "error",
+                    "message": f"项目品牌角落 Logo 素材「{logo_ref}」已缺失，请在「主题 → 品牌定制」中重新选择或清除。",
+                }
+            )
 
     # 2. Visual rhythm: 3+ consecutive identical non-custom layouts
     run_len = 1
@@ -1347,10 +1353,43 @@ def delete_material(project_id: str, asset_id: str):
                         if item.layout == SlideLayout.TEXT_IMAGE:
                             item.layout = SlideLayout.CONTENT
                         changed = True
+                    if item.custom_elements:
+                        kept_els = [
+                            el
+                            for el in item.custom_elements
+                            if not (el.kind == "image" and el.image_asset_id == asset_id)
+                        ]
+                        if len(kept_els) != len(item.custom_elements):
+                            item.custom_elements = kept_els or None
+                            if not kept_els:
+                                item.custom_bg = None
+                            changed = True
                 if changed:
                     storage.save_outline(outline)
             except Exception:
                 pass
+
+    # Clean up dangling brand corner logo reference if it pointed to the deleted image
+    meta_path = storage.root / "meta.json"
+    if meta_path.exists():
+        try:
+            loaded_meta = load_json(meta_path)
+            if (
+                isinstance(loaded_meta, dict)
+                and isinstance(loaded_meta.get("brand"), dict)
+                and loaded_meta["brand"].get("logo_asset_id") == asset_id
+            ):
+                loaded_meta["brand"]["logo_asset_id"] = None
+                if not any(
+                    loaded_meta["brand"].get(k)
+                    for k in ("accent_hex", "bg_hex", "footer_text", "logo_asset_id")
+                ):
+                    loaded_meta.pop("brand", None)
+                meta_path.write_text(
+                    json.dumps(loaded_meta, ensure_ascii=False), encoding="utf-8"
+                )
+        except Exception:
+            pass
 
     return {
         "deleted": asset_id,
