@@ -2,6 +2,7 @@
 
 把材料变成可编辑的 PPT，全程在你自己的电脑上完成。
 
+[![CI](https://github.com/lg114/draftboard/actions/workflows/ci.yml/badge.svg)](https://github.com/lg114/draftboard/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/draftboard.svg)](https://pypi.org/project/draftboard/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB.svg)](https://www.python.org/)

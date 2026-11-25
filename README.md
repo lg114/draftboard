@@ -2,9 +2,10 @@
 
 Turn source materials into an editable PowerPoint deck — entirely on your machine.
 
+[![CI](https://github.com/lg114/draftboard/actions/workflows/ci.yml/badge.svg)](https://github.com/lg114/draftboard/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/draftboard.svg)](https://pypi.org/project/draftboard/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-[![Python 3.11+](<https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB.svg>)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
 
@@ -39,13 +40,15 @@ Review the five-slide outline, then click **生成 PPTX** to confirm and compile
 
 ## How it works
 
-1. **Import**Accepts `.md`, `.txt`, `.docx`, `.pdf`, `.csv`, `.xlsx`, `.pptx`, `.png`, `.jpg`, pasted text, or a public URL.Files are stored locally under `~/.draftboard/projects` (override with `DRAFTBOARD_STORAGE_ROOT`).
-2. **Outline** (optional)With a model configured, the workbench drafts an outline from the imported materials. Each slide keeps its source IDs. Pages without evidence can be marked as needing sources.
-3. **Review**Edit titles, summaries, layout, speaker notes, and source links before compiling.Confirming an outline freezes that version. Later edits create a new draft instead of rewriting the confirmed one.
-4. **Compile****生成 PPTX** confirms the current draft and builds the slides.The exporter measures every text block against a real font file. Overflow or a missing glyph stops the export and reports the problem — it never clips text.The same run can also produce a PDF, per-page PNGs, and a markdown speaker script with source excerpts.
-5. **Edit and re-export**
-   After compiling, the canvas and inspector still edit the same outline.
-   A previous PPTX is reused only when the frozen inputs match (outline content, theme, brand, auto-fit, the bytes of referenced images, and the export-rule version). The workbench checks this via `GET /api/projects/{id}/generation-sync`.
+1. **Import.** Accepts `.md`, `.txt`, `.docx`, `.pdf`, `.csv`, `.xlsx`, `.pptx`, `.png`, `.jpg`, pasted text, or a public URL. Files are stored locally under `~/.draftboard/projects` (override with `DRAFTBOARD_STORAGE_ROOT`).
+
+2. **Outline (optional).** With a model configured, the workbench drafts an outline from the imported materials. Each slide keeps its source IDs. Pages without evidence can be marked as needing sources.
+
+3. **Review.** Edit titles, summaries, layout, speaker notes, and source links before compiling. Confirming an outline freezes that version; later edits create a new draft instead of rewriting the confirmed one.
+
+4. **Compile.** **生成 PPTX** confirms the current draft and builds the slides. The exporter measures every text block against a real font file — overflow or a missing glyph stops the export and reports the problem instead of clipping text. The same run can also produce a PDF, per-page PNGs, and a markdown speaker script with source excerpts.
+
+5. **Edit and re-export.** After compiling, the canvas and inspector still edit the same outline. A previous PPTX is reused only when the frozen inputs match (outline content, theme, brand, auto-fit, the bytes of referenced images, and the export-rule version). The workbench checks this via `GET /api/projects/{id}/generation-sync`.
 
 > Studio chat requires a configured model. Per-slide refine falls back to local rules when no key is set. Neither feature was used for the built-in example.
 
