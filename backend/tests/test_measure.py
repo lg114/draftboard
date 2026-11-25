@@ -155,3 +155,80 @@ def test_deterministic(font_pair):
     a = measure(["中英混排 mixed text。" * 5], font_pair)
     b = measure(["中英混排 mixed text。" * 5], font_pair)
     assert a == b
+
+
+def test_load_fonts_falls_back_to_platform_candidates(font_files, monkeypatch):
+    import draftboard.measure as measure_module
+
+    latin, ea = font_files
+    monkeypatch.delenv("DRAFTBOARD_LATIN_FONT", raising=False)
+    monkeypatch.delenv("DRAFTBOARD_EA_FONT", raising=False)
+    monkeypatch.setattr(
+        measure_module,
+        "_default_latin_candidates",
+        lambda: [latin.parent / "missing-latin.ttf", latin],
+    )
+    monkeypatch.setattr(
+        measure_module,
+        "_default_ea_candidates",
+        lambda: [ea.parent / "missing-ea.ttc", ea],
+    )
+
+    pair = load_fonts()
+    assert pair.latin.has_glyph("A")
+    assert pair.ea.has_glyph("测")
+
+
+def test_render_fonts_support_sibling_and_explicit_bold_and_skip_non_ttf(
+    font_files, tmp_path, monkeypatch
+):
+    import shutil
+    import draftboard.render as render_module
+
+    latin_src, ea_src = font_files
+    font_dir = tmp_path / "fonts"
+    font_dir.mkdir()
+    latin_reg = font_dir / "LiberationSans-Regular.ttf"
+    latin_bold = font_dir / "LiberationSans-Bold.ttf"
+    ea_reg = font_dir / "NotoSansSC-Regular.ttf"
+    ea_bold = font_dir / "NotoSansSC-Bold.ttf"
+    ea_explicit_bold = font_dir / "CustomBoldEA.ttf"
+    bad_otf = font_dir / "FakeCFF.ttc"
+
+    shutil.copyfile(latin_src, latin_reg)
+    shutil.copyfile(latin_src, latin_bold)
+    shutil.copyfile(ea_src, ea_reg)
+    shutil.copyfile(ea_src, ea_bold)
+    shutil.copyfile(ea_src, ea_explicit_bold)
+    bad_otf.write_bytes(b"OTTOnot-a-valid-truetype-font")
+
+    monkeypatch.setattr(render_module, "_FONT_CACHE", {})
+    monkeypatch.setenv("DRAFTBOARD_LATIN_FONT", str(latin_reg))
+    monkeypatch.delenv("DRAFTBOARD_LATIN_BOLD_FONT", raising=False)
+    monkeypatch.setenv("DRAFTBOARD_EA_FONT", str(ea_reg))
+    monkeypatch.delenv("DRAFTBOARD_EA_BOLD_FONT", raising=False)
+
+    resolved = render_module._resolve_render_fonts()
+    assert resolved.latin.startswith("DBLatin_")
+    assert resolved.latin_bold.startswith("DBLatinBold_")
+    assert resolved.latin_bold != resolved.latin
+    assert resolved.ea.startswith("DBEA_")
+    assert resolved.ea_bold.startswith("DBEABold_")
+    assert resolved.ea_bold != resolved.ea
+
+    # Explicit DRAFTBOARD_EA_BOLD_FONT takes precedence over sibling
+    monkeypatch.setenv("DRAFTBOARD_EA_BOLD_FONT", str(ea_explicit_bold))
+    resolved_explicit = render_module._resolve_render_fonts()
+    assert resolved_explicit.ea_bold.startswith("DBEABold_")
+    assert resolved_explicit.ea_bold != resolved.ea_bold
+
+    # Unregistrable first candidate (e.g. CFF/corrupt file) is skipped instead of
+    # silently falling back to CID when a valid TrueType candidate follows.
+    assert render_module._try_register_ttf("DBEA", bad_otf) is None
+    monkeypatch.setenv("DRAFTBOARD_EA_FONT", str(bad_otf))
+    monkeypatch.delenv("DRAFTBOARD_EA_BOLD_FONT", raising=False)
+    monkeypatch.setattr(render_module, "_FONT_CACHE", {})
+    # With an unregistrable env EA font, resolver falls through to system TrueType
+    # candidates if present, or CID only when none can be registered.
+    fallback = render_module._resolve_render_fonts()
+    assert fallback.ea != render_module._font_reg_name("DBEA", bad_otf)

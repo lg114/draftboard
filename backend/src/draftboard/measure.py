@@ -72,14 +72,55 @@ class FontPair:
     ea: FontMetrics
 
 
+def _default_latin_candidates() -> list[pathlib.Path]:
+    fonts_dir = pathlib.Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    return [
+        fonts_dir / "calibri.ttf",
+        fonts_dir / "segoeui.ttf",
+        fonts_dir / "arial.ttf",
+        pathlib.Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    ]
+
+
+def _default_ea_candidates() -> list[pathlib.Path]:
+    """TrueType CJK candidates shared with ReportLab PDF rendering (avoids CFF OTF)."""
+    fonts_dir = pathlib.Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    return [
+        fonts_dir / "msyh.ttc",
+        fonts_dir / "simhei.ttf",
+        pathlib.Path("/System/Library/Fonts/PingFang.ttc"),
+        pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+        pathlib.Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+    ]
+
+
+def _first_existing_or_primary(candidates: list[pathlib.Path]) -> pathlib.Path:
+    for path in candidates:
+        if path.is_file():
+            return path
+    return candidates[0]
+
+
 def load_fonts(
     latin_path: str | pathlib.Path | None = None,
     ea_path: str | pathlib.Path | None = None,
 ) -> FontPair:
-    """Resolve font files: explicit path > env override > Windows default."""
-    fonts_dir = pathlib.Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
-    latin = latin_path or os.environ.get("DRAFTBOARD_LATIN_FONT") or fonts_dir / "calibri.ttf"
-    ea = ea_path or os.environ.get("DRAFTBOARD_EA_FONT") or fonts_dir / "msyh.ttc"
+    """Resolve font files: explicit path > env override > platform TrueType default."""
+    env_latin = os.environ.get("DRAFTBOARD_LATIN_FONT")
+    env_ea = os.environ.get("DRAFTBOARD_EA_FONT")
+    latin = (
+        latin_path
+        if latin_path is not None
+        else (env_latin if env_latin else _first_existing_or_primary(_default_latin_candidates()))
+    )
+    ea = (
+        ea_path
+        if ea_path is not None
+        else (env_ea if env_ea else _first_existing_or_primary(_default_ea_candidates()))
+    )
     return FontPair(latin=FontMetrics(latin), ea=FontMetrics(ea))
 
 

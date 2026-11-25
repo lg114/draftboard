@@ -9,6 +9,7 @@ searchable vector text and embedded images from the exact exported PPTX.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import math
 import os
@@ -43,22 +44,28 @@ class _RenderFonts:
     ea_bold: str
 
 
-_FONT_CACHE: dict[tuple[str, str], _RenderFonts] = {}
+_FONT_CACHE: dict[tuple[str, str, str, str], _RenderFonts] = {}
 
 
-def _try_register_ttf(name: str, path: pathlib.Path, subfont_index: int = 0) -> bool:
-    if name in pdfmetrics.getRegisteredFontNames():
-        return True
+def _font_reg_name(prefix: str, path: pathlib.Path) -> str:
+    digest = hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:10]
+    return f"{prefix}_{digest}"
+
+
+def _try_register_ttf(prefix: str, path: pathlib.Path, subfont_index: int = 0) -> Optional[str]:
     if not path.is_file():
-        return False
+        return None
+    name = _font_reg_name(prefix, path)
+    if name in pdfmetrics.getRegisteredFontNames():
+        return name
     try:
         if path.suffix.lower() == ".ttc":
             pdfmetrics.registerFont(TTFont(name, str(path), subfontIndex=subfont_index))
         else:
             pdfmetrics.registerFont(TTFont(name, str(path)))
-        return True
+        return name
     except Exception:
-        return False
+        return None
 
 
 def _ensure_cid_fallback() -> str:
@@ -67,17 +74,36 @@ def _ensure_cid_fallback() -> str:
     return _CID_CJK_FALLBACK
 
 
-def _first_existing(candidates: list[pathlib.Path]) -> Optional[pathlib.Path]:
-    for p in candidates:
-        if p.is_file():
-            return p
+def _infer_bold_sibling(regular_path: pathlib.Path) -> Optional[pathlib.Path]:
+    """Find a matching bold TrueType font alongside *regular_path* if one exists."""
+    parent = regular_path.parent
+    stem = regular_path.stem
+    suffix = regular_path.suffix
+    candidates: list[pathlib.Path] = []
+    if re.search(r"-Regular$", stem, re.IGNORECASE):
+        candidates.append(parent / f"{re.sub(r'-Regular$', '-Bold', stem, flags=re.IGNORECASE)}{suffix}")
+    if re.search(r"Regular$", stem, re.IGNORECASE):
+        candidates.append(parent / f"{re.sub(r'Regular$', 'Bold', stem, flags=re.IGNORECASE)}{suffix}")
+    candidates.extend(
+        [
+            parent / f"{stem}-Bold{suffix}",
+            parent / f"{stem} Bold{suffix}",
+            parent / f"{stem}bd{suffix}",
+            parent / f"{stem}b{suffix}",
+        ]
+    )
+    for cand in candidates:
+        if cand != regular_path and cand.is_file():
+            return cand
     return None
 
 
 def _resolve_render_fonts() -> _RenderFonts:
-    env_latin = os.environ.get("DRAFTBOARD_LATIN_FONT", "")
-    env_ea = os.environ.get("DRAFTBOARD_EA_FONT", "")
-    cache_key = (env_latin, env_ea)
+    env_latin = os.environ.get("DRAFTBOARD_LATIN_FONT", "").strip()
+    env_latin_bold = os.environ.get("DRAFTBOARD_LATIN_BOLD_FONT", "").strip()
+    env_ea = os.environ.get("DRAFTBOARD_EA_FONT", "").strip()
+    env_ea_bold = os.environ.get("DRAFTBOARD_EA_BOLD_FONT", "").strip()
+    cache_key = (env_latin, env_latin_bold, env_ea, env_ea_bold)
     if cache_key in _FONT_CACHE:
         return _FONT_CACHE[cache_key]
 
@@ -89,54 +115,93 @@ def _resolve_render_fonts() -> _RenderFonts:
         win_fonts / "segoeui.ttf",
         win_fonts / "arial.ttf",
         pathlib.Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
-        pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         pathlib.Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ]
-    latin_bold_candidates = [
+    latin_bold_defaults = [
         win_fonts / "calibrib.ttf",
         win_fonts / "segoeuib.ttf",
         win_fonts / "arialbd.ttf",
         pathlib.Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
-        pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
         pathlib.Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
     ]
+    # TrueType CJK candidates come first so ReportLab embeds real outlines
+    # instead of failing on CFF-based OpenType collections and falling back to CID.
     ea_candidates = [
         *([] if not env_ea else [pathlib.Path(env_ea)]),
         win_fonts / "msyh.ttc",
         win_fonts / "simhei.ttf",
         pathlib.Path("/System/Library/Fonts/PingFang.ttc"),
         pathlib.Path("/System/Library/Fonts/STHeiti Light.ttc"),
-        pathlib.Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-        pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf"),
+        pathlib.Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
         pathlib.Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+        pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        pathlib.Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
     ]
-    ea_bold_candidates = [
+    ea_bold_defaults = [
         win_fonts / "msyhbd.ttc",
-        pathlib.Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+        pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansSC-Bold.ttf"),
         pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"),
+        pathlib.Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
     ]
 
     latin_name = "Helvetica"
-    latin_path = _first_existing(latin_candidates)
-    if latin_path and _try_register_ttf("DBLatin", latin_path):
-        latin_name = "DBLatin"
+    latin_path: Optional[pathlib.Path] = None
+    for cand in latin_candidates:
+        if not cand.is_file():
+            continue
+        reg = _try_register_ttf("DBLatin", cand)
+        if reg:
+            latin_name = reg
+            latin_path = cand
+            break
 
     latin_bold_name = "Helvetica-Bold" if latin_name == "Helvetica" else latin_name
+    latin_bold_candidates: list[pathlib.Path] = []
+    if env_latin_bold:
+        latin_bold_candidates.append(pathlib.Path(env_latin_bold))
+    if latin_path:
+        sibling = _infer_bold_sibling(latin_path)
+        if sibling:
+            latin_bold_candidates.append(sibling)
     if not env_latin:
-        latin_bold_path = _first_existing(latin_bold_candidates)
-        if latin_bold_path and _try_register_ttf("DBLatinBold", latin_bold_path):
-            latin_bold_name = "DBLatinBold"
+        latin_bold_candidates.extend(latin_bold_defaults)
+    for cand in latin_bold_candidates:
+        reg = _try_register_ttf("DBLatinBold", cand)
+        if reg:
+            latin_bold_name = reg
+            break
 
     ea_name = _ensure_cid_fallback()
-    ea_path = _first_existing(ea_candidates)
-    if ea_path and _try_register_ttf("DBEA", ea_path, subfont_index=0):
-        ea_name = "DBEA"
+    ea_path: Optional[pathlib.Path] = None
+    for cand in ea_candidates:
+        if not cand.is_file():
+            continue
+        reg = _try_register_ttf("DBEA", cand, subfont_index=0)
+        if reg:
+            ea_name = reg
+            ea_path = cand
+            break
 
     ea_bold_name = ea_name
+    ea_bold_candidates: list[pathlib.Path] = []
+    if env_ea_bold:
+        ea_bold_candidates.append(pathlib.Path(env_ea_bold))
+    if ea_path:
+        sibling = _infer_bold_sibling(ea_path)
+        if sibling:
+            ea_bold_candidates.append(sibling)
     if not env_ea:
-        ea_bold_path = _first_existing(ea_bold_candidates)
-        if ea_bold_path and _try_register_ttf("DBEABold", ea_bold_path, subfont_index=0):
-            ea_bold_name = "DBEABold"
+        ea_bold_candidates.extend(ea_bold_defaults)
+    for cand in ea_bold_candidates:
+        if not cand.is_file():
+            continue
+        reg = _try_register_ttf("DBEABold", cand, subfont_index=0)
+        if reg:
+            ea_bold_name = reg
+            break
 
     resolved = _RenderFonts(
         latin=latin_name,

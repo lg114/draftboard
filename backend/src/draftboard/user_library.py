@@ -1,6 +1,7 @@
 """User brand kit customization and reusable custom canvas layout presets.
 
-Stored locally at ~/.draftboard/saved_layouts.json (overridable in tests).
+Stored beside the active Draftboard storage root (`STORAGE_ROOT.parent / "saved_layouts.json"`,
+defaulting to `~/.draftboard/saved_layouts.json`, overridable in tests).
 Per-project brand overrides are stored in each project's meta.json under `brand`.
 """
 
@@ -16,6 +17,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+import draftboard.storage as storage_module
+import draftboard.tools as tools_module
 from draftboard.models import CanvasElement
 from draftboard.themes import ThemeSpec
 
@@ -26,7 +29,9 @@ _SAVED_LAYOUTS_PATH: Optional[pathlib.Path] = None
 def _layouts_path() -> pathlib.Path:
     if _SAVED_LAYOUTS_PATH is not None:
         return _SAVED_LAYOUTS_PATH
-    return pathlib.Path.home() / ".draftboard" / "saved_layouts.json"
+    if tools_module._storage_root is not None:
+        return pathlib.Path(tools_module._storage_root) / "_saved_layouts.json"
+    return storage_module.STORAGE_ROOT.parent / "saved_layouts.json"
 
 
 class BrandKit(BaseModel):
@@ -101,10 +106,12 @@ def _load_raw_layouts() -> list[dict[str, Any]]:
 def _save_raw_layouts(layouts: list[dict[str, Any]]) -> None:
     path = _layouts_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(
         json.dumps({"layouts": layouts}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    tmp.replace(path)
 
 
 def list_saved_layouts() -> list[SavedLayoutPreset]:

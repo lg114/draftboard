@@ -417,3 +417,32 @@ def test_health_and_delete_material_cleans_brand_logo_and_custom_images(client):
     assert "（自由画布）" in notes_md
     assert "| --- |" in notes_md
     assert "图表「" in notes_md
+
+
+def test_saved_layouts_path_follows_storage_root(tmp_path, monkeypatch):
+    # Simulates Docker volume mount: DRAFTBOARD_STORAGE_ROOT=/data/projects
+    data_dir = tmp_path / "data"
+    projects_dir = data_dir / "projects"
+
+    monkeypatch.setattr(user_library, "_SAVED_LAYOUTS_PATH", None)
+    monkeypatch.setattr(tools_module, "_storage_root", None)
+    monkeypatch.setattr(storage_module, "STORAGE_ROOT", projects_dir)
+
+    assert user_library._layouts_path() == data_dir / "saved_layouts.json"
+
+    # Creating a layout persists beside STORAGE_ROOT (under /data), not Path.home()
+    from draftboard.models import CanvasElement
+
+    preset = user_library.create_saved_layout(
+        "容器持久化版式",
+        [CanvasElement(id="t1", kind="text", x=48, y=40, w=400, h=48, text="Hello")],
+    )
+    assert (data_dir / "saved_layouts.json").is_file()
+    assert any(p.id == preset.id for p in user_library.list_saved_layouts())
+
+    # When tools._storage_root is overridden (e.g. isolated tests), layouts stay isolated
+    isolated = tmp_path / "isolated"
+    monkeypatch.setattr(tools_module, "_storage_root", isolated)
+    assert user_library._layouts_path() == isolated / "_saved_layouts.json"
+    assert user_library.list_saved_layouts() == []
+
