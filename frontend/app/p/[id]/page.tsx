@@ -1,44 +1,12 @@
 "use client";
 
-import { useParams, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Trash2, X } from "lucide-react";
-import {
-  api,
-  BrandKit,
-  CanvasElement,
-  ChatDeckChanges,
-  ChatHistoryResponse,
-  ChatMessage,
-  ChatToolStep,
-  ExportReport,
-  FALLBACK_THEMES,
-  GenerationSync,
-  Issue,
-  jsonOptions,
-  LLMSettingsResponse,
-  Material,
-  MaterialsResponse,
-  Outline,
-  OutlineLayout,
-  Preview,
-  Project,
-  SavedLayoutPreset,
-  SlideRefineCandidate,
-  SourceFragment,
-  Task,
-  ThemeOption,
-} from "../../../lib/api";
 import { LLMSettingsModal } from "../../../components/LLMSettingsModal";
-import { usePresence } from "../../../lib/usePresence";
 import { AgentChatPanel } from "../../../components/workspace/AgentChatPanel";
 import { EmptyStageOnboarding } from "../../../components/workspace/EmptyStageOnboarding";
 import {
-  EditableOutlineField,
-  extractIssueSlideIndices,
   inferEffectiveLayout,
   LAYOUT_LABELS,
-  WorkspaceStage,
 } from "../../../components/workspace/layoutUtils";
 import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
 import { PreflightModal } from "../../../components/workspace/PreflightModal";
@@ -47,2061 +15,227 @@ import { SlideNavigator } from "../../../components/workspace/SlideNavigator";
 import { SlideStageCanvas } from "../../../components/workspace/SlideStageCanvas";
 import { SourceContextModal } from "../../../components/workspace/SourceContextModal";
 import { WorkspaceHeader } from "../../../components/workspace/WorkspaceHeader";
-
-function buildOutlineEditPayload(outline: Outline) {
-  return {
-    items: outline.items.map((item) => ({
-      outline_item_id: item.outline_item_id,
-      title: item.title,
-      summary: item.summary,
-      layout: item.layout ?? null,
-      source_ids: item.source_ids,
-      column_right: item.column_right ?? null,
-      image_asset_id: item.image_asset_id ?? null,
-      speaker_notes: item.speaker_notes ?? null,
-      custom_bg: item.custom_bg ?? null,
-      custom_elements: item.custom_elements ?? null,
-    })),
-  };
-}
-
-function isOutlineReadyForAutoSave(outline: Outline | null): boolean {
-  if (!outline || outline.items.length === 0) return false;
-  for (const item of outline.items) {
-    if (!item.title.trim() || !item.summary.trim()) return false;
-    if (item.custom_elements && item.custom_elements.length > 0) {
-      continue;
-    }
-    if (
-      item.layout === "two_column" &&
-      !(item.column_right && item.column_right.trim())
-    ) {
-      return false;
-    }
-    if (
-      item.layout === "text_image" &&
-      !(item.image_asset_id && item.image_asset_id.trim())
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
+import { useProjectWorkspace } from "../../../hooks/workspace/useProjectWorkspace";
 
 export default function ProjectWorkspacePage() {
-  const params = useParams<{ id: string }>();
-  const pathname = usePathname();
-  const routePid = useMemo(() => {
-    const seg = pathname?.split("/").filter(Boolean)[1];
-    return seg && seg !== "__placeholder__"
-      ? decodeURIComponent(seg)
-      : params.id;
-  }, [pathname, params.id]);
+  const ws = useProjectWorkspace();
+  const { outlineEditor, generation, chat } = ws;
+  const { outline, version, isStale, isSaving, undoStack, redoStack } =
+    outlineEditor;
 
-  const [createdPid, setCreatedPid] = useState<string | null>(null);
-  const [draftName, setDraftName] = useState("");
-  const createdPidRef = useRef<string | null>(null);
-  const createPromiseRef = useRef<Promise<string> | null>(null);
+  const currentItem = outline?.items[ws.selectedIndex];
 
-  const pid = routePid === "new" ? createdPid ?? "new" : routePid;
-  const isDraftNew = pid === "new";
+  const handleOpenLLMSettings = () => {
+    ws.setLlmModalReason(null);
+    ws.setShowLLMModal(true);
+  };
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [sourceFragments, setSourceFragments] = useState<SourceFragment[]>([]);
-  const [themes, setThemes] = useState<ThemeOption[]>(FALLBACK_THEMES);
-  const [selectedThemeId, setSelectedThemeId] = useState("keynote_light");
-  const [autoFit, setAutoFit] = useState(true);
-  const themeInitializedRef = useRef(false);
-
-  const [outline, setOutline] = useState<Outline | null>(null);
-  const outlineRef = useRef<Outline | null>(null);
-  outlineRef.current = outline;
-  const [savedOutline, setSavedOutline] = useState<Outline | null>(null);
-  const [undoStack, setUndoStack] = useState<Outline[]>([]);
-  const [redoStack, setRedoStack] = useState<Outline[]>([]);
-  const lastCoalesceRef = useRef<{ key: string; ts: number } | null>(null);
-  const [version, setVersion] = useState("");
-  const [status, setStatus] = useState("");
-  const [rawError, setRawError] = useState<string | null>(null);
-  const [showErrorDetail, setShowErrorDetail] = useState(false);
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [toast, setToast] = useState<{
-    text: string;
-    actionLabel?: string;
-    onAction?: () => void;
-  } | null>(null);
-  const lastToastRef = useRef<{
-    text: string;
-    actionLabel?: string;
-    onAction?: () => void;
-  } | null>(null);
-  if (toast) lastToastRef.current = toast;
-  const { mounted: toastMounted, exiting: toastExiting } = usePresence(
-    Boolean(toast),
-    140
-  );
-  const [confirmClearChat, setConfirmClearChat] = useState(false);
-  const clearChatConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const handleUndoRef = useRef<() => void>(() => {});
-  const selectedCustomElIdRef = useRef<string | null>(null);
-  const handleSelectedCustomElementChange = useCallback(
-    (elId: string | null) => {
-      selectedCustomElIdRef.current = elId;
-    },
-    []
-  );
-
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [report, setReport] = useState<ExportReport | null>(null);
-  const [showMaterialsDrawer, setShowMaterialsDrawer] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<"edit" | "chat">("edit");
-  const [onboardingChatOpen, setOnboardingChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isChatStreaming, setIsChatStreaming] = useState(false);
-  const [llmSettings, setLlmSettings] = useState<LLMSettingsResponse | null>(
-    null
-  );
-  const [showLLMModal, setShowLLMModal] = useState(false);
-  const [llmModalReason, setLlmModalReason] = useState<string | null>(null);
-  const [showPreflight, setShowPreflight] = useState(false);
-  const [inspectedFragment, setInspectedFragment] =
-    useState<SourceFragment | null>(null);
-  const [savedLayouts, setSavedLayouts] = useState<SavedLayoutPreset[]>([]);
-  const [diffPreviewVersion, setDiffPreviewVersion] = useState<string | null>(
-    null
-  );
-  const [diffPreviewOutline, setDiffPreviewOutline] = useState<Outline | null>(
-    null
-  );
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const chatAbortRef = useRef<AbortController | null>(null);
-  const pendingOutlinePromptRef = useRef<{ prompt?: string } | null>(null);
-
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+  const handleLLMSettingsSwitched = (
+    next: NonNullable<typeof ws.llmSettings>
+  ) => {
+    ws.setLlmSettings(next);
+    if (next.active_summary) {
+      ws.flashToast(`已切换模型：${next.active_summary.model}`);
     }
   };
 
-  const flashToast = useCallback(
-    (
-      text: string,
-      durationMs = 2800,
-      action?: { label: string; onClick: () => void }
-    ) => {
-      setToast({
-        text,
-        actionLabel: action?.label,
-        onAction: action?.onClick,
-      });
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(
-        () => setToast(null),
-        action ? Math.max(durationMs, 4200) : durationMs
+  const renderClearChatControls = () => {
+    if (chat.chatMessages.length === 0 || chat.isChatStreaming) return null;
+    if (ws.confirmClearChat) {
+      return (
+        <div className="flex items-center gap-1 shrink-0 anim-msg-in">
+          <button
+            type="button"
+            onClick={() => {
+              ws.setConfirmClearChat(false);
+              if (ws.clearChatConfirmTimerRef.current) {
+                clearTimeout(ws.clearChatConfirmTimerRef.current);
+              }
+              void chat.clearChat();
+            }}
+            className="px-2.5 py-1 rounded-lg bg-danger text-white text-[13px] font-medium hover:bg-danger-hover transition-colors cursor-pointer"
+          >
+            确认清空
+          </button>
+          <button
+            type="button"
+            onClick={() => ws.setConfirmClearChat(false)}
+            className="px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] cursor-pointer"
+          >
+            取消
+          </button>
+        </div>
       );
-    },
-    []
-  );
-
-  useEffect(() => {
-    api<{ themes: ThemeOption[] }>("/api/themes")
-      .then((res) => {
-        if (res.themes?.length) setThemes(res.themes);
-      })
-      .catch(() => {});
-    api<LLMSettingsResponse>("/api/settings/llm")
-      .then(setLlmSettings)
-      .catch(() => {});
-    api<{ layouts: SavedLayoutPreset[] }>("/api/layouts/custom")
-      .then((res) => setSavedLayouts(res.layouts || []))
-      .catch(() => {});
-  }, []);
-
-  const ensureProjectId = useCallback(async (): Promise<string> => {
-    if (routePid !== "new") return routePid;
-    if (createdPidRef.current) return createdPidRef.current;
-    if (createPromiseRef.current) return createPromiseRef.current;
-
-    const creating = (async () => {
-      const cleanDraftName = draftName.trim();
-      const payload = cleanDraftName
-        ? { name: cleanDraftName, auto_named: false }
-        : {};
-      const res = await api<{ project_id: string; name: string }>(
-        "/api/projects",
-        jsonOptions("POST", payload)
-      );
-      createdPidRef.current = res.project_id;
-      setCreatedPid(res.project_id);
-      if (typeof window !== "undefined") {
-        window.history.replaceState(
-          window.history.state,
-          "",
-          `/p/${encodeURIComponent(res.project_id)}`
-        );
-      }
-      return res.project_id;
-    })();
-
-    createPromiseRef.current = creating;
-    try {
-      return await creating;
-    } finally {
-      createPromiseRef.current = null;
     }
-  }, [routePid, draftName]);
-
-  const loadPreview = useCallback(
-    async (overridePid?: string) => {
-      const targetPid = overridePid ?? (createdPidRef.current || pid);
-      if (!targetPid || targetPid === "new") return;
-      try {
-        const p = await api<Preview>(`/api/projects/${targetPid}/preview`);
-        setPreview(p);
-      } catch {
-        setPreview(null);
-      }
-      try {
-        const r = await api<ExportReport>(`/api/projects/${targetPid}/result`);
-        setReport(r);
-        if (r && !r.success && r.issues?.length) {
-          setIssues(r.issues);
-        }
-      } catch {
-        setReport(null);
-      }
-    },
-    [pid]
-  );
-
-  const showOutline = useCallback(
-    async (v: string, overridePid?: string) => {
-      const targetPid = overridePid ?? (createdPidRef.current || pid);
-      if (!targetPid || targetPid === "new") return;
-      try {
-        const data = await api<Outline>(
-          `/api/projects/${targetPid}/outlines/${v}`
-        );
-        outlineRef.current = data;
-        setOutline(data);
-        setSavedOutline(JSON.parse(JSON.stringify(data)));
-        setVersion(v);
-        setUndoStack([]);
-        setRedoStack([]);
-        lastCoalesceRef.current = null;
-        setDiffPreviewVersion(null);
-        setDiffPreviewOutline(null);
-        setSelectedIndex((prev) =>
-          Math.min(prev, Math.max(0, data.items.length - 1))
-        );
-      } catch (e) {
-        setRawError((e as Error).message);
-      }
-    },
-    [pid]
-  );
-
-  const refresh = useCallback(
-    async (overridePid?: string) => {
-      const targetPid = overridePid ?? (createdPidRef.current || pid);
-      if (!targetPid || targetPid === "new") return null;
-      try {
-        const data = await api<Project>(`/api/projects/${targetPid}`);
-        setProject(data);
-        if (!themeInitializedRef.current) {
-          const initialTheme = data.theme_id || data.latest_template_id;
-          if (initialTheme && initialTheme !== "default") {
-            setSelectedThemeId(initialTheme);
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          ws.setConfirmClearChat(true);
+          if (ws.clearChatConfirmTimerRef.current) {
+            clearTimeout(ws.clearChatConfirmTimerRef.current);
           }
-          if (typeof data.latest_auto_fit === "boolean") {
-            setAutoFit(data.latest_auto_fit);
-          }
-          themeInitializedRef.current = true;
-        }
-
-        const mats = await api<MaterialsResponse>(
-          `/api/projects/${targetPid}/materials`
-        );
-        setMaterials(mats.materials || []);
-        setSourceFragments(mats.source_fragments || []);
-
-        const outlines = [...data.outlines].sort((a, b) => b.mtime - a.mtime);
-        if (outlines.length > 0) {
-          await showOutline(outlines[0].outline_version, targetPid);
-        } else {
-          setOutline(null);
-          setSavedOutline(null);
-          setVersion("");
-        }
-        await loadPreview(targetPid);
-        return data;
-      } catch (e) {
-        setRawError((e as Error).message);
-        return null;
-      }
-    },
-    [pid, showOutline, loadPreview]
-  );
-
-  const reportTask = useCallback(
-    (task: Task) => {
-      if (task.status === "failed") {
-        setRawError(
-          task.error || `任务 ${task.task_id} 失败 (${task.step || "未知步骤"})`
-        );
-        setIssues(
-          task.result?.export?.issues ?? task.result?.validation?.issues ?? []
-        );
-        setStatus("");
-      } else if (task.status === "succeeded") {
-        setRawError(null);
-        setIssues([]);
-        setStatus("");
-        flashToast(
-          task.kind === "outline"
-            ? "大纲提炼完成"
-            : "PPTX 已编译完成，可随时下载或全屏放映"
-        );
-      } else {
-        setStatus(task.step || "正在处理…");
-      }
-    },
-    [flashToast]
-  );
-
-  const startPolling = useCallback(
-    (taskId: string, overridePid?: string) => {
-      const targetPid = overridePid ?? (createdPidRef.current || pid);
-      if (!targetPid || targetPid === "new") return;
-      stopPolling();
-      setIsGenerating(true);
-      const tick = async () => {
-        let task: Task;
-        try {
-          task = await api<Task>(
-            `/api/projects/${targetPid}/tasks/${taskId}`
+          ws.clearChatConfirmTimerRef.current = setTimeout(
+            () => ws.setConfirmClearChat(false),
+            4000
           );
-        } catch {
-          stopPolling();
-          setIsGenerating(false);
-          return;
-        }
-        setStatus(task.step || "正在处理…");
-        if (task.status === "succeeded" || task.status === "failed") {
-          stopPolling();
-          setIsGenerating(false);
-          reportTask(task);
-          const data = await refresh(targetPid);
-          if (task.status === "succeeded" && task.result?.outline_version) {
-            await showOutline(task.result.outline_version, targetPid);
-          }
-          await loadPreview(targetPid);
-          if (data) {
-            const active = data.tasks.find(
-              (t) => t.status === "queued" || t.status === "running"
-            );
-            if (active) startPolling(active.task_id, targetPid);
-          }
-        }
-      };
-      void tick();
-      pollRef.current = setInterval(() => void tick(), 1500);
-    },
-    [pid, refresh, reportTask, showOutline, loadPreview]
-  );
-
-  useEffect(() => {
-    if (routePid === "new") {
-      stopPolling();
-      createdPidRef.current = null;
-      setCreatedPid(null);
-      setDraftName("");
-      setProject(null);
-      setMaterials([]);
-      setSourceFragments([]);
-      setOutline(null);
-      setSavedOutline(null);
-      setUndoStack([]);
-      setRedoStack([]);
-      setVersion("");
-      setPreview(null);
-      setReport(null);
-      setRawError(null);
-      setIssues([]);
-      setChatMessages([]);
-      setOnboardingChatOpen(false);
-      return () => {
-        stopPolling();
-        chatAbortRef.current?.abort();
-        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      };
-    }
-
-    (async () => {
-      const data = await refresh(routePid);
-      if (data) {
-        const active = data.tasks.find(
-          (t) => t.status === "queued" || t.status === "running"
-        );
-        if (active) startPolling(active.task_id, routePid);
-      }
-      try {
-        const hist = await api<ChatHistoryResponse>(
-          `/api/projects/${routePid}/chat`
-        );
-        setChatMessages(hist.messages || []);
-      } catch {
-        setChatMessages([]);
-      }
-    })();
-    return () => {
-      stopPolling();
-      chatAbortRef.current?.abort();
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routePid]);
-
-  const isStale = useMemo(() => {
-    if (!outline || !savedOutline) return false;
-    return JSON.stringify(outline.items) !== JSON.stringify(savedOutline.items);
-  }, [outline, savedOutline]);
-
-  const [generationSync, setGenerationSync] = useState<GenerationSync | null>(
-    null
-  );
-
-  useEffect(() => {
-    const targetPid = createdPidRef.current || pid;
-    if (!targetPid || targetPid === "new" || !version) {
-      setGenerationSync(null);
-      return;
-    }
-    let cancelled = false;
-    setGenerationSync(null);
-    const params = new URLSearchParams({
-      outline_version: version,
-      template_id: selectedThemeId,
-      auto_fit: String(autoFit),
-    });
-    api<GenerationSync>(
-      `/api/projects/${encodeURIComponent(targetPid)}/generation-sync?${params}`
-    )
-      .then((data) => {
-        if (!cancelled) setGenerationSync(data);
-      })
-      .catch(() => {
-        if (!cancelled) setGenerationSync(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    pid,
-    version,
-    selectedThemeId,
-    autoFit,
-    project?.brand,
-    project?.export_fingerprint,
-    materials,
-  ]);
-
-  const exportInSync =
-    !isStale &&
-    generationSync?.in_sync === true &&
-    Boolean(generationSync.current_fingerprint) &&
-    generationSync.current_fingerprint === generationSync.export_fingerprint;
-
-  const activeTheme = useMemo(() => {
-    const base =
-      themes.find((t) => t.id === selectedThemeId) ||
-      themes[0] ||
-      FALLBACK_THEMES[0];
-    const b = project?.brand;
-    if (!b || (!b.accent_hex && !b.bg_hex)) return base;
-    const nextPalette = [...(base.chart_palette || [])];
-    if (b.accent_hex && nextPalette.length > 0) {
-      nextPalette[0] = b.accent_hex;
-    }
-    return {
-      ...base,
-      swatches: {
-        ...base.swatches,
-        accent: b.accent_hex || base.swatches.accent,
-        bg: b.bg_hex || base.swatches.bg,
-      },
-      chart_palette: nextPalette.length > 0 ? nextPalette : base.chart_palette,
-    };
-  }, [themes, selectedThemeId, project?.brand]);
-
-  const issueSlideIndices = useMemo(
-    () => extractIssueSlideIndices(issues),
-    [issues]
-  );
-
-  const currentSlideIssues = useMemo(() => {
-    const targetTag = `slide-${String(selectedIndex + 1).padStart(3, "0")}`;
-    return issues.filter(
-      (iss) =>
-        iss.slide_id === targetTag ||
-        iss.message.toLowerCase().includes(targetTag)
+        }}
+        title="清空本项目的历史对话"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+        <span>清空</span>
+      </button>
     );
-  }, [issues, selectedIndex]);
-
-  const humanizedError = useMemo(() => {
-    if (!rawError) return null;
-    if (
-      rawError.includes("没有保存任何大纲") ||
-      rawError.includes("暂无可用素材") ||
-      rawError.includes("未检测到有效素材")
-    ) {
-      return "大纲提炼未完成：请确认已上传有效的 Markdown/TXT 笔记或图片材料。";
-    }
-    if (rawError.includes("requires non-empty column_right")) {
-      return "双栏对比页缺少右栏内容，请先填写后再保存或导出。";
-    }
-    if (rawError.includes("requires an image_asset_id")) {
-      return "左文右图页尚未选择配图，请先在右侧选择已上传的图片。";
-    }
-    if (rawError.includes("empty title") || rawError.includes("empty summary")) {
-      return "每一页都必须包含非空的标题和正文说明。";
-    }
-    if (rawError.includes("MISSING_IMAGE")) {
-      return "图文页引用的图片素材不存在，请重新选择配图。";
-    }
-    if (
-      rawError.includes("排版检查未通过") ||
-      rawError.includes("OVERFLOW") ||
-      rawError.includes("溢出")
-    ) {
-      return "部分页面文字超出安全版面，请精简文字或开启「自动缩字」后重试。";
-    }
-    if (rawError.includes("LibreOffice")) {
-      return "LibreOffice 渲染失败，已生成的 PPTX 文件仍可直接下载。";
-    }
-    return rawError;
-  }, [rawError]);
-
-  const currentStage: WorkspaceStage = useMemo(() => {
-    if (project?.download_available) return "ppt_ready";
-    if (outline && outline.items.length > 0) return "outline_ready";
-    if (materials.length > 0) return "has_materials_no_outline";
-    return "no_materials";
-  }, [project, outline, materials]);
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-
-  async function uploadFiles(files?: FileList | File[] | null) {
-    if (!files || files.length === 0) return;
-    setRawError(null);
-    setStatus("正在上传素材…");
-    try {
-      const targetPid = await ensureProjectId();
-      for (const file of Array.from(files)) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch(`/api/projects/${targetPid}/materials`, {
-          method: "POST",
-          body: fd,
-        });
-        if (!res.ok) {
-          let detail = res.statusText;
-          try {
-            detail = (await res.json()).detail || detail;
-          } catch {}
-          throw new Error(`${file.name}: ${detail}`);
-        }
-      }
-      flashToast(`已上传 ${files.length} 份素材`);
-      await refresh(targetPid);
-      setStatus("");
-    } catch (e) {
-      setRawError((e as Error).message);
-      setStatus("");
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  async function uploadPastedNote(rawTitle: string, content: string) {
-    const cleaned = content.trim();
-    if (!cleaned) return;
-    const baseName =
-      rawTitle
-        .trim()
-        .replace(/[\\/:*?"<>|\s]+/g, "_")
-        .replace(/^_+|_+$/g, "")
-        .slice(0, 32) ||
-      `笔记_${materials.filter((m) => m.asset_type !== "image").length + 1}`;
-    const file = new File([cleaned], `${baseName}.md`, {
-      type: "text/markdown;charset=utf-8",
-    });
-    await uploadFiles([file]);
-  }
-
-  async function importUrlMaterial(url: string, title?: string) {
-    setRawError(null);
-    setStatus("正在抓取网页正文…");
-    try {
-      const targetPid = await ensureProjectId();
-      const res = await api<{ asset_id: string; title: string }>(
-        `/api/projects/${targetPid}/materials/url`,
-        jsonOptions("POST", { url, title: title || null })
-      );
-      flashToast(`已抓取网页素材「${res.title || res.asset_id}」`);
-      await refresh(targetPid);
-    } catch (e) {
-      setRawError((e as Error).message);
-      throw e;
-    } finally {
-      setStatus("");
-    }
-  }
-
-  async function updateBrand(nextBrand: BrandKit) {
-    const targetPid = createdPidRef.current || pid;
-    if (!targetPid || targetPid === "new") return;
-    setRawError(null);
-    try {
-      const res = await api<{ brand?: BrandKit | null }>(
-        `/api/projects/${targetPid}/brand`,
-        jsonOptions("PATCH", nextBrand)
-      );
-      setProject((prev) => (prev ? { ...prev, brand: res.brand ?? null } : prev));
-      flashToast(res.brand ? "已应用品牌定制设置" : "已恢复主题默认设置");
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  async function saveCurrentCustomLayout(name: string) {
-    const cur = outline?.items[selectedIndex];
-    if (!cur?.custom_elements?.length) return;
-    try {
-      const created = await api<SavedLayoutPreset>(
-        "/api/layouts/custom",
-        jsonOptions("POST", {
-          name,
-          custom_bg: cur.custom_bg || "theme:bg",
-          elements: cur.custom_elements,
-        })
-      );
-      setSavedLayouts((prev) => [created, ...prev]);
-      flashToast(`已收藏常用版式「${created.name}」`);
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  function applySavedLayout(preset: SavedLayoutPreset) {
-    mutateOutline((prev) => {
-      if (!prev.items[selectedIndex]) return null;
-      const items = [...prev.items];
-      const cur = items[selectedIndex];
-      const clonedEls: CanvasElement[] = JSON.parse(
-        JSON.stringify(preset.elements)
-      );
-      // Map current slide title into the largest text element so structure is reused cleanly
-      const textEls = clonedEls.filter((el) => el.kind === "text");
-      if (textEls.length > 0 && cur.title.trim()) {
-        const largest = textEls.reduce((a, b) =>
-          (b.font_size ?? 18) > (a.font_size ?? 18) ? b : a
-        );
-        largest.text = cur.title;
-      }
-      items[selectedIndex] = {
-        ...cur,
-        custom_bg: preset.custom_bg || "theme:bg",
-        custom_elements: clonedEls,
-      };
-      return { ...prev, items };
-    });
-    flashToast(`已套用常用版式「${preset.name}」`);
-  }
-
-  async function deleteSavedLayout(layoutId: string) {
-    try {
-      await api(`/api/layouts/custom/${encodeURIComponent(layoutId)}`, {
-        method: "DELETE",
-      });
-      setSavedLayouts((prev) => prev.filter((l) => l.id !== layoutId));
-      flashToast("已删除收藏版式");
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  async function toggleDiffPreview(beforeVer: string | null) {
-    if (!beforeVer) {
-      setDiffPreviewVersion(null);
-      setDiffPreviewOutline(null);
-      return;
-    }
-    const targetPid = createdPidRef.current || pid;
-    if (!targetPid || targetPid === "new") return;
-    try {
-      const oldOut = await api<Outline>(
-        `/api/projects/${targetPid}/outlines/${encodeURIComponent(beforeVer)}`
-      );
-      setDiffPreviewVersion(beforeVer);
-      setDiffPreviewOutline(oldOut);
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  // Global Ctrl+V clipboard screenshot paste anywhere in workspace
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      const imageFiles: File[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        if (it.kind === "file" && it.type.startsWith("image/")) {
-          const blob = it.getAsFile();
-          if (blob) {
-            const ext = it.type.includes("jpeg") ? "jpg" : "png";
-            const d = new Date();
-            const stamp = `${String(d.getHours()).padStart(2, "0")}${String(
-              d.getMinutes()
-            ).padStart(2, "0")}${String(d.getSeconds()).padStart(2, "0")}`;
-            imageFiles.push(
-              new File([blob], `screenshot_${stamp}.${ext}`, { type: it.type })
-            );
-          }
-        }
-      }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        void uploadFiles(imageFiles);
-      }
-    };
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pid, routePid, draftName]);
-
-  async function deleteMaterial(assetId: string) {
-    const targetPid = createdPidRef.current || pid;
-    if (!targetPid || targetPid === "new") return;
-    setRawError(null);
-    try {
-      await api(
-        `/api/projects/${targetPid}/materials/${encodeURIComponent(assetId)}`,
-        { method: "DELETE" }
-      );
-      flashToast(`已删除素材「${assetId}」`);
-      await refresh(targetPid);
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  async function renameProject(newName: string) {
-    const clean = newName.trim();
-    if (!clean) return;
-    if (isDraftNew && !createdPidRef.current) {
-      setDraftName(clean);
-      flashToast("已更新文稿名称");
-      return;
-    }
-    const targetPid = createdPidRef.current || pid;
-    try {
-      await api(
-        `/api/projects/${targetPid}`,
-        jsonOptions("PATCH", { name: clean })
-      );
-      setProject((prev) => (prev ? { ...prev, name: clean } : prev));
-      flashToast("已更新文稿名称");
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  async function genOutline(userPrompt?: string, skipConfigGuard = false) {
-    if (materials.length === 0 && !(userPrompt && userPrompt.trim())) {
-      setRawError("请先上传素材文件、粘贴笔记，或输入一句话主题要求。");
-      return;
-    }
-    if (!skipConfigGuard && llmSettings && !llmSettings.configured) {
-      pendingOutlinePromptRef.current = { prompt: userPrompt };
-      setLlmModalReason("请先配置大模型，保存并启用后将自动继续生成大纲。");
-      setShowLLMModal(true);
-      return;
-    }
-    setRawError(null);
-    setIsGenerating(true);
-    setStatus("正在解析材料并提炼大纲…");
-    try {
-      const targetPid = await ensureProjectId();
-      const task = await api<Task>(
-        `/api/projects/${targetPid}/outline/generate`,
-        userPrompt && userPrompt.trim()
-          ? jsonOptions("POST", { prompt: userPrompt.trim() })
-          : { method: "POST" }
-      );
-      startPolling(task.task_id, targetPid);
-    } catch (e) {
-      setIsGenerating(false);
-      setStatus("");
-      const msg = (e as Error).message || "";
-      if (msg.includes("LLM_NOT_CONFIGURED")) {
-        pendingOutlinePromptRef.current = { prompt: userPrompt };
-        setLlmModalReason("请先配置大模型，保存并启用后将自动继续生成大纲。");
-        setShowLLMModal(true);
-        return;
-      }
-      setRawError(msg);
-    }
-  }
-
-  const saveOutline = useCallback(
-    async (silent = false): Promise<string | null> => {
-      if (!outline) return null;
-      setRawError(null);
-      setIsSaving(true);
-      try {
-        const updated = await api<Outline>(
-          `/api/projects/${pid}/outlines/${outline.outline_version}`,
-          jsonOptions("PUT", buildOutlineEditPayload(outline))
-        );
-        setOutline(updated);
-        setSavedOutline(JSON.parse(JSON.stringify(updated)));
-        setVersion(updated.outline_version);
-        if (!silent) {
-          flashToast(
-            updated.outline_version !== outline.outline_version
-              ? `已派生新草稿 ${updated.outline_version}`
-              : "已保存修改"
-          );
-        }
-        const proj = await api<Project>(`/api/projects/${pid}`);
-        setProject(proj);
-        return updated.outline_version;
-      } catch (e) {
-        if (!silent) {
-          setRawError((e as Error).message);
-        }
-        return null;
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [outline, pid, flashToast]
-  );
-
-  // 1.2s debounced auto-save when edits are valid (PRD F-01)
-  useEffect(() => {
-    if (
-      !isStale ||
-      isGenerating ||
-      isSaving ||
-      !isOutlineReadyForAutoSave(outline)
-    ) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      void saveOutline(true);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [outline, isStale, isGenerating, isSaving, saveOutline]);
-
-  // Warn before closing/reloading the browser tab when local edits haven't flushed yet
-  useEffect(() => {
-    if (!isStale) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [isStale]);
-
-  async function confirmGenerate() {
-    if (!version || !outline) return;
-    setRawError(null);
-    setIsGenerating(true);
-    setStatus("正在确认大纲并编译 PPTX…");
-    let derivedNewDraft = false;
-    try {
-      let targetVersion = version;
-      if (isStale) {
-        const saved = await api<Outline>(
-          `/api/projects/${pid}/outlines/${version}`,
-          jsonOptions("PUT", buildOutlineEditPayload(outline))
-        );
-        derivedNewDraft = saved.outline_version !== version;
-        setOutline(saved);
-        setSavedOutline(JSON.parse(JSON.stringify(saved)));
-        targetVersion = saved.outline_version;
-        setVersion(saved.outline_version);
-      }
-      await api(`/api/projects/${pid}/outlines/${targetVersion}/confirm`, {
-        method: "POST",
-      });
-      const task = await api<Task>(
-        `/api/projects/${pid}/generate`,
-        jsonOptions("POST", {
-          outline_version: targetVersion,
-          template_id: selectedThemeId,
-          auto_fit: autoFit,
-        })
-      );
-      startPolling(task.task_id);
-    } catch (e) {
-      setIsGenerating(false);
-      setStatus("");
-      setRawError((e as Error).message);
-      if (derivedNewDraft) {
-        api<Project>(`/api/projects/${pid}`)
-          .then(setProject)
-          .catch(() => {});
-      }
-    }
-  }
-
-  // ── Global Undo / Redo + Outline Editing Helpers ──────────────────────────
-
-  const mutateOutline = useCallback(
-    (
-      updater: (prev: Outline) => Outline | null,
-      opts?: { coalesceKey?: string }
-    ) => {
-      const prev = outlineRef.current;
-      if (!prev) return;
-      const next = updater(prev);
-      if (!next || next === prev) return;
-
-      const now = Date.now();
-      const key = opts?.coalesceKey;
-      const lastC = lastCoalesceRef.current;
-      const shouldCoalesce =
-        Boolean(key) &&
-        lastC !== null &&
-        lastC.key === key &&
-        now - lastC.ts < 700;
-
-      if (!shouldCoalesce) {
-        const snap: Outline = JSON.parse(JSON.stringify(prev));
-        setUndoStack((stack) => [...stack.slice(-39), snap]);
-      }
-      setRedoStack([]);
-      lastCoalesceRef.current = key ? { key, ts: now } : null;
-      outlineRef.current = next;
-      setOutline(next);
-    },
-    []
-  );
-
-  const handleUndo = useCallback(() => {
-    if (undoStack.length === 0 || !outline) return;
-    const prevSnap = undoStack[undoStack.length - 1];
-    const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
-    setUndoStack((stack) => stack.slice(0, -1));
-    setRedoStack((stack) => [...stack.slice(-39), currentSnap]);
-    lastCoalesceRef.current = null;
-    setOutline(prevSnap);
-    setSelectedIndex((idx) =>
-      Math.min(idx, Math.max(0, prevSnap.items.length - 1))
-    );
-    flashToast("已撤销");
-  }, [undoStack, outline, flashToast]);
-  handleUndoRef.current = handleUndo;
-
-  const handleRedo = useCallback(() => {
-    if (redoStack.length === 0 || !outline) return;
-    const nextSnap = redoStack[redoStack.length - 1];
-    const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
-    setRedoStack((stack) => stack.slice(0, -1));
-    setUndoStack((stack) => [...stack.slice(-39), currentSnap]);
-    lastCoalesceRef.current = null;
-    setOutline(nextSnap);
-    setSelectedIndex((idx) =>
-      Math.min(idx, Math.max(0, nextSnap.items.length - 1))
-    );
-    flashToast("已重做");
-  }, [redoStack, outline, flashToast]);
-
-  function patchItem(
-    index: number,
-    patch: Partial<Record<EditableOutlineField, string>>
-  ) {
-    const fieldKey = Object.keys(patch).sort().join(",");
-    mutateOutline(
-      (prev) => {
-        if (!prev.items[index]) return null;
-        const items = [...prev.items];
-        items[index] = { ...items[index], ...patch };
-        return { ...prev, items };
-      },
-      { coalesceKey: `patch:${index}:${fieldKey}` }
-    );
-  }
-
-  function handleSelectLayout(nextLayout: OutlineLayout) {
-    const item = outline?.items[selectedIndex];
-    if (!item) return;
-    const wasCustom = Boolean(
-      item.custom_elements && item.custom_elements.length > 0
-    );
-    const firstImage =
-      nextLayout === "text_image" && !item.image_asset_id
-        ? materials.find((m) => m.asset_type === "image")
-        : undefined;
-
-    // Smart auto-split when switching to two_column and right column is empty
-    let autoSplitLeft: string | null = null;
-    let autoSplitRight: string | null = null;
-    if (
-      nextLayout === "two_column" &&
-      !(item.column_right && item.column_right.trim())
-    ) {
-      const raw = item.summary.trim();
-      let parts = raw
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (parts.length < 2) {
-        parts = raw
-          .split(/(?<=[。；;！!？?])/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-      if (parts.length >= 2) {
-        const mid = Math.ceil(parts.length / 2);
-        autoSplitLeft = parts.slice(0, mid).join("\n");
-        autoSplitRight = parts.slice(mid).join("\n");
-      }
-    }
-
-    mutateOutline((prev) => {
-      if (!prev.items[selectedIndex]) return null;
-      const items = [...prev.items];
-      const cur = items[selectedIndex];
-      items[selectedIndex] = {
-        ...cur,
-        layout: nextLayout,
-        summary: autoSplitLeft ?? cur.summary,
-        column_right: autoSplitRight ?? cur.column_right,
-        image_asset_id: firstImage ? firstImage.asset_id : cur.image_asset_id,
-        custom_bg: null,
-        custom_elements: null,
-      };
-      return { ...prev, items };
-    });
-
-    const undoAction = {
-      label: "撤销",
-      onClick: () => handleUndoRef.current(),
-    };
-    if (wasCustom) {
-      flashToast(
-        `已切回「${LAYOUT_LABELS[nextLayout] || nextLayout}」标准版式`,
-        4200,
-        undoAction
-      );
-    } else if (autoSplitRight) {
-      flashToast("已自动将正文拆分为左右双栏", 4000, undoAction);
-    }
-  }
-
-  function updateCustomElementText(
-    index: number,
-    elementId: string,
-    nextText: string
-  ) {
-    mutateOutline(
-      (prev) => {
-        if (!prev.items[index]) return null;
-        const items = [...prev.items];
-        const item = items[index];
-        const elems = item.custom_elements;
-        if (!elems || elems.length === 0) return null;
-
-        const textElems = elems.filter((el) => el.kind === "text");
-        let primaryHeadingId: string | null = null;
-        let maxFont = -1;
-        for (const el of textElems) {
-          const fs = el.font_size ?? 18;
-          if (fs > maxFont) {
-            maxFont = fs;
-            primaryHeadingId = el.id;
-          }
-        }
-
-        const nextElements = elems.map((el) =>
-          el.id === elementId ? { ...el, text: nextText } : el
-        );
-        const firstLine = nextText.trim().split(/\r?\n/)[0]?.trim() || "";
-        items[index] = {
-          ...item,
-          custom_elements: nextElements,
-          title:
-            elementId === primaryHeadingId && firstLine ? firstLine : item.title,
-        };
-        return { ...prev, items };
-      },
-      { coalesceKey: `customText:${index}:${elementId}` }
-    );
-  }
-
-  function updateCustomElement(
-    index: number,
-    elementId: string,
-    patch: Partial<CanvasElement>
-  ) {
-    const patchKeys = Object.keys(patch).sort().join(",");
-    mutateOutline(
-      (prev) => {
-        if (!prev.items[index]) return null;
-        const items = [...prev.items];
-        const item = items[index];
-        const elems = item.custom_elements;
-        if (!elems || elems.length === 0) return null;
-        const nextElements = elems.map((el) =>
-          el.id === elementId ? { ...el, ...patch } : el
-        );
-        items[index] = { ...item, custom_elements: nextElements };
-        return { ...prev, items };
-      },
-      { coalesceKey: `customEl:${index}:${elementId}:${patchKeys}` }
-    );
-  }
-
-  function deleteCustomElement(index: number, elementId: string) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const elems = item.custom_elements;
-      if (!elems || elems.length === 0) return null;
-      const nextElements = elems.filter((el) => el.id !== elementId);
-      items[index] = {
-        ...item,
-        custom_elements: nextElements.length > 0 ? nextElements : null,
-        custom_bg: nextElements.length > 0 ? item.custom_bg : null,
-      };
-      return { ...prev, items };
-    });
-    flashToast("已删除选中元素", 4200, {
-      label: "撤销",
-      onClick: () => handleUndoRef.current(),
-    });
-  }
-
-  function addCustomElement(index: number, element: CanvasElement) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const elems = item.custom_elements || [];
-      items[index] = {
-        ...item,
-        custom_bg: item.custom_bg || "theme:bg",
-        custom_elements: [...elems, element],
-      };
-      return { ...prev, items };
-    });
-    const labels: Record<CanvasElement["kind"], string> = {
-      text: "文本框",
-      card: "卡片背景",
-      line: "分割线",
-      image: "图片元素",
-      table: "表格",
-      chart: "图表",
-    };
-    flashToast(`已添加${labels[element.kind] || "元素"}`);
-  }
-
-  function duplicateCustomElement(
-    index: number,
-    elementId: string
-  ): string | null {
-    const cur = outlineRef.current?.items[index];
-    const elems = cur?.custom_elements;
-    if (!elems) return null;
-    const origIdx = elems.findIndex((e) => e.id === elementId);
-    if (origIdx < 0) return null;
-    const orig = elems[origIdx];
-    const newId = `el_${orig.kind}_${Date.now().toString(36)}_${Math.random()
-      .toString(36)
-      .slice(2, 5)}`;
-    const clone: CanvasElement = JSON.parse(JSON.stringify(orig));
-    clone.id = newId;
-    if (clone.kind === "line") {
-      const maxX = Math.min(960, 960 - clone.w);
-      const maxY = Math.min(540, 540 - clone.h);
-      clone.x = Math.round(Math.min(maxX, clone.x + 18));
-      clone.y = Math.round(Math.min(maxY, clone.y + 18));
-    } else {
-      clone.x = Math.round(Math.min(960 - clone.w, clone.x + 18));
-      clone.y = Math.round(Math.min(540 - clone.h, clone.y + 18));
-    }
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const curElems = item.custom_elements || [];
-      const idx = curElems.findIndex((e) => e.id === elementId);
-      if (idx < 0) return null;
-      const nextElements = [...curElems];
-      nextElements.splice(idx + 1, 0, clone);
-      items[index] = { ...item, custom_elements: nextElements };
-      return { ...prev, items };
-    });
-    flashToast("已复制选中元素");
-    return newId;
-  }
-
-  function reorderCustomElement(
-    index: number,
-    elementId: string,
-    dir: "front" | "back"
-  ) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const elems = item.custom_elements;
-      if (!elems || elems.length < 2) return null;
-      const idx = elems.findIndex((e) => e.id === elementId);
-      if (idx < 0) return null;
-      if (dir === "front" && idx === elems.length - 1) return null;
-      if (dir === "back" && idx === 0) return null;
-      const nextElements = [...elems];
-      const [picked] = nextElements.splice(idx, 1);
-      if (dir === "front") {
-        nextElements.push(picked);
-      } else {
-        nextElements.unshift(picked);
-      }
-      items[index] = { ...item, custom_elements: nextElements };
-      return { ...prev, items };
-    });
-    flashToast(dir === "front" ? "已置于顶层" : "已置于底层");
-  }
-
-  function clearCustomLayout(index: number) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const cur = items[index];
-      let nextLayout = cur.layout;
-      if (
-        nextLayout === "two_column" &&
-        !(cur.column_right && cur.column_right.trim())
-      ) {
-        nextLayout = "content";
-      } else if (
-        nextLayout === "text_image" &&
-        !(cur.image_asset_id && cur.image_asset_id.trim())
-      ) {
-        nextLayout = "content";
-      }
-      items[index] = {
-        ...cur,
-        layout: nextLayout,
-        custom_bg: null,
-        custom_elements: null,
-      };
-      return { ...prev, items };
-    });
-    flashToast("已恢复为标准版式", 4200, {
-      label: "撤销",
-      onClick: () => handleUndoRef.current(),
-    });
-  }
-
-  function toggleSourceId(index: number, sourceId: string) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const exists = item.source_ids.includes(sourceId);
-      const nextIds = exists
-        ? item.source_ids.filter((id) => id !== sourceId)
-        : [...item.source_ids, sourceId];
-      items[index] = {
-        ...item,
-        source_ids: nextIds,
-        evidence_status:
-          nextIds.length > 0
-            ? item.evidence_status === "unsupported"
-              ? "supported"
-              : item.evidence_status
-            : "unsupported",
-      };
-      return { ...prev, items };
-    });
-  }
-
-  function applyImageToSlide(
-    index: number,
-    imageAssetId: string,
-    sourceId?: string
-  ) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const nextIds =
-        sourceId && !item.source_ids.includes(sourceId)
-          ? [...item.source_ids, sourceId]
-          : item.source_ids;
-      items[index] = {
-        ...item,
-        layout: "text_image",
-        image_asset_id: imageAssetId,
-        custom_bg: null,
-        custom_elements: null,
-        source_ids: nextIds,
-        evidence_status:
-          nextIds.length > 0 && item.evidence_status === "unsupported"
-            ? "supported"
-            : item.evidence_status,
-      };
-      return { ...prev, items };
-    });
-    flashToast("已切换为图文并茂版式并应用配图");
-  }
-
-  function insertExcerptToSlide(
-    index: number,
-    sourceId: string,
-    text: string
-  ) {
-    const cleaned = text.trim();
-    if (!cleaned) return;
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const nextIds = item.source_ids.includes(sourceId)
-        ? item.source_ids
-        : [...item.source_ids, sourceId];
-      const currentSummary = item.summary.trim();
-      const isPlaceholder =
-        !currentSummary || currentSummary === "输入本页的核心陈述内容…";
-      items[index] = {
-        ...item,
-        summary: isPlaceholder ? cleaned : `${currentSummary}\n${cleaned}`,
-        source_ids: nextIds,
-        evidence_status:
-          item.evidence_status === "unsupported"
-            ? "supported"
-            : item.evidence_status,
-      };
-      return { ...prev, items };
-    });
-    flashToast("已填入当前幻灯片并关联素材出处");
-  }
-
-  function splitTwoColumn(index: number) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      const raw = item.summary.trim();
-      if (!raw) return null;
-      let lines = raw
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (lines.length < 2) {
-        lines = raw
-          .split(/(?<=[。；;！!？?])/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-      if (lines.length < 2) return null;
-      const mid = Math.ceil(lines.length / 2);
-      const leftText = lines.slice(0, mid).join("\n");
-      const rightText = lines.slice(mid).join("\n");
-      const existingRight = (item.column_right || "").trim();
-      items[index] = {
-        ...item,
-        summary: leftText,
-        column_right: existingRight
-          ? `${existingRight}\n${rightText}`
-          : rightText,
-      };
-      return { ...prev, items };
-    });
-  }
-
-  async function refineSlideItem(
-    index: number,
-    mode: "concise" | "bullets" | "two_column" | "custom",
-    instruction?: string
-  ): Promise<SlideRefineCandidate | null> {
-    if (!outline || !outline.items[index] || !version) return null;
-    const item = outline.items[index];
-    setRawError(null);
-    try {
-      return await api<SlideRefineCandidate>(
-        `/api/projects/${pid}/outlines/${version}/items/${encodeURIComponent(
-          item.outline_item_id
-        )}/refine`,
-        jsonOptions("POST", {
-          title: item.title,
-          summary: item.summary,
-          column_right: item.column_right ?? null,
-          layout: item.layout ?? null,
-          source_ids: item.source_ids,
-          mode,
-          instruction: instruction ?? null,
-        })
-      );
-    } catch (e) {
-      setRawError((e as Error).message);
-      return null;
-    }
-  }
-
-  function applyRefineCandidate(
-    index: number,
-    candidate: SlideRefineCandidate
-  ) {
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      const item = items[index];
-      items[index] = {
-        ...item,
-        title: candidate.title || item.title,
-        summary: candidate.summary || item.summary,
-        column_right:
-          candidate.column_right !== undefined
-            ? candidate.column_right
-            : item.column_right,
-        layout: (candidate.layout as OutlineLayout) || item.layout,
-      };
-      return { ...prev, items };
-    });
-    flashToast("已应用 AI 修改建议");
-  }
-
-  function moveItem(index: number, delta: number) {
-    const target = index + delta;
-    if (!outline || target < 0 || target >= outline.items.length) return;
-    reorderItem(index, target);
-  }
-
-  function reorderItem(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return;
-    mutateOutline((prev) => {
-      if (
-        fromIndex < 0 ||
-        fromIndex >= prev.items.length ||
-        toIndex < 0 ||
-        toIndex >= prev.items.length
-      ) {
-        return null;
-      }
-      const items = [...prev.items];
-      const [moved] = items.splice(fromIndex, 1);
-      items.splice(toIndex, 0, moved);
-      return { ...prev, items };
-    });
-    setSelectedIndex((prevIdx) => {
-      if (prevIdx === fromIndex) return toIndex;
-      if (fromIndex < prevIdx && prevIdx <= toIndex) return prevIdx - 1;
-      if (toIndex <= prevIdx && prevIdx < fromIndex) return prevIdx + 1;
-      return prevIdx;
-    });
-  }
-
-  function addItem() {
-    const nextIdx = (outlineRef.current?.items.length ?? 0);
-    mutateOutline((prev) => {
-      const items = [
-        ...prev.items,
-        {
-          outline_item_id: `slide-${Date.now().toString(36)}`,
-          title: "新幻灯片标题",
-          summary: "输入本页的核心陈述内容…",
-          source_ids: [],
-          evidence_status: "unsupported",
-          layout: "content",
-          column_right: null,
-          image_asset_id: null,
-          speaker_notes: null,
-        },
-      ];
-      return { ...prev, items };
-    });
-    setSelectedIndex(nextIdx);
-  }
-
-  function duplicateItem(index: number) {
-    const src = outlineRef.current?.items[index];
-    if (!src) return;
-    const stamp = Date.now().toString(36);
-    const cloned = JSON.parse(JSON.stringify(src)) as Outline["items"][number];
-    cloned.outline_item_id = `slide-${stamp}`;
-    if (cloned.custom_elements && cloned.custom_elements.length > 0) {
-      cloned.custom_elements = cloned.custom_elements.map((el, i) => ({
-        ...el,
-        id: `el_${el.kind}_${stamp}_${i}`,
-      }));
-    }
-    mutateOutline((prev) => {
-      if (!prev.items[index]) return null;
-      const items = [...prev.items];
-      items.splice(index + 1, 0, cloned);
-      return { ...prev, items };
-    });
-    setSelectedIndex(index + 1);
-    flashToast(`已复制第 ${index + 1} 页`, 4200, {
-      label: "撤销",
-      onClick: () => handleUndoRef.current(),
-    });
-  }
-
-  function deleteItem(index: number) {
-    const curLen = outlineRef.current?.items.length ?? 0;
-    if (curLen <= 1) return;
-    mutateOutline((prev) => {
-      if (prev.items.length <= 1) return null;
-      const items = prev.items.filter((_, i) => i !== index);
-      return { ...prev, items };
-    });
-    setSelectedIndex(Math.max(0, Math.min(index, curLen - 2)));
-    flashToast(`已删除第 ${index + 1} 页`, 4500, {
-      label: "撤销",
-      onClick: () => handleUndoRef.current(),
-    });
-  }
-
-  function focusInspectorField(fieldId: string) {
-    setRightPanelTab("edit");
-    if (!rightOpen) setRightOpen(true);
-    setTimeout(() => {
-      const el = document.getElementById(fieldId);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.focus();
-      }
-    }, 30);
-  }
-
-  // ── PPT Studio Agent Chat (SSE Streaming + Live Sync) ────────────────────
-
-  const handleToggleChat = useCallback(() => {
-    setShowMaterialsDrawer(false);
-    if (outline && outline.items.length > 0) {
-      if (rightOpen && rightPanelTab === "chat") {
-        setRightPanelTab("edit");
-      } else {
-        setRightOpen(true);
-        setRightPanelTab("chat");
-      }
-    } else {
-      setOnboardingChatOpen((v) => !v);
-    }
-  }, [outline, rightOpen, rightPanelTab]);
-
-  async function applyDeckChangesFromChat(
-    changes: ChatDeckChanges | null | undefined,
-    targetPid: string
-  ) {
-    if (!changes) return;
-    if (changes.theme_id) {
-      setSelectedThemeId(changes.theme_id);
-    }
-    if (typeof changes.auto_fit === "boolean") {
-      setAutoFit(changes.auto_fit);
-    }
-    await refresh(targetPid);
-    if (changes.after_outline_version) {
-      await showOutline(changes.after_outline_version, targetPid);
-      if (!outline || outline.items.length === 0) {
-        // Transitioned from blank onboarding to live 3-column studio: keep chat open!
-        setRightOpen(true);
-        setRightPanelTab("chat");
-        setOnboardingChatOpen(false);
-      }
-    }
-    if (changes.exported) {
-      await loadPreview(targetPid);
-      flashToast("Agent 已完成 PPTX 与 PDF 编译，可直接下载或放映");
-    }
-  }
-
-  async function sendChatMessage(
-    text: string,
-    opts?: { replaceLastError?: boolean }
-  ) {
-    const clean = text.trim();
-    if (!clean || isChatStreaming) return;
-    if (llmSettings && !llmSettings.configured) {
-      setLlmModalReason("请先配置大模型后再使用 PPT 创作 Agent 对话。");
-      setShowLLMModal(true);
-      return;
-    }
-
-    // Flush unsaved manual edits first so the Agent reads exact latest canvas state
-    if (isStale && isOutlineReadyForAutoSave(outline)) {
-      await saveOutline(true);
-    }
-
-    const tempUserId = `tmp-u-${Date.now()}`;
-    const tempAsstId = `tmp-a-${Date.now()}`;
-    const userMsg: ChatMessage = {
-      id: tempUserId,
-      role: "user",
-      content: clean,
-      selected_slide: selectedIndex + 1,
-    };
-    const asstPlaceholder: ChatMessage = {
-      id: tempAsstId,
-      role: "assistant",
-      content: "",
-      tool_steps: [],
-      changes: null,
-    };
-
-    setChatMessages((prev) => [...prev, userMsg, asstPlaceholder]);
-    setIsChatStreaming(true);
-
-    const controller = new AbortController();
-    chatAbortRef.current = controller;
-
-    try {
-      const targetPid = await ensureProjectId();
-      const res = await fetch(`/api/projects/${targetPid}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: clean,
-          selected_slide_index: selectedIndex,
-          theme_id: selectedThemeId,
-          auto_fit: autoFit,
-          replace_last_error: Boolean(opts?.replaceLastError),
-        }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok || !res.body) {
-        let detail = res.statusText || "对话请求失败";
-        try {
-          detail = (await res.json()).detail || detail;
-        } catch {}
-        throw new Error(detail);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-
-      const handleEvent = async (ev: Record<string, unknown>) => {
-        const type = ev.type as string;
-        if (type === "user_saved" && ev.message) {
-          const savedUser = ev.message as ChatMessage;
-          setChatMessages((prev) =>
-            prev.map((m) => (m.id === tempUserId ? savedUser : m))
-          );
-        } else if (type === "delta") {
-          const chunk = String(ev.delta || "");
-          if (!chunk) return;
-          setChatMessages((prev) =>
-            prev.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk } : m
-            )
-          );
-        } else if (type === "tool_start" && ev.step) {
-          const step = ev.step as ChatToolStep;
-          setChatMessages((prev) =>
-            prev.map((m) =>
-              m.id === tempAsstId
-                ? { ...m, tool_steps: [...(m.tool_steps || []), step] }
-                : m
-            )
-          );
-        } else if (type === "tool_done" && ev.step) {
-          const step = ev.step as ChatToolStep;
-          setChatMessages((prev) =>
-            prev.map((m) =>
-              m.id === tempAsstId
-                ? {
-                    ...m,
-                    tool_steps: (m.tool_steps || []).map((s) =>
-                      s.id === step.id ? step : s
-                    ),
-                  }
-                : m
-            )
-          );
-        } else if (type === "deck_updated") {
-          await applyDeckChangesFromChat(
-            ev.changes as ChatDeckChanges | null,
-            targetPid
-          );
-        } else if (type === "done" && ev.message) {
-          const finalMsg = ev.message as ChatMessage;
-          setChatMessages((prev) =>
-            prev.map((m) => (m.id === tempAsstId ? finalMsg : m))
-          );
-          if (ev.changes) {
-            await applyDeckChangesFromChat(
-              ev.changes as ChatDeckChanges,
-              targetPid
-            );
-          }
-        } else if (type === "error") {
-          if (ev.code === "LLM_NOT_CONFIGURED") {
-            setChatMessages((prev) =>
-              prev.filter((m) => m.id !== tempUserId && m.id !== tempAsstId)
-            );
-            setLlmModalReason("尚未配置大模型，请先完成配置后再继续对话。");
-            setShowLLMModal(true);
-            return;
-          }
-          const errMsg = ev.message as ChatMessage | undefined;
-          if (errMsg) {
-            setChatMessages((prev) =>
-              prev.map((m) => (m.id === tempAsstId ? errMsg : m))
-            );
-            if (errMsg.changes) {
-              await applyDeckChangesFromChat(errMsg.changes, targetPid);
-            }
-          } else {
-            setChatMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempAsstId
-                  ? {
-                      ...m,
-                      content: String(ev.error || "处理请求时发生未知错误"),
-                      is_error: true,
-                      error_code: String(ev.code || "AGENT_ERROR"),
-                      error_detail: ev.error_detail
-                        ? String(ev.error_detail)
-                        : undefined,
-                      retryable:
-                        typeof ev.retryable === "boolean" ? ev.retryable : true,
-                    }
-                  : m
-              )
-            );
-          }
-        }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() || "";
-        for (const frame of frames) {
-          const line = frame
-            .split("\n")
-            .find((l) => l.startsWith("data:"));
-          if (!line) continue;
-          const payload = line.slice(5).trim();
-          if (!payload) continue;
-          try {
-            const parsed = JSON.parse(payload) as Record<string, unknown>;
-            await handleEvent(parsed);
-          } catch {}
-        }
-      }
-    } catch (e) {
-      if ((e as Error).name === "AbortError") {
-        setChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempAsstId
-              ? {
-                  ...m,
-                  content: m.content
-                    ? `${m.content}\n\n（已停止生成）`
-                    : "已停止生成。",
-                }
-              : m
-          )
-        );
-      } else {
-        setChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempAsstId
-              ? {
-                  ...m,
-                  content: `连接 Agent 失败：${(e as Error).message}`,
-                  is_error: true,
-                }
-              : m
-          )
-        );
-      }
-    } finally {
-      chatAbortRef.current = null;
-      setIsChatStreaming(false);
-    }
-  }
-
-  function stopChatStreaming() {
-    chatAbortRef.current?.abort();
-  }
-
-  function retryChatMessage(text: string, failedAsstId: string) {
-    if (isChatStreaming) return;
-    const curIdx = chatMessages.findIndex((m) => m.id === failedAsstId);
-    const isTrailingFailed = curIdx >= 0 && curIdx === chatMessages.length - 1;
-    setChatMessages((prev) => {
-      const idx = prev.findIndex((m) => m.id === failedAsstId);
-      if (idx < 0) return prev;
-      const dropStart =
-        idx > 0 && prev[idx - 1].role === "user" ? idx - 1 : idx;
-      return [...prev.slice(0, dropStart), ...prev.slice(idx + 1)];
-    });
-    void sendChatMessage(text, { replaceLastError: isTrailingFailed });
-  }
-
-  async function clearChat() {
-    const targetPid = createdPidRef.current || pid;
-    if (!targetPid || targetPid === "new") {
-      setChatMessages([]);
-      return;
-    }
-    try {
-      await api(`/api/projects/${targetPid}/chat`, { method: "DELETE" });
-      setChatMessages([]);
-      flashToast("已清空本项目对话记录");
-    } catch (e) {
-      setRawError((e as Error).message);
-    }
-  }
-
-  async function revertToOutlineVersion(targetVer: string) {
-    const targetPid = createdPidRef.current || pid;
-    if (!targetPid || targetPid === "new") return;
-    await showOutline(targetVer, targetPid);
-    flashToast("已撤回到修改前的大纲版本");
-  }
-
-  // Keyboard shortcuts: Ctrl/⌘+S save, Ctrl/⌘+L toggle AI chat, Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z / Ctrl+Y redo, ↑ / ↓ switch slide
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        if (isStale) void saveOutline();
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l") {
-        e.preventDefault();
-        handleToggleChat();
-        return;
-      }
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || !outline?.items.length) {
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-      if (selectedCustomElIdRef.current) {
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.max(0, i - 1));
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.min(outline.items.length - 1, i + 1));
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [outline, isStale, saveOutline, handleToggleChat, handleUndo, handleRedo]);
-
-  const currentItem = outline?.items[selectedIndex];
-  const headerProject: Project | null =
-    project ??
-    (isDraftNew
-      ? {
-          project_id: "new",
-          name: draftName || "未命名文稿",
-          outlines: [],
-          generated_outline_version: null,
-          latest_report: null,
-          download_available: false,
-          tasks: [],
-        }
-      : null);
+  };
 
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-canvas text-ink">
       <input
-        ref={fileInputRef}
+        ref={ws.fileInputRef}
         type="file"
         accept=".md,.txt,.pdf,.docx,.csv,.xlsx,.pptx,.png,.jpg,.jpeg"
         multiple
-        onChange={(e) => void uploadFiles(e.target.files)}
+        onChange={(e) => void ws.uploadFiles(e.target.files)}
         className="hidden"
       />
 
       <WorkspaceHeader
-        pid={pid}
-        project={headerProject}
-        materialsCount={materials.length}
+        pid={ws.pid}
+        project={ws.headerProject}
+        materialsCount={ws.materials.length}
         outline={outline}
         version={version}
         isStale={isStale}
         isSaving={isSaving}
-        isGenerating={isGenerating}
-        currentStage={currentStage}
-        selectedThemeId={selectedThemeId}
-        autoFit={autoFit}
-        exportInSync={exportInSync}
-        showMaterialsDrawer={showMaterialsDrawer}
+        isGenerating={generation.isGenerating}
+        currentStage={ws.currentStage}
+        selectedThemeId={ws.selectedThemeId}
+        autoFit={ws.autoFit}
+        exportInSync={generation.exportInSync}
+        showMaterialsDrawer={ws.showMaterialsDrawer}
         isChatOpen={
           Boolean(outline && outline.items.length > 0)
-            ? rightOpen && rightPanelTab === "chat"
-            : onboardingChatOpen
+            ? ws.rightOpen && ws.rightPanelTab === "chat"
+            : ws.onboardingChatOpen
         }
-        llmConfigured={llmSettings ? llmSettings.configured : true}
+        llmConfigured={ws.llmSettings ? ws.llmSettings.configured : true}
         activeModelLabel={
-          llmSettings?.active_summary
-            ? `${llmSettings.active_summary.name} · ${llmSettings.active_summary.model}`
+          ws.llmSettings?.active_summary
+            ? `${ws.llmSettings.active_summary.name} · ${ws.llmSettings.active_summary.model}`
             : ""
         }
-        leftOpen={leftOpen}
-        rightOpen={rightOpen}
+        leftOpen={ws.leftOpen}
+        rightOpen={ws.rightOpen}
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onToggleLeft={() => setLeftOpen((v) => !v)}
-        onToggleRight={() => setRightOpen((v) => !v)}
-        onToggleChat={handleToggleChat}
-        onOpenLLMSettings={() => {
-          setLlmModalReason(null);
-          setShowLLMModal(true);
-        }}
-        onOpenPreflight={() => setShowPreflight(true)}
-        onToggleMaterialsDrawer={() => setShowMaterialsDrawer((v) => !v)}
-        onSelectVersion={(v) => void showOutline(v)}
-        onSaveOutline={() => void saveOutline(false)}
+        onUndo={outlineEditor.handleUndo}
+        onRedo={outlineEditor.handleRedo}
+        onToggleLeft={() => ws.setLeftOpen((v) => !v)}
+        onToggleRight={() => ws.setRightOpen((v) => !v)}
+        onToggleChat={ws.handleToggleChat}
+        onOpenLLMSettings={handleOpenLLMSettings}
+        onOpenPreflight={() => ws.setShowPreflight(true)}
+        onToggleMaterialsDrawer={() => ws.setShowMaterialsDrawer((v) => !v)}
+        onSelectVersion={(v) => void outlineEditor.showOutline(v)}
+        onSaveOutline={() => void outlineEditor.saveOutline(false)}
         onFlushBeforeLeave={async () => {
-          if (isStale && isOutlineReadyForAutoSave(outline)) {
-            await saveOutline(true);
-          }
+          await ws.flushOutlineIfReady();
         }}
-        onRenameProject={renameProject}
-        onUploadClick={() => fileInputRef.current?.click()}
-        onGenerateOutline={() => void genOutline()}
-        onConfirmGenerate={() => void confirmGenerate()}
+        onRenameProject={ws.renameProject}
+        onUploadClick={() => ws.fileInputRef.current?.click()}
+        onGenerateOutline={() => void generation.genOutline()}
+        onConfirmGenerate={() => void generation.confirmGenerate()}
       />
 
       <MaterialsDrawer
-        open={showMaterialsDrawer}
-        pid={pid}
-        materials={materials}
-        sourceFragments={sourceFragments}
+        open={ws.showMaterialsDrawer}
+        pid={ws.pid}
+        materials={ws.materials}
+        sourceFragments={ws.sourceFragments}
         outline={outline}
         currentSlide={currentItem}
-        currentSlideIndex={selectedIndex}
-        isGenerating={isGenerating}
-        onUploadClick={() => fileInputRef.current?.click()}
-        onDropFiles={(files) => void uploadFiles(files)}
-        onPasteNote={uploadPastedNote}
-        onImportUrl={importUrlMaterial}
-        onDeleteMaterial={deleteMaterial}
-        onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
+        currentSlideIndex={ws.selectedIndex}
+        isGenerating={generation.isGenerating}
+        onUploadClick={() => ws.fileInputRef.current?.click()}
+        onDropFiles={(files) => void ws.uploadFiles(files)}
+        onPasteNote={ws.uploadPastedNote}
+        onImportUrl={ws.importUrlMaterial}
+        onDeleteMaterial={ws.deleteMaterial}
+        onToggleSourceId={(sid) =>
+          outlineEditor.toggleSourceId(ws.selectedIndex, sid)
+        }
         onInsertExcerptToSlide={(sid, text) =>
-          insertExcerptToSlide(selectedIndex, sid, text)
+          outlineEditor.insertExcerptToSlide(ws.selectedIndex, sid, text)
         }
         onApplyImageToSlide={(imgId, sid) =>
-          applyImageToSlide(selectedIndex, imgId, sid)
+          outlineEditor.applyImageToSlide(ws.selectedIndex, imgId, sid)
         }
-        onGenerateOutline={(p) => void genOutline(p)}
-        onClose={() => setShowMaterialsDrawer(false)}
+        onGenerateOutline={(p) => void generation.genOutline(p)}
+        onClose={() => ws.setShowMaterialsDrawer(false)}
       />
 
-      {/* Calm Floating Toast (smooth enter & exit, optional inline Undo action) */}
-      {toastMounted && (toast || lastToastRef.current) && (() => {
-        const activeToast = toast || lastToastRef.current!;
-        return (
-          <div
-            className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap flex items-center gap-3 ${
-              activeToast.onAction ? "pointer-events-auto" : "pointer-events-none"
-            } ${toastExiting ? "anim-toast-out" : "anim-toast-in"}`}
-          >
-            <span>{activeToast.text}</span>
-            {activeToast.actionLabel && activeToast.onAction && (
-              <button
-                type="button"
-                onClick={() => {
-                  const fn = activeToast.onAction;
-                  setToast(null);
-                  fn?.();
-                }}
-                className="px-2.5 py-0.5 rounded-full bg-ink text-white text-[13px] font-medium hover:bg-ink-hover transition-colors cursor-pointer"
-              >
-                {activeToast.actionLabel}
-              </button>
-            )}
-          </div>
-        );
-      })()}
+      {/* Calm Floating Toast */}
+      {ws.toastMounted &&
+        (ws.toast || ws.lastToastRef.current) &&
+        (() => {
+          const activeToast = ws.toast || ws.lastToastRef.current!;
+          return (
+            <div
+              className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full apple-glass dock-shadow text-[13px] font-medium text-ink whitespace-nowrap flex items-center gap-3 ${
+                activeToast.onAction
+                  ? "pointer-events-auto"
+                  : "pointer-events-none"
+              } ${ws.toastExiting ? "anim-toast-out" : "anim-toast-in"}`}
+            >
+              <span>{activeToast.text}</span>
+              {activeToast.actionLabel && activeToast.onAction && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fn = activeToast.onAction;
+                    ws.setToast(null);
+                    fn?.();
+                  }}
+                  className="px-2.5 py-0.5 rounded-full bg-ink text-white text-[13px] font-medium hover:bg-ink-hover transition-colors cursor-pointer"
+                >
+                  {activeToast.actionLabel}
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
-      {/* Quiet Inline Error Strip (Apple-restrained, dismissible, expandable tech log) */}
-      {humanizedError && (
+      {/* Quiet Inline Error Strip */}
+      {ws.humanizedError && (
         <div className="border-b border-danger/20 bg-danger-bg px-5 py-2.5 text-[13px] text-danger shrink-0 anim-msg-in">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-danger shrink-0" />
-              <span className="font-medium truncate">{humanizedError}</span>
+              <span className="font-medium truncate">{ws.humanizedError}</span>
             </div>
             <div className="flex items-center gap-3 shrink-0 text-[13px]">
               <button
                 type="button"
-                onClick={() => {
-                  setLlmModalReason(null);
-                  setShowLLMModal(true);
-                }}
+                onClick={handleOpenLLMSettings}
                 className="text-danger font-medium underline underline-offset-2 hover:opacity-80 cursor-pointer"
               >
                 检查模型设置
               </button>
-              {rawError && rawError !== humanizedError && (
+              {ws.rawError && ws.rawError !== ws.humanizedError && (
                 <button
                   type="button"
-                  onClick={() => setShowErrorDetail((v) => !v)}
+                  onClick={() => ws.setShowErrorDetail((v) => !v)}
                   className="text-danger/80 hover:text-danger underline cursor-pointer"
                 >
-                  {showErrorDetail ? "收起详情" : "详情"}
+                  {ws.showErrorDetail ? "收起详情" : "详情"}
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => {
-                  setRawError(null);
-                  setShowErrorDetail(false);
+                  ws.setRawError(null);
+                  ws.setShowErrorDetail(false);
                 }}
                 className="text-danger/70 hover:text-danger cursor-pointer"
               >
@@ -2109,105 +243,104 @@ export default function ProjectWorkspacePage() {
               </button>
             </div>
           </div>
-          {showErrorDetail && rawError && (
+          {ws.showErrorDetail && ws.rawError && (
             <pre className="max-w-6xl mx-auto mt-2 p-2.5 rounded-xl bg-surface/80 text-[13px] font-mono text-danger whitespace-pre-wrap overflow-x-auto">
-              {rawError}
+              {ws.rawError}
             </pre>
           )}
         </div>
       )}
 
-      {/* Main Content: Either Empty Onboarding OR 3-Column Keynote Studio */}
+      {/* Main Content: Empty Onboarding OR 3-Column Keynote Studio */}
       {outline && outline.items.length > 0 && currentItem ? (
         <section className="flex-1 min-h-0 flex items-stretch overflow-hidden">
-          {leftOpen && (
+          {ws.leftOpen && (
             <SlideNavigator
-              pid={pid}
+              pid={ws.pid}
               outline={outline}
-              selectedIndex={selectedIndex}
-              activeTheme={activeTheme}
-              brand={project?.brand ?? null}
-              issueSlideIndices={issueSlideIndices}
-              onSelectIndex={setSelectedIndex}
-              onMoveItem={moveItem}
-              onReorderItem={reorderItem}
-              onDuplicateItem={duplicateItem}
-              onDeleteItem={deleteItem}
-              onAddItem={addItem}
+              selectedIndex={ws.selectedIndex}
+              activeTheme={ws.activeTheme}
+              brand={ws.project?.brand ?? null}
+              issueSlideIndices={ws.issueSlideIndices}
+              onSelectIndex={ws.setSelectedIndex}
+              onMoveItem={outlineEditor.moveItem}
+              onReorderItem={outlineEditor.reorderItem}
+              onDuplicateItem={outlineEditor.duplicateItem}
+              onDeleteItem={outlineEditor.deleteItem}
+              onAddItem={outlineEditor.addItem}
             />
           )}
 
           <SlideStageCanvas
-            pid={pid}
-            project={project}
-            outline={diffPreviewOutline || outline}
+            pid={ws.pid}
+            project={ws.project}
+            outline={outlineEditor.diffPreviewOutline || outline}
             version={version}
             isStale={isStale}
             selectedIndex={Math.min(
-              selectedIndex,
-              Math.max(0, (diffPreviewOutline || outline).items.length - 1)
+              ws.selectedIndex,
+              Math.max(
+                0,
+                (outlineEditor.diffPreviewOutline || outline).items.length - 1
+              )
             )}
-            preview={preview}
-            report={report}
-            issues={issues}
-            issueSlideIndices={issueSlideIndices}
-            themes={themes}
-            activeTheme={activeTheme}
-            selectedThemeId={selectedThemeId}
-            autoFit={autoFit}
-            exportInSync={exportInSync}
-            statusText={status}
-            isGenerating={isGenerating}
-            materials={materials}
-            brand={project?.brand ?? null}
-            diffPreviewActive={Boolean(diffPreviewOutline)}
-            onExitDiffPreview={() => void toggleDiffPreview(null)}
+            preview={generation.preview}
+            report={generation.report}
+            issues={generation.issues}
+            issueSlideIndices={ws.issueSlideIndices}
+            themes={ws.themes}
+            activeTheme={ws.activeTheme}
+            selectedThemeId={ws.selectedThemeId}
+            autoFit={ws.autoFit}
+            exportInSync={generation.exportInSync}
+            statusText={generation.status}
+            isGenerating={generation.isGenerating}
+            materials={ws.materials}
+            brand={ws.project?.brand ?? null}
+            diffPreviewActive={Boolean(outlineEditor.diffPreviewOutline)}
+            onExitDiffPreview={() => void outlineEditor.toggleDiffPreview(null)}
             onRevertFromDiff={() => {
-              if (diffPreviewVersion) {
-                const targetVer = diffPreviewVersion;
-                setDiffPreviewVersion(null);
-                setDiffPreviewOutline(null);
-                void revertToOutlineVersion(targetVer);
+              if (outlineEditor.diffPreviewVersion) {
+                const targetVer = outlineEditor.diffPreviewVersion;
+                outlineEditor.setDiffPreviewVersion(null);
+                outlineEditor.setDiffPreviewOutline(null);
+                void outlineEditor.revertToOutlineVersion(targetVer);
               }
             }}
-            onUpdateBrand={updateBrand}
-            onSelectIndex={setSelectedIndex}
-            onSelectTheme={(themeId) => {
-              setSelectedThemeId(themeId);
-              void api(
-                `/api/projects/${pid}`,
-                jsonOptions("PATCH", { theme_id: themeId })
-              ).catch(() => {});
-            }}
-            onSelectLayout={handleSelectLayout}
-            onToggleAutoFit={() => setAutoFit((v) => !v)}
-            onFocusField={focusInspectorField}
+            onUpdateBrand={ws.updateBrand}
+            onSelectIndex={ws.setSelectedIndex}
+            onSelectTheme={ws.handleSelectTheme}
+            onSelectLayout={outlineEditor.handleSelectLayout}
+            onToggleAutoFit={() => ws.setAutoFit((v) => !v)}
+            onFocusField={ws.focusInspectorField}
             onUpdateCustomElement={(elId, patch) =>
-              updateCustomElement(selectedIndex, elId, patch)
+              outlineEditor.updateCustomElement(ws.selectedIndex, elId, patch)
             }
             onDeleteCustomElement={(elId) =>
-              deleteCustomElement(selectedIndex, elId)
+              outlineEditor.deleteCustomElement(ws.selectedIndex, elId)
             }
-            onAddCustomElement={(el) => addCustomElement(selectedIndex, el)}
+            onAddCustomElement={(el) =>
+              outlineEditor.addCustomElement(ws.selectedIndex, el)
+            }
             onDuplicateCustomElement={(elId) =>
-              duplicateCustomElement(selectedIndex, elId)
+              outlineEditor.duplicateCustomElement(ws.selectedIndex, elId)
             }
             onReorderCustomElement={(elId, dir) =>
-              reorderCustomElement(selectedIndex, elId, dir)
+              outlineEditor.reorderCustomElement(ws.selectedIndex, elId, dir)
             }
-            onSelectedCustomElementChange={handleSelectedCustomElementChange}
+            onSelectedCustomElementChange={ws.handleSelectedCustomElementChange}
           />
 
-          {rightOpen && (
+          {ws.rightOpen && (
             <aside className="w-[344px] xl:w-[396px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0">
               {/* Dual-Mode Right Sidebar Top Bar: Edit vs AI Chat */}
               <div className="px-4 py-2.5 border-b border-black/[0.07] bg-surface-subtle flex items-center justify-between gap-2 shrink-0">
                 <div className="inline-flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5">
                   <button
                     type="button"
-                    onClick={() => setRightPanelTab("edit")}
+                    onClick={() => ws.setRightPanelTab("edit")}
                     className={`px-3 py-1 rounded-[9px] text-[13px] transition-all cursor-pointer whitespace-nowrap ${
-                      rightPanelTab === "edit"
+                      ws.rightPanelTab === "edit"
                         ? "bg-surface text-ink font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]"
                         : "text-ink-secondary hover:text-ink font-medium"
                     }`}
@@ -2216,9 +349,9 @@ export default function ProjectWorkspacePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRightPanelTab("chat")}
+                    onClick={() => ws.setRightPanelTab("chat")}
                     className={`px-3 py-1 rounded-[9px] text-[13px] inline-flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                      rightPanelTab === "chat"
+                      ws.rightPanelTab === "chat"
                         ? "bg-surface text-ink font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]"
                         : "text-ink-secondary hover:text-ink font-medium"
                     }`}
@@ -2228,10 +361,10 @@ export default function ProjectWorkspacePage() {
                   </button>
                 </div>
 
-                {rightPanelTab === "edit" ? (
+                {ws.rightPanelTab === "edit" ? (
                   <div className="flex items-center gap-2 text-[13px] whitespace-nowrap truncate">
                     <span className="font-semibold text-ink">
-                      第 {selectedIndex + 1} 页
+                      第 {ws.selectedIndex + 1} 页
                     </span>
                     <span className="text-ink-secondary">
                       {currentItem.custom_elements &&
@@ -2240,147 +373,113 @@ export default function ProjectWorkspacePage() {
                         : LAYOUT_LABELS[
                             inferEffectiveLayout(
                               currentItem.layout,
-                              selectedIndex,
+                              ws.selectedIndex,
                               outline.items.length
                             )
                           ] || "正文"}
                     </span>
                   </div>
                 ) : (
-                  chatMessages.length > 0 &&
-                  !isChatStreaming &&
-                  (confirmClearChat ? (
-                    <div className="flex items-center gap-1 shrink-0 anim-msg-in">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmClearChat(false);
-                          if (clearChatConfirmTimerRef.current) {
-                            clearTimeout(clearChatConfirmTimerRef.current);
-                          }
-                          void clearChat();
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-danger text-white text-[13px] font-medium hover:bg-danger-hover transition-colors cursor-pointer"
-                      >
-                        确认清空
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmClearChat(false)}
-                        className="px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] cursor-pointer"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmClearChat(true);
-                        if (clearChatConfirmTimerRef.current) {
-                          clearTimeout(clearChatConfirmTimerRef.current);
-                        }
-                        clearChatConfirmTimerRef.current = setTimeout(
-                          () => setConfirmClearChat(false),
-                          4000
-                        );
-                      }}
-                      title="清空本项目的历史对话"
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer shrink-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>清空</span>
-                    </button>
-                  ))
+                  renderClearChatControls()
                 )}
               </div>
 
-              {rightPanelTab === "chat" ? (
+              {ws.rightPanelTab === "chat" ? (
                 <AgentChatPanel
-                  pid={pid}
+                  pid={ws.pid}
                   outline={outline}
-                  selectedIndex={selectedIndex}
-                  materials={materials}
-                  materialsCount={materials.length}
-                  themes={themes}
-                  selectedThemeId={selectedThemeId}
-                  autoFit={autoFit}
-                  messages={chatMessages}
-                  isStreaming={isChatStreaming}
-                  llmConfigured={llmSettings ? llmSettings.configured : true}
-                  activeModelLabel={llmSettings?.active_summary?.model || ""}
-                  llmSettings={llmSettings}
-                  onLLMSettingsUpdated={(next) => {
-                    setLlmSettings(next);
-                    if (next.active_summary) {
-                      flashToast(`已切换模型：${next.active_summary.model}`);
-                    }
-                  }}
-                  diffPreviewVersion={diffPreviewVersion}
-                  onToggleDiffPreview={(ver) => void toggleDiffPreview(ver)}
-                  onOpenLLMSettings={() => {
-                    setLlmModalReason(null);
-                    setShowLLMModal(true);
-                  }}
-                  onSendMessage={(msg) => void sendChatMessage(msg)}
-                  onRetryMessage={retryChatMessage}
-                  onStopStreaming={stopChatStreaming}
-                  onJumpToSlide={setSelectedIndex}
-                  onRevertVersion={(v) => void revertToOutlineVersion(v)}
-                  onUploadClick={() => fileInputRef.current?.click()}
-                  onDropFiles={(files) => void uploadFiles(files)}
+                  selectedIndex={ws.selectedIndex}
+                  materials={ws.materials}
+                  materialsCount={ws.materials.length}
+                  themes={ws.themes}
+                  selectedThemeId={ws.selectedThemeId}
+                  autoFit={ws.autoFit}
+                  messages={chat.chatMessages}
+                  isStreaming={chat.isChatStreaming}
+                  llmConfigured={
+                    ws.llmSettings ? ws.llmSettings.configured : true
+                  }
+                  activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
+                  llmSettings={ws.llmSettings}
+                  onLLMSettingsUpdated={handleLLMSettingsSwitched}
+                  diffPreviewVersion={outlineEditor.diffPreviewVersion}
+                  onToggleDiffPreview={(ver) =>
+                    void outlineEditor.toggleDiffPreview(ver)
+                  }
+                  onOpenLLMSettings={handleOpenLLMSettings}
+                  onSendMessage={(msg) => void chat.sendChatMessage(msg)}
+                  onRetryMessage={chat.retryChatMessage}
+                  onStopStreaming={chat.stopChatStreaming}
+                  onJumpToSlide={ws.setSelectedIndex}
+                  onRevertVersion={(v) =>
+                    void outlineEditor.revertToOutlineVersion(v)
+                  }
+                  onUploadClick={() => ws.fileInputRef.current?.click()}
+                  onDropFiles={(files) => void ws.uploadFiles(files)}
                 />
               ) : (
                 <SlideInspector
-                  pid={pid}
+                  pid={ws.pid}
                   item={currentItem}
-                  slideIndex={selectedIndex}
+                  slideIndex={ws.selectedIndex}
                   totalSlides={outline.items.length}
-                  materials={materials}
-                  sourceFragments={sourceFragments}
-                  slideIssues={currentSlideIssues}
-                  llmConfigured={llmSettings ? llmSettings.configured : true}
-                  activeModelLabel={llmSettings?.active_summary?.model || ""}
-                  llmSettings={llmSettings}
-                  onLLMSettingsUpdated={(next) => {
-                    setLlmSettings(next);
-                    if (next.active_summary) {
-                      flashToast(`已切换模型：${next.active_summary.model}`);
-                    }
-                  }}
-                  onOpenLLMSettings={() => {
-                    setLlmModalReason(null);
-                    setShowLLMModal(true);
-                  }}
+                  materials={ws.materials}
+                  sourceFragments={ws.sourceFragments}
+                  slideIssues={ws.currentSlideIssues}
+                  llmConfigured={
+                    ws.llmSettings ? ws.llmSettings.configured : true
+                  }
+                  activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
+                  llmSettings={ws.llmSettings}
+                  onLLMSettingsUpdated={handleLLMSettingsSwitched}
+                  onOpenLLMSettings={handleOpenLLMSettings}
                   embedded={true}
                   onUpdateField={(field, val) =>
-                    patchItem(selectedIndex, { [field]: val })
+                    outlineEditor.patchItem(ws.selectedIndex, { [field]: val })
                   }
                   onUpdateCustomElementText={(elId, text) =>
-                    updateCustomElementText(selectedIndex, elId, text)
+                    outlineEditor.updateCustomElementText(
+                      ws.selectedIndex,
+                      elId,
+                      text
+                    )
                   }
                   onUpdateCustomElement={(elId, patch) =>
-                    updateCustomElement(selectedIndex, elId, patch)
+                    outlineEditor.updateCustomElement(
+                      ws.selectedIndex,
+                      elId,
+                      patch
+                    )
                   }
-                  onClearCustomLayout={() => clearCustomLayout(selectedIndex)}
-                  onSwitchToChat={() => setRightPanelTab("chat")}
-                  onInspectFragment={setInspectedFragment}
-                  savedLayouts={savedLayouts}
-                  onSaveCustomLayout={saveCurrentCustomLayout}
-                  onApplySavedLayout={applySavedLayout}
-                  onDeleteSavedLayout={deleteSavedLayout}
-                  onToggleSourceId={(sid) => toggleSourceId(selectedIndex, sid)}
+                  onClearCustomLayout={() =>
+                    outlineEditor.clearCustomLayout(ws.selectedIndex)
+                  }
+                  onSwitchToChat={() => ws.setRightPanelTab("chat")}
+                  onInspectFragment={ws.setInspectedFragment}
+                  savedLayouts={outlineEditor.savedLayouts}
+                  onSaveCustomLayout={outlineEditor.saveCurrentCustomLayout}
+                  onApplySavedLayout={outlineEditor.applySavedLayout}
+                  onDeleteSavedLayout={outlineEditor.deleteSavedLayout}
+                  onToggleSourceId={(sid) =>
+                    outlineEditor.toggleSourceId(ws.selectedIndex, sid)
+                  }
                   onApplyImageToSlide={(imgId, sid) =>
-                    applyImageToSlide(selectedIndex, imgId, sid)
+                    outlineEditor.applyImageToSlide(
+                      ws.selectedIndex,
+                      imgId,
+                      sid
+                    )
                   }
-                  onSplitTwoColumn={() => splitTwoColumn(selectedIndex)}
+                  onSplitTwoColumn={() =>
+                    outlineEditor.splitTwoColumn(ws.selectedIndex)
+                  }
                   onRefineSlide={(mode, inst) =>
-                    refineSlideItem(selectedIndex, mode, inst)
+                    outlineEditor.refineSlideItem(ws.selectedIndex, mode, inst)
                   }
                   onApplyRefineCandidate={(cand) =>
-                    applyRefineCandidate(selectedIndex, cand)
+                    outlineEditor.applyRefineCandidate(ws.selectedIndex, cand)
                   }
-                  onUploadClick={() => fileInputRef.current?.click()}
+                  onUploadClick={() => ws.fileInputRef.current?.click()}
                 />
               )}
             </aside>
@@ -2389,28 +488,20 @@ export default function ProjectWorkspacePage() {
       ) : (
         <div className="flex-1 min-h-0 flex items-stretch overflow-hidden">
           <EmptyStageOnboarding
-            materials={materials}
-            isGenerating={isGenerating}
-            llmConfigured={llmSettings ? llmSettings.configured : true}
-            activeModelLabel={llmSettings?.active_summary?.model || ""}
-            llmSettings={llmSettings}
-            onLLMSettingsUpdated={(next) => {
-              setLlmSettings(next);
-              if (next.active_summary) {
-                flashToast(`已切换模型：${next.active_summary.model}`);
-              }
-            }}
-            onOpenLLMSettings={() => {
-              setLlmModalReason(null);
-              setShowLLMModal(true);
-            }}
-            onUploadClick={() => fileInputRef.current?.click()}
-            onDropFiles={(files) => void uploadFiles(files)}
-            onPasteNote={uploadPastedNote}
-            onImportUrl={importUrlMaterial}
-            onGenerateOutline={(p) => void genOutline(p)}
+            materials={ws.materials}
+            isGenerating={generation.isGenerating}
+            llmConfigured={ws.llmSettings ? ws.llmSettings.configured : true}
+            activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
+            llmSettings={ws.llmSettings}
+            onLLMSettingsUpdated={handleLLMSettingsSwitched}
+            onOpenLLMSettings={handleOpenLLMSettings}
+            onUploadClick={() => ws.fileInputRef.current?.click()}
+            onDropFiles={(files) => void ws.uploadFiles(files)}
+            onPasteNote={ws.uploadPastedNote}
+            onImportUrl={ws.importUrlMaterial}
+            onGenerateOutline={(p) => void generation.genOutline(p)}
           />
-          {onboardingChatOpen && (
+          {ws.onboardingChatOpen && (
             <aside className="w-[360px] xl:w-[410px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0">
               <div className="px-4 py-2.5 border-b border-black/[0.07] bg-surface-subtle flex items-center justify-between gap-2 shrink-0">
                 <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink">
@@ -2418,54 +509,10 @@ export default function ProjectWorkspacePage() {
                   <span>AI 对话</span>
                 </span>
                 <div className="flex items-center gap-1">
-                  {chatMessages.length > 0 &&
-                    !isChatStreaming &&
-                    (confirmClearChat ? (
-                      <div className="flex items-center gap-1 shrink-0 anim-msg-in">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmClearChat(false);
-                            if (clearChatConfirmTimerRef.current) {
-                              clearTimeout(clearChatConfirmTimerRef.current);
-                            }
-                            void clearChat();
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-danger text-white text-[13px] font-medium hover:bg-danger-hover transition-colors cursor-pointer"
-                        >
-                          确认清空
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmClearChat(false)}
-                          className="px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] cursor-pointer"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmClearChat(true);
-                          if (clearChatConfirmTimerRef.current) {
-                            clearTimeout(clearChatConfirmTimerRef.current);
-                          }
-                          clearChatConfirmTimerRef.current = setTimeout(
-                            () => setConfirmClearChat(false),
-                            4000
-                          );
-                        }}
-                        title="清空本项目的历史对话"
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>清空</span>
-                      </button>
-                    ))}
+                  {renderClearChatControls()}
                   <button
                     type="button"
-                    onClick={() => setOnboardingChatOpen(false)}
+                    onClick={() => ws.setOnboardingChatOpen(false)}
                     aria-label="收起对话面板"
                     className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
                   >
@@ -2474,36 +521,32 @@ export default function ProjectWorkspacePage() {
                 </div>
               </div>
               <AgentChatPanel
-                pid={pid}
+                pid={ws.pid}
                 outline={null}
                 selectedIndex={0}
-                materials={materials}
-                materialsCount={materials.length}
-                themes={themes}
-                selectedThemeId={selectedThemeId}
-                autoFit={autoFit}
-                messages={chatMessages}
-                isStreaming={isChatStreaming}
-                llmConfigured={llmSettings ? llmSettings.configured : true}
-                activeModelLabel={llmSettings?.active_summary?.model || ""}
-                llmSettings={llmSettings}
-                onLLMSettingsUpdated={(next) => {
-                  setLlmSettings(next);
-                  if (next.active_summary) {
-                    flashToast(`已切换模型：${next.active_summary.model}`);
-                  }
-                }}
-                onOpenLLMSettings={() => {
-                  setLlmModalReason(null);
-                  setShowLLMModal(true);
-                }}
-                onSendMessage={(msg) => void sendChatMessage(msg)}
-                onRetryMessage={retryChatMessage}
-                onStopStreaming={stopChatStreaming}
-                onJumpToSlide={setSelectedIndex}
-                onRevertVersion={(v) => void revertToOutlineVersion(v)}
-                onUploadClick={() => fileInputRef.current?.click()}
-                onDropFiles={(files) => void uploadFiles(files)}
+                materials={ws.materials}
+                materialsCount={ws.materials.length}
+                themes={ws.themes}
+                selectedThemeId={ws.selectedThemeId}
+                autoFit={ws.autoFit}
+                messages={chat.chatMessages}
+                isStreaming={chat.isChatStreaming}
+                llmConfigured={
+                  ws.llmSettings ? ws.llmSettings.configured : true
+                }
+                activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
+                llmSettings={ws.llmSettings}
+                onLLMSettingsUpdated={handleLLMSettingsSwitched}
+                onOpenLLMSettings={handleOpenLLMSettings}
+                onSendMessage={(msg) => void chat.sendChatMessage(msg)}
+                onRetryMessage={chat.retryChatMessage}
+                onStopStreaming={chat.stopChatStreaming}
+                onJumpToSlide={ws.setSelectedIndex}
+                onRevertVersion={(v) =>
+                  void outlineEditor.revertToOutlineVersion(v)
+                }
+                onUploadClick={() => ws.fileInputRef.current?.click()}
+                onDropFiles={(files) => void ws.uploadFiles(files)}
               />
             </aside>
           )}
@@ -2511,46 +554,40 @@ export default function ProjectWorkspacePage() {
       )}
 
       <SourceContextModal
-        fragment={inspectedFragment}
-        materials={materials}
-        onClose={() => setInspectedFragment(null)}
+        fragment={ws.inspectedFragment}
+        materials={ws.materials}
+        onClose={() => ws.setInspectedFragment(null)}
       />
 
       <PreflightModal
-        open={showPreflight}
-        pid={pid}
+        open={ws.showPreflight}
+        pid={ws.pid}
         version={version}
-        themeId={selectedThemeId}
-        autoFit={autoFit}
-        onBeforeCheck={async () => {
-          if (isStale && isOutlineReadyForAutoSave(outline)) {
-            const flushed = await saveOutline(true);
-            return flushed || undefined;
-          }
-          return undefined;
-        }}
-        onJumpToSlide={setSelectedIndex}
-        onClose={() => setShowPreflight(false)}
+        themeId={ws.selectedThemeId}
+        autoFit={ws.autoFit}
+        onBeforeCheck={ws.flushOutlineIfReady}
+        onJumpToSlide={ws.setSelectedIndex}
+        onClose={() => ws.setShowPreflight(false)}
       />
 
       <LLMSettingsModal
-        open={showLLMModal}
-        settings={llmSettings}
-        reasonBanner={llmModalReason}
+        open={ws.showLLMModal}
+        settings={ws.llmSettings}
+        reasonBanner={ws.llmModalReason}
         onClose={() => {
-          setShowLLMModal(false);
-          setLlmModalReason(null);
-          pendingOutlinePromptRef.current = null;
+          ws.setShowLLMModal(false);
+          ws.setLlmModalReason(null);
+          ws.pendingOutlinePromptRef.current = null;
         }}
         onSettingsUpdated={(next) => {
-          setLlmSettings(next);
+          ws.setLlmSettings(next);
           if (next.configured && next.active_summary) {
-            flashToast(`已启用模型：${next.active_summary.model}`);
-            const pending = pendingOutlinePromptRef.current;
+            ws.flashToast(`已启用模型：${next.active_summary.model}`);
+            const pending = ws.pendingOutlinePromptRef.current;
             if (pending) {
-              pendingOutlinePromptRef.current = null;
-              setLlmModalReason(null);
-              void genOutline(pending.prompt, true);
+              ws.pendingOutlinePromptRef.current = null;
+              ws.setLlmModalReason(null);
+              void generation.genOutline(pending.prompt, true);
             }
           }
         }}

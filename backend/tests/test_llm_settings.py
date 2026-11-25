@@ -228,3 +228,56 @@ def test_fetch_provider_models_filters_and_strips_prefix(client: TestClient, mon
     body = r.json()
     assert body["ok"] is True
     assert body["models"] == ["gemini-2.5-flash", "gemini-2.5-pro"]
+
+
+def test_new_provider_presets_inference_and_keyless_lmstudio(
+    client: TestClient, monkeypatch
+):
+    presets = {p["id"]: p for p in client.get("/api/settings/llm").json()["presets"]}
+    for pid in ("claude", "zhipu", "volcengine", "lmstudio"):
+        assert pid in presets
+
+    assert presets["claude"]["requires_api_key"] is True
+    assert presets["zhipu"]["requires_api_key"] is True
+    assert presets["volcengine"]["requires_api_key"] is True
+    assert presets["lmstudio"]["requires_api_key"] is False
+
+    # URL-based inference covers the new providers + host.docker.internal local ports
+    assert llm_config._infer_provider_from_url("https://api.anthropic.com/v1/") == "claude"
+    assert llm_config._infer_provider_from_url("https://open.bigmodel.cn/api/paas/v4/") == "zhipu"
+    assert (
+        llm_config._infer_provider_from_url("https://ark.cn-beijing.volces.com/api/v3")
+        == "volcengine"
+    )
+    assert llm_config._infer_provider_from_url("http://127.0.0.1:1234/v1") == "lmstudio"
+    assert (
+        llm_config._infer_provider_from_url("http://host.docker.internal:1234/v1")
+        == "lmstudio"
+    )
+    assert (
+        llm_config._infer_provider_from_url("http://host.docker.internal:11434/v1")
+        == "ollama"
+    )
+
+    # Keyless local LM Studio works via env fallback
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:1234/v1")
+    s_env = client.get("/api/settings/llm").json()
+    assert s_env["configured"] is True
+    assert s_env["env_detected"]["provider"] == "lmstudio"
+
+    # Keyless local LM Studio profile saves and activates cleanly
+    r_lms = client.post(
+        "/api/settings/llm/profiles",
+        json={
+            "name": "本地 LM Studio",
+            "provider": "lmstudio",
+            "base_url": "http://127.0.0.1:1234/v1",
+            "model": "qwen2.5-14b-instruct",
+            "activate": True,
+        },
+    )
+    assert r_lms.status_code == 200
+    eff = llm_config.resolve_effective_llm_config()
+    assert eff.provider == "lmstudio"
+    assert eff.model == "qwen2.5-14b-instruct"
+    assert eff.base_url == "http://127.0.0.1:1234/v1"

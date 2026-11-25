@@ -150,6 +150,20 @@ PROVIDER_PRESETS: list[dict[str, Any]] = [
         "api_key_url": "https://platform.openai.com/api-keys",
     },
     {
+        "id": "claude",
+        "name": "Anthropic Claude",
+        "base_url": "https://api.anthropic.com/v1/",
+        "default_model": "claude-sonnet-4-5",
+        "requires_api_key": True,
+        "suggested_models": [
+            "claude-sonnet-4-5",
+            "claude-opus-4-1",
+            "claude-3-7-sonnet-latest",
+            "claude-3-5-haiku-latest",
+        ],
+        "api_key_url": "https://console.anthropic.com/settings/keys",
+    },
+    {
         "id": "deepseek",
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
@@ -157,6 +171,33 @@ PROVIDER_PRESETS: list[dict[str, Any]] = [
         "requires_api_key": True,
         "suggested_models": ["deepseek-chat", "deepseek-reasoner"],
         "api_key_url": "https://platform.deepseek.com/api_keys",
+    },
+    {
+        "id": "zhipu",
+        "name": "智谱 BigModel",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+        "default_model": "glm-4.5",
+        "requires_api_key": True,
+        "suggested_models": [
+            "glm-4.5",
+            "glm-4.5-air",
+            "glm-4-plus",
+            "glm-4-flash",
+        ],
+        "api_key_url": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+    },
+    {
+        "id": "volcengine",
+        "name": "火山方舟（豆包）",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "default_model": "doubao-seed-1-6-250615",
+        "requires_api_key": True,
+        "suggested_models": [
+            "doubao-seed-1-6-250615",
+            "doubao-1-5-pro-32k-250115",
+            "deepseek-v3-250324",
+        ],
+        "api_key_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
     },
     {
         "id": "siliconflow",
@@ -213,6 +254,19 @@ PROVIDER_PRESETS: list[dict[str, Any]] = [
         "default_model": "qwen2.5:14b",
         "requires_api_key": False,
         "suggested_models": ["qwen2.5:14b", "llama3.1:8b", "deepseek-r1:14b"],
+        "api_key_url": "",
+    },
+    {
+        "id": "lmstudio",
+        "name": "本地 LM Studio",
+        "base_url": "http://127.0.0.1:1234/v1",
+        "default_model": "qwen2.5-14b-instruct",
+        "requires_api_key": False,
+        "suggested_models": [
+            "qwen2.5-14b-instruct",
+            "deepseek-r1-distill-qwen-14b",
+            "llama-3.1-8b-instruct",
+        ],
         "api_key_url": "",
     },
     {
@@ -333,8 +387,14 @@ def _infer_provider_from_url(base_url: str) -> str:
     low = base_url.lower()
     if "generativelanguage.googleapis.com" in low:
         return "gemini"
+    if "api.anthropic.com" in low:
+        return "claude"
     if "api.deepseek.com" in low:
         return "deepseek"
+    if "open.bigmodel.cn" in low:
+        return "zhipu"
+    if "volces.com" in low:
+        return "volcengine"
     if "siliconflow.cn" in low:
         return "siliconflow"
     if "dashscope.aliyuncs.com" in low:
@@ -345,7 +405,12 @@ def _infer_provider_from_url(base_url: str) -> str:
         return "openrouter"
     if "api.openai.com" in low:
         return "openai"
-    if any(h in low for h in ("127.0.0.1", "localhost", "0.0.0.0")):
+    if any(
+        h in low
+        for h in ("127.0.0.1", "localhost", "0.0.0.0", "host.docker.internal")
+    ):
+        if ":1234" in low:
+            return "lmstudio"
         return "ollama"
     return "custom"
 
@@ -381,7 +446,7 @@ def _resolve_env_config(env_model_override: Optional[str] = None) -> Optional[Ef
 
     if base_url:
         inferred = _infer_provider_from_url(base_url)
-        is_local = inferred == "ollama"
+        is_local = inferred in ("ollama", "lmstudio")
         if not openai_key and not is_local:
             return None
         preset = _PRESET_BY_ID.get(inferred, {})

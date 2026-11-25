@@ -71,6 +71,10 @@ function extractHost(url: string): string {
   }
 }
 
+function isLocalProvider(provider: string): boolean {
+  return provider === "ollama" || provider === "lmstudio";
+}
+
 export function LLMSettingsModal({
   open,
   settings,
@@ -268,7 +272,7 @@ export function LLMSettingsModal({
       setBaseUrl(profUrl);
       setEditingProxyUrl(
         entry.provider === "custom" ||
-          entry.provider === "ollama" ||
+          isLocalProvider(entry.provider) ||
           Boolean(defaultUrl && profUrl && profUrl !== defaultUrl)
       );
       setApiKey("");
@@ -286,7 +290,7 @@ export function LLMSettingsModal({
       setBaseUrl(envUrl);
       setEditingProxyUrl(
         entry.provider === "custom" ||
-          entry.provider === "ollama" ||
+          isLocalProvider(entry.provider) ||
           Boolean(defaultUrl && envUrl && envUrl !== defaultUrl)
       );
       setApiKey("");
@@ -302,7 +306,7 @@ export function LLMSettingsModal({
       setCustomName(entry.title);
       setBaseUrl(defaultUrl);
       setEditingProxyUrl(
-        entry.provider === "custom" || entry.provider === "ollama"
+        entry.provider === "custom" || isLocalProvider(entry.provider)
       );
       setApiKey("");
       setShowKey(false);
@@ -888,6 +892,10 @@ export function LLMSettingsModal({
                     <p className="text-[13px] text-ink-secondary mt-0.5">
                       {currentEntry.provider === "ollama"
                         ? "连接本机运行的 Ollama 服务，免 API Key 离线调用开源模型。"
+                        : currentEntry.provider === "lmstudio"
+                        ? "连接本机运行的 LM Studio 本地服务，免 API Key 离线调用开源模型。"
+                        : currentEntry.provider === "volcengine"
+                        ? "配置一次火山方舟 API Key，可使用官方模型 ID 或在下方添加推理接入点（ep-...）。"
                         : currentEntry.provider === "custom"
                         ? "接入任意兼容 OpenAI Chat Completions 协议的网关、OneAPI 或企业中转服务。"
                         : `配置一次 API Key，即可在下方自由添加和秒切 ${currentEntry.title} 旗下模型。`}
@@ -1032,7 +1040,7 @@ export function LLMSettingsModal({
                 {/* Smart Collapsible Base URL (eliminates ugly broken URLs for standard presets) */}
                 {editingProxyUrl ||
                 currentEntry.provider === "custom" ||
-                currentEntry.provider === "ollama" ? (
+                isLocalProvider(currentEntry.provider) ? (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <label
@@ -1042,7 +1050,7 @@ export function LLMSettingsModal({
                         接口地址
                       </label>
                       {defaultPresetUrl &&
-                        currentEntry.provider !== "ollama" && (
+                        !isLocalProvider(currentEntry.provider) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1321,6 +1329,8 @@ export function LLMSettingsModal({
                   <span className="text-[13px] text-ink-muted">
                     {currentEntry.configured && !hasUnsavedCreds
                       ? "点选上方任意模型即可立即切换生效"
+                      : preset && !preset.requires_api_key
+                      ? "确认接口地址与模型后保存即可启用"
                       : "填写 API Key 后保存即可启用"}
                   </span>
                 )}

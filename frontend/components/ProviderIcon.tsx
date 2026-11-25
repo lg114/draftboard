@@ -8,12 +8,16 @@ import { Terminal } from "lucide-react";
 const OFFICIAL_PROVIDER_SVGS = new Set([
   "gemini",
   "openai",
+  "claude",
   "deepseek",
+  "zhipu",
+  "volcengine",
   "siliconflow",
   "qwen",
   "kimi",
   "openrouter",
   "ollama",
+  "lmstudio",
 ]);
 
 interface ProviderIconProps {
