@@ -409,3 +409,11 @@ def test_health_and_delete_material_cleans_brand_logo_and_custom_images(client):
         el["id"] == "custom_logo_img"
         for el in (outline_after["items"][1].get("custom_elements") or [])
     )
+
+    # Speaker notes Markdown export should render freeform canvas tables & charts
+    notes_res = client.get(f"/api/projects/{pid}/download/notes")
+    assert notes_res.status_code == 200
+    notes_md = notes_res.content.decode("utf-8")
+    assert "（自由画布）" in notes_md
+    assert "| --- |" in notes_md
+    assert "图表「" in notes_md

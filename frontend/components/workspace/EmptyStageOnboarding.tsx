@@ -363,7 +363,7 @@ export function EmptyStageOnboarding({
             <span
               key={`${m.asset_id}-${m.asset_type}-${i}`}
               title={m.asset_id}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-canvas text-[12.5px] font-medium text-ink"
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-canvas text-[13px] font-medium text-ink"
             >
               {m.asset_type === "image" ? (
                 <ImageIcon className="w-3.5 h-3.5 text-ink-secondary" />
@@ -376,7 +376,7 @@ export function EmptyStageOnboarding({
             </span>
           ))}
           {materials.length > 6 && (
-            <span className="text-[12.5px] text-ink-muted">
+            <span className="text-[13px] text-ink-muted">
               +{materials.length - 6} 份
             </span>
           )}
@@ -438,7 +438,7 @@ export function EmptyStageOnboarding({
                 key={preset}
                 type="button"
                 onClick={() => setOutlinePrompt(preset)}
-                className="text-[11.5px] px-2.5 py-0.5 rounded-full bg-surface hover:bg-ink text-ink-secondary hover:text-white border border-black/[0.08] transition-colors cursor-pointer"
+                className="text-[13px] px-2.5 py-0.5 rounded-full bg-surface hover:bg-ink text-ink-secondary hover:text-white border border-black/[0.08] transition-colors cursor-pointer"
               >
                 {preset}
               </button>

@@ -1988,20 +1988,17 @@ def download_images_zip(project_id: str):
 
 
 @app.get("/api/projects/{project_id}/download/notes")
-def download_speaker_notes(project_id: str):
+def download_speaker_notes(project_id: str, version: Optional[str] = None):
     _require_project(project_id)
     summary = _project_summary(project_id)
     outlines = _outline_summaries(project_id)
     if not outlines:
         raise HTTPException(404, "该项目尚未生成大纲，无法导出讲稿")
 
-    art_meta = _latest_artifact_meta(project_id)
-    exported_ver = art_meta.get("outline_version")
-    target_ver = (
-        exported_ver
-        if exported_ver and any(o["outline_version"] == exported_ver for o in outlines)
-        else max(outlines, key=lambda o: o["mtime"])["outline_version"]
-    )
+    if version and any(o["outline_version"] == version for o in outlines):
+        target_ver = version
+    else:
+        target_ver = max(outlines, key=lambda o: o["mtime"])["outline_version"]
     outline_path = _root() / project_id / "outlines" / f"{target_ver}.json"
     outline_data = load_json(outline_path)
     items = outline_data.get("items", [])
@@ -2023,6 +2020,8 @@ def download_speaker_notes(project_id: str):
 
     total = len(items)
     for idx, item in enumerate(items, start=1):
+        custom_els = item.get("custom_elements") or []
+        is_custom = isinstance(custom_els, list) and len(custom_els) > 0
         raw_layout = item.get("layout")
         if raw_layout not in _LAYOUT_LABELS_CN:
             if idx == 1:
@@ -2031,7 +2030,7 @@ def download_speaker_notes(project_id: str):
                 raw_layout = "closing"
             else:
                 raw_layout = "content"
-        layout_label = _LAYOUT_LABELS_CN.get(raw_layout, "正文")
+        layout_label = "自由画布" if is_custom else _LAYOUT_LABELS_CN.get(raw_layout, "正文")
         title = (item.get("title") or "未命名页面").replace("\\n", " ").strip()
         summary_text = (
             (item.get("summary") or "")
@@ -2056,7 +2055,68 @@ def download_speaker_notes(project_id: str):
 
         lines.append(f"## 第 {idx} 页：{title}（{layout_label}）")
         lines.append("")
-        if summary_text:
+        if is_custom:
+            custom_blocks: list[str] = []
+            for el in custom_els:
+                if not isinstance(el, dict):
+                    continue
+                kind = el.get("kind")
+                if kind == "text":
+                    txt = (
+                        (el.get("text") or "")
+                        .replace("\\r\\n", "\n")
+                        .replace("\\n", "\n")
+                        .strip()
+                    )
+                    if txt and txt != title:
+                        custom_blocks.append(txt)
+                elif kind == "table":
+                    headers = [str(h).replace("|", "\\|").strip() for h in (el.get("headers") or [])]
+                    rows = el.get("rows") or []
+                    if headers:
+                        tbl_lines = [
+                            "| " + " | ".join(headers) + " |",
+                            "| " + " | ".join(["---"] * len(headers)) + " |",
+                        ]
+                        for row in rows:
+                            cells = [
+                                str(row[ci] if ci < len(row) else "").replace("|", "\\|").strip()
+                                for ci in range(len(headers))
+                            ]
+                            tbl_lines.append("| " + " | ".join(cells) + " |")
+                        custom_blocks.append("\n".join(tbl_lines))
+                elif kind == "chart":
+                    ctitle = (el.get("chart_title") or "数据图表").strip()
+                    cats = el.get("chart_categories") or []
+                    series = el.get("chart_series") or []
+                    suffix = (el.get("value_suffix") or "").strip()
+                    if cats and series:
+                        c_lines = [f"- 图表「{ctitle}」："]
+                        for s in series:
+                            sname = str(s.get("name") or "数据").strip()
+                            vals = s.get("values") or []
+                            pairs = [
+                                f"{cats[ci]}={vals[ci]}{suffix}"
+                                for ci in range(min(len(cats), len(vals)))
+                            ]
+                            if pairs:
+                                c_lines.append(f"  - {sname}：" + "，".join(pairs))
+                        custom_blocks.append("\n".join(c_lines))
+                elif kind == "image":
+                    cimg = (el.get("image_asset_id") or "").strip()
+                    if cimg:
+                        custom_blocks.append(f"配图：`{cimg}`")
+            if custom_blocks:
+                lines.append("**页面内容**")
+                lines.append("")
+                lines.append("\n\n".join(custom_blocks))
+                lines.append("")
+            elif summary_text:
+                lines.append("**页面内容**")
+                lines.append("")
+                lines.append(summary_text)
+                lines.append("")
+        elif summary_text:
             lines.append("**页面内容**")
             lines.append("")
             lines.append(summary_text)
