@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Image as ImageIcon, Minus, Plus, Square, Type } from "lucide-react";
 import type {
   BrandKit,
   CanvasElement,
@@ -8,15 +9,15 @@ import type {
   Issue,
   Material,
   Outline,
-  OutlineLayout,
   Preview,
   Project,
   ThemeOption,
 } from "../../lib/api";
+import { useDismiss } from "../../lib/useDismiss";
+import { usePresence } from "../../lib/usePresence";
 import { CustomSlideLayer } from "./CustomSlideLayer";
 import { inferEffectiveLayout } from "./layoutUtils";
 import { SelectedElementBar } from "./stage/SelectedElementBar";
-import { StageDock } from "./stage/StageDock";
 import { BrandOverlay, StandardSlideView } from "./stage/StandardSlideView";
 
 interface SlideStageCanvasProps {
@@ -30,10 +31,7 @@ interface SlideStageCanvasProps {
   report: ExportReport | null;
   issues: Issue[];
   issueSlideIndices: Set<number>;
-  themes: ThemeOption[];
   activeTheme: ThemeOption;
-  selectedThemeId: string;
-  autoFit: boolean;
   exportInSync: boolean;
   statusText: string;
   isGenerating: boolean;
@@ -42,11 +40,7 @@ interface SlideStageCanvasProps {
   diffPreviewActive?: boolean;
   onExitDiffPreview?: () => void;
   onRevertFromDiff?: () => void;
-  onUpdateBrand?: (brand: BrandKit) => Promise<void>;
   onSelectIndex: (idx: number) => void;
-  onSelectTheme: (themeId: string) => void;
-  onSelectLayout: (layout: OutlineLayout) => void;
-  onToggleAutoFit: () => void;
   onFocusField: (fieldId: string) => void;
   onUpdateCustomElement?: (
     elementId: string,
@@ -59,9 +53,10 @@ interface SlideStageCanvasProps {
   onSelectedCustomElementChange?: (elementId: string | null) => void;
 }
 
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 175];
+
 export function SlideStageCanvas({
   pid,
-  project,
   outline,
   version,
   selectedIndex,
@@ -69,10 +64,7 @@ export function SlideStageCanvas({
   report,
   issues,
   issueSlideIndices,
-  themes,
   activeTheme,
-  selectedThemeId,
-  autoFit,
   exportInSync,
   statusText,
   isGenerating,
@@ -81,11 +73,7 @@ export function SlideStageCanvas({
   diffPreviewActive = false,
   onExitDiffPreview,
   onRevertFromDiff,
-  onUpdateBrand,
   onSelectIndex,
-  onSelectTheme,
-  onSelectLayout,
-  onToggleAutoFit,
   onFocusField,
   onUpdateCustomElement,
   onDeleteCustomElement,
@@ -94,12 +82,16 @@ export function SlideStageCanvas({
   onReorderCustomElement,
   onSelectedCustomElementChange,
 }: SlideStageCanvasProps) {
-  const shellRef = useRef<HTMLDivElement | null>(null);
-  const colRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(0.75);
-  const [compactDock, setCompactDock] = useState(false);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [fitWidth, setFitWidth] = useState(720);
+  const [zoomPct, setZoomPct] = useState(100);
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
   const [selectedElId, setSelectedElId] = useState<string | null>(null);
+
+  const addWrapRef = useRef<HTMLDivElement | null>(null);
+  const { mounted: addPopoverMounted, exiting: addPopoverExiting } =
+    usePresence(addPopoverOpen, 130);
+  useDismiss(addPopoverOpen, () => setAddPopoverOpen(false), [addWrapRef]);
 
   useEffect(() => {
     setSelectedElId(null);
@@ -107,21 +99,23 @@ export function SlideStageCanvas({
   }, [selectedIndex, version]);
 
   useEffect(() => {
-    const update = () => {
-      if (shellRef.current) {
-        const w = shellRef.current.clientWidth;
-        if (w > 0) setScale(w / 960);
-      }
-      if (colRef.current) {
-        setCompactDock(colRef.current.clientWidth < 700);
-      }
+    const el = viewportRef.current;
+    if (!el) return;
+    const measure = () => {
+      const availW = Math.max(280, el.clientWidth - 64);
+      const availH = Math.max(180, el.clientHeight - 64);
+      const byWidth = availW;
+      const byHeight = (availH * 16) / 9;
+      setFitWidth(Math.min(1080, byWidth, byHeight));
     };
-    update();
-    const obs = new ResizeObserver(update);
-    if (shellRef.current) obs.observe(shellRef.current);
-    if (colRef.current) obs.observe(colRef.current);
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
+  const renderedWidth = Math.max(240, Math.round((fitWidth * zoomPct) / 100));
+  const scale = renderedWidth / 960;
 
   const total = outline.items.length;
   const item = outline.items[selectedIndex];
@@ -140,8 +134,6 @@ export function SlideStageCanvas({
     : "content";
   const sw = activeTheme.swatches;
 
-  // Show rendered PPTX PNG only when frozen inputs match the exported artifact.
-  // Keep freeform canvas slides interactive on the stage so elements remain draggable.
   const hasRenderedPage = Boolean(
     preview?.pages && preview.pages[selectedIndex]
   );
@@ -314,17 +306,25 @@ export function SlideStageCanvas({
   const hasLayoutIssues =
     issues.length > 0 || Boolean(report && !report.success);
 
+  const stepZoom = (dir: -1 | 1) => {
+    const idx = ZOOM_STEPS.indexOf(zoomPct);
+    if (idx === -1) {
+      setZoomPct(100);
+      return;
+    }
+    const next = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + dir))];
+    setZoomPct(next);
+  };
+
   return (
-    <main className="flex-1 bg-stage flex flex-col items-center justify-center px-4 lg:px-6 py-4 min-w-0 min-h-0 overflow-y-auto clean-scroll">
-      <div
-        ref={colRef}
-        className="w-full max-w-[min(1080px,max(420px,calc((100vh-172px)*16/9)))] flex flex-col items-center gap-3.5 my-auto"
-      >
+    <main className="flex-1 bg-ui-bg p-2.5 sm:p-3 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      {/* Raised dark stage surface (--ui-surface) matching mockup */}
+      <div className="flex-1 min-h-0 bg-ui-surface rounded-xl border border-ui-border-subtle flex flex-col overflow-hidden relative">
         {/* Before/After Visual Diff Banner */}
         {diffPreviewActive && (
-          <div className="w-full px-3.5 py-2 rounded-xl bg-warning-bg border border-warning-dot/30 flex flex-wrap items-center justify-between gap-2 text-[13px] anim-msg-in">
-            <span className="inline-flex items-center gap-2 text-warning font-medium">
-              <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
+          <div className="px-4 py-2 bg-ui-warning-bg border-b border-ui-warning/25 flex flex-wrap items-center justify-between gap-2 text-[13px] shrink-0 anim-msg-in">
+            <span className="inline-flex items-center gap-2 text-ui-warning font-medium">
+              <span className="w-2 h-2 rounded-full bg-ui-warning shrink-0" />
               <span>正在对比查看「AI 修改前」版本（只读预览）</span>
             </span>
             <div className="flex items-center gap-2 shrink-0">
@@ -332,7 +332,7 @@ export function SlideStageCanvas({
                 <button
                   type="button"
                   onClick={onRevertFromDiff}
-                  className="px-2.5 py-1 rounded-full bg-surface border border-black/15 text-ink font-medium hover:bg-canvas cursor-pointer"
+                  className="ui-btn-subtle px-2.5 py-1 text-[12.5px]"
                 >
                   恢复为此版本
                 </button>
@@ -341,7 +341,7 @@ export function SlideStageCanvas({
                 <button
                   type="button"
                   onClick={onExitDiffPreview}
-                  className="px-3 py-1 rounded-full bg-ink text-white font-medium hover:bg-ink-hover cursor-pointer"
+                  className="ui-btn-primary px-3 py-1 text-[12.5px]"
                 >
                   切回改后版本
                 </button>
@@ -350,13 +350,25 @@ export function SlideStageCanvas({
           </div>
         )}
 
-        {/* Quiet 1-line Status Above Stage */}
-        <div className="w-full flex items-center justify-between px-0.5 text-[13px] gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+        {/* Stage Top Meta Row: 第 N 页 · 标题  |  16:9  − 100% + */}
+        <div className="h-10 px-4 flex items-center justify-between gap-4 text-[13px] shrink-0 select-none">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-ui-text-secondary truncate">
+              <span className="tabular-nums text-ui-text-muted">
+                第 {selectedIndex + 1} 页
+              </span>
+              <span className="mx-1.5 text-ui-text-disabled">·</span>
+              <span className="text-ui-text-secondary font-medium">
+                {item?.title || "未命名页面"}
+              </span>
+            </span>
+
             {isGenerating ? (
-              <span className="inline-flex items-center gap-2 text-ink font-medium truncate">
-                <span className="w-2 h-2 rounded-full bg-ink animate-pulse shrink-0" />
-                <span className="truncate">{statusText || "正在处理…"}</span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-ui-info-bg text-ui-info text-[12px] font-medium truncate shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-ui-info animate-pulse" />
+                <span className="truncate max-w-[180px]">
+                  {statusText || "正在处理…"}
+                </span>
               </span>
             ) : hasLayoutIssues ? (
               <button
@@ -366,131 +378,213 @@ export function SlideStageCanvas({
                     onSelectIndex(firstIssueSlide);
                   }
                 }}
-                className="inline-flex items-center gap-2 text-danger hover:underline font-medium cursor-pointer truncate"
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-ui-danger-bg text-ui-danger text-[12px] font-medium hover:underline cursor-pointer shrink-0"
               >
-                <span className="w-2 h-2 rounded-full bg-danger shrink-0" />
-                <span className="truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-ui-danger" />
+                <span>
                   {firstIssueSlide !== undefined
-                    ? `第 ${firstIssueSlide + 1} 页存在排版溢出或校验异常`
-                    : "最近一次排版校验未通过"}
+                    ? `第 ${firstIssueSlide + 1} 页排版异常`
+                    : "排版校验未通过"}
                 </span>
-                {firstIssueSlide !== undefined && (
-                  <span className="shrink-0">点击定位 ›</span>
-                )}
               </button>
-            ) : isSyncedArtifact ? (
-              <span className="inline-flex items-center gap-2 text-ink font-medium whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-success shrink-0" />
-                <span>已与 PPTX 同步</span>
-              </span>
-            ) : project?.download_available && !exportInSync ? (
-              <span className="inline-flex items-center gap-2 text-warning font-medium truncate">
-                <span className="w-2 h-2 rounded-full bg-warning-dot shrink-0" />
-                <span className="truncate">
-                  已下载的 PPTX 是更早的导出，与当前设置不一致
-                </span>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 text-ink-secondary whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-success shrink-0" />
-                <span>排版安全</span>
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
-            {isCustomCanvas && !diffPreviewActive && (
-              <span className="hidden lg:inline text-[13px] text-ink-muted">
-                {selectedEl
-                  ? "方向键微调 · Shift×10 · Ctrl+D 复制 · Delete 删除"
-                  : "点击画布元素可直接拖拽微调 · 双击改文字"}
-              </span>
-            )}
-            {isCustomCanvas && (
-              <span className="px-2 py-0.5 rounded-full bg-black/[0.06] text-[13px] font-medium text-ink">
-                自由画布
-              </span>
-            )}
-            <span className="text-ink-secondary font-medium tabular-nums">
-              {selectedIndex + 1} / {total}
-            </span>
-          </div>
-        </div>
-
-        {/* True 960x540 Proportional Scaled 16:9 Stage */}
-        <div
-          ref={shellRef}
-          className="aspect-[16/9] w-full rounded-[3px] overflow-hidden slide-shadow relative bg-surface"
-        >
-          <div
-            key={`stage-${selectedIndex}-${diffPreviewActive ? "diff" : "live"}`}
-            className="absolute inset-0 anim-slide-settle"
-          >
-            {showRenderedImage && preview?.pages[selectedIndex] ? (
-              <div
-                onClick={() =>
-                  onFocusField(
-                    firstCustomTextId
-                      ? `custom-el-${firstCustomTextId}`
-                      : "input-title"
-                  )
-                }
-                className="absolute inset-0 bg-white flex items-center justify-center cursor-text"
-                title="点击右侧编辑内容（当前展示已导出的 Office 渲染图）"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={preview.pages[selectedIndex]}
-                  alt={`第 ${selectedIndex + 1} 页`}
-                  className="w-full h-full object-contain select-none"
-                />
-              </div>
-            ) : item && isCustomCanvas && item.custom_elements ? (
-              <>
-                <CustomSlideLayer
-                  pid={pid}
-                  customBg={item.custom_bg}
-                  elements={item.custom_elements}
-                  theme={activeTheme}
-                  scale={scale}
-                  interactive={!diffPreviewActive}
-                  selectedElementId={diffPreviewActive ? null : selectedElId}
-                  onSelectElement={setSelectedElId}
-                  onSelectTextElement={(elId) =>
-                    onFocusField(`custom-el-${elId}`)
-                  }
-                  onUpdateElement={
-                    diffPreviewActive ? undefined : onUpdateCustomElement
-                  }
-                />
-                {brand && (
-                  <BrandOverlay
-                    pid={pid}
-                    brand={brand}
-                    mutedColor={sw.muted}
-                    scale={scale}
-                  />
-                )}
-              </>
-            ) : item ? (
-              <StandardSlideView
-                pid={pid}
-                item={item}
-                layout={layout}
-                sw={sw}
-                scale={scale}
-                selectedIndex={selectedIndex}
-                total={total}
-                brand={brand}
-                onFocusField={onFocusField}
-              />
             ) : null}
           </div>
+
+          <div className="flex items-center gap-3 shrink-0 text-ui-text-muted">
+            {isCustomCanvas && !diffPreviewActive && onAddCustomElement && (
+              <div ref={addWrapRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAddPopoverOpen((v) => !v)}
+                  title="向自由画布添加元素"
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[12.5px] transition-colors cursor-pointer ${
+                    addPopoverOpen
+                      ? "bg-ui-bg-selected text-ui-text"
+                      : "text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover"
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">添加元素</span>
+                </button>
+
+                {addPopoverMounted && (
+                  <div
+                    className={`absolute right-0 top-full mt-2 w-44 ui-popover rounded-xl p-1.5 z-50 space-y-0.5 ${
+                      addPopoverExiting
+                        ? "anim-popover-down-out pointer-events-none"
+                        : "anim-popover-down-in"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddElement("text")}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                    >
+                      <Type className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>文本框</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddElement("card")}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                    >
+                      <Square className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>卡片背景</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddElement("line")}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                    >
+                      <Minus className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>分割线</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={imageAssets.length === 0}
+                      onClick={() => handleQuickAddElement("image")}
+                      title={
+                        imageAssets.length === 0
+                          ? "请先上传图片素材"
+                          : "插入第一张已上传的图片"
+                      }
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer text-left"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>
+                        {imageAssets.length > 0
+                          ? "图片元素"
+                          : "图片（需先上传）"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <span className="text-[12.5px] tabular-nums text-ui-text-disabled hidden sm:inline">
+              16:9
+            </span>
+
+            <div className="flex items-center gap-1 text-[12.5px] tabular-nums">
+              <button
+                type="button"
+                onClick={() => stepZoom(-1)}
+                disabled={zoomPct <= ZOOM_STEPS[0]}
+                aria-label="缩小画布"
+                title="缩小画布"
+                className="p-1 rounded hover:bg-ui-control-hover text-ui-icon hover:text-ui-text disabled:opacity-30 cursor-pointer transition-colors"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoomPct(100)}
+                title="点击重置为适应画布 (100%)"
+                className="px-1.5 py-0.5 rounded hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text cursor-pointer transition-colors min-w-[44px] text-center"
+              >
+                {zoomPct}%
+              </button>
+              <button
+                type="button"
+                onClick={() => stepZoom(1)}
+                disabled={zoomPct >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
+                aria-label="放大画布"
+                title="放大画布"
+                className="p-1 rounded hover:bg-ui-control-hover text-ui-icon hover:text-ui-text disabled:opacity-30 cursor-pointer transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Floating Dock OR Selected Custom Element Bar */}
-        <div className="relative max-w-full">
-          {selectedEl && onUpdateCustomElement ? (
+        {/* Pure 16:9 Slide Canvas Viewport */}
+        <div
+          ref={viewportRef}
+          onClick={() => {
+            if (selectedElId) setSelectedElId(null);
+          }}
+          className="flex-1 min-h-0 overflow-auto clean-scroll flex items-center justify-center p-6 sm:p-8"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: renderedWidth,
+              height: Math.round((renderedWidth * 9) / 16),
+            }}
+            className="shrink-0 rounded-[2px] overflow-hidden slide-shadow relative bg-white"
+          >
+            <div
+              key={`stage-${selectedIndex}-${diffPreviewActive ? "diff" : "live"}`}
+              className="absolute inset-0 anim-slide-settle"
+            >
+              {showRenderedImage && preview?.pages[selectedIndex] ? (
+                <div
+                  onClick={() =>
+                    onFocusField(
+                      firstCustomTextId
+                        ? `custom-el-${firstCustomTextId}`
+                        : "input-title"
+                    )
+                  }
+                  className="absolute inset-0 bg-white flex items-center justify-center cursor-text"
+                  title="点击右侧属性编辑内容（当前展示已导出的渲染图）"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={preview.pages[selectedIndex]}
+                    alt={`第 ${selectedIndex + 1} 页`}
+                    className="w-full h-full object-contain select-none"
+                  />
+                </div>
+              ) : item && isCustomCanvas && item.custom_elements ? (
+                <>
+                  <CustomSlideLayer
+                    pid={pid}
+                    customBg={item.custom_bg}
+                    elements={item.custom_elements}
+                    theme={activeTheme}
+                    scale={scale}
+                    interactive={!diffPreviewActive}
+                    selectedElementId={diffPreviewActive ? null : selectedElId}
+                    onSelectElement={setSelectedElId}
+                    onSelectTextElement={(elId) =>
+                      onFocusField(`custom-el-${elId}`)
+                    }
+                    onUpdateElement={
+                      diffPreviewActive ? undefined : onUpdateCustomElement
+                    }
+                  />
+                  {brand && (
+                    <BrandOverlay
+                      pid={pid}
+                      brand={brand}
+                      mutedColor={sw.muted}
+                      scale={scale}
+                    />
+                  )}
+                </>
+              ) : item ? (
+                <StandardSlideView
+                  pid={pid}
+                  item={item}
+                  layout={layout}
+                  sw={sw}
+                  scale={scale}
+                  selectedIndex={selectedIndex}
+                  total={total}
+                  brand={brand}
+                  onFocusField={onFocusField}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* Contextual Floating Bar ONLY when a free-canvas element is selected */}
+        {selectedEl && onUpdateCustomElement && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-24px)]">
             <SelectedElementBar
               selectedEl={selectedEl}
               sw={sw}
@@ -516,30 +610,8 @@ export function SlideStageCanvas({
               }
               onClose={() => setSelectedElId(null)}
             />
-          ) : (
-            <StageDock
-              themes={themes}
-              activeTheme={activeTheme}
-              selectedThemeId={selectedThemeId}
-              layout={layout}
-              autoFit={autoFit}
-              isCustomCanvas={isCustomCanvas}
-              diffPreviewActive={diffPreviewActive}
-              compactDock={compactDock}
-              brand={brand}
-              imageAssets={imageAssets}
-              addPopoverOpen={addPopoverOpen}
-              setAddPopoverOpen={setAddPopoverOpen}
-              onSelectTheme={onSelectTheme}
-              onSelectLayout={onSelectLayout}
-              onToggleAutoFit={onToggleAutoFit}
-              onUpdateBrand={onUpdateBrand}
-              onQuickAddElement={
-                onAddCustomElement ? handleQuickAddElement : undefined
-              }
-            />
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </main>
   );

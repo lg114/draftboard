@@ -7,15 +7,15 @@ export function BrandLogo({ className = "w-7 h-7" }: { className?: string }) {
       className={className}
       aria-label="Draftboard"
     >
-      <rect width="64" height="64" rx="16" fill="#111113" />
+      <rect width="64" height="64" rx="16" fill="#1C1C1E" stroke="#2A2A2C" strokeWidth="2" />
       <path
-        fill="#FFFFFF"
+        fill="#E5E6E9"
         fillRule="evenodd"
         clipRule="evenodd"
         d="M11 18H20.5C26.8 18 30.5 22.8 30.5 32C30.5 41.2 26.8 46 20.5 46H11V18ZM15.8 22.6V41.4H20.2C23.7 41.4 25.6 38.4 25.6 32C25.6 25.6 23.7 22.6 20.2 22.6H15.8Z"
       />
       <path
-        fill="#FFFFFF"
+        fill="#E5E6E9"
         fillRule="evenodd"
         clipRule="evenodd"
         d="M34 18H44.5C49.4 18 52.3 20.8 52.3 25.1C52.3 28.2 50.6 30.5 47.8 31.4C51.2 32.3 53.2 34.9 53.2 38.6C53.2 43.3 49.9 46 44.8 46H34V18ZM38.8 22.4V29.6H44C46.2 29.6 47.5 28.3 47.5 26C47.5 23.7 46.2 22.4 44 22.4H38.8ZM38.8 33.8V41.6H44.4C46.9 41.6 48.3 40.2 48.3 37.7C48.3 35.2 46.9 33.8 44.4 33.8H38.8Z"

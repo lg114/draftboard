@@ -1,48 +1,166 @@
 @import "tailwindcss";
 
-@theme {
-  /* ── Surface Hierarchy ──────────────────────────────────────────── */
-  --color-canvas: #f5f5f7;
-  --color-stage: #dcdce1;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #fafafa;
-  --color-surface-muted: #f4f4f5;
-  --color-disabled-bg: #e4e4e7;
+/* Draftboard UI tokens — unified dark workbench
+ *
+ * Source: /workspace/draftboard-workbench-example/unified.html
+ *         (PNG flats match these hex values; the mock files were not edited.)
+ *
+ * This revision is dark-only. Light theme is not defined here.
+ * Previous blue-gray dual-mode tokens are no longer the current scheme.
+ *
+ * Prefix: --ui-*
+ * Do not reuse these variables for PPT / slide themes. Slide paper
+ * (#F6F6F4 and related in-slide colors) is content, not an app surface.
+ *
+ * Origin tags in comments:
+ *   actual              — used in the approved mock
+ *   actual-reassigned   — mock hex, production role changed for contrast
+ *   addition            — not in the mock; supplied for hover/focus/scale/status
+ *   production-fix      — semantic role that replaces a failing mock use
+ */
 
-  /* ── Ink & Chrome Hierarchy ─────────────────────────────────────── */
-  --color-ink: #1d1d1f;
-  --color-ink-hover: #323236;
-  --color-ink-secondary: #48484a;
-  --color-ink-muted: #71717a;
-  --color-border-dashed: #8e9099;
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
 
-  /* ── Semantic Status Tokens (1 restrained family each) ──────────── */
-  --color-success: #248a3d;
-  --color-warning: #b45309;
-  --color-warning-dot: #d97706;
-  --color-warning-bg: #fffaf0;
-  --color-danger: #d70015;
-  --color-danger-hover: #b80012;
-  --color-danger-bg: #fff2f2;
+  /* --- Surfaces --- */
+  --ui-bg: #0D0D0E;                 /* actual: shell */
+  --ui-bg-hover: #111112;           /* addition: icon-button hover on shell */
+  --ui-surface: #151516;            /* actual: raised stage */
+  --ui-surface-input: #161617;      /* actual: composer / input fill */
+  --ui-bg-selected: #1C1C1E;        /* addition: selected row fill (mock used type color only) */
+  --ui-control-hover: #1C1C1E;      /* addition */
+  --ui-control-active: #222224;     /* addition: also decorative divider */
+  --ui-bg-disabled: #161617;        /* actual surface; disabled use is addition */
+
+  /* --- Borders --- */
+  --ui-border-subtle: #222224;      /* addition: decorative only, no 3:1 requirement */
+  --ui-border: #6F7074;             /* actual-reassigned: control border; was quiet text in the mock */
+  --ui-focus: #3D63DD;              /* actual accent, used as focus ring (3:1) */
+
+  /* --- Text and icons --- */
+  --ui-text: #E5E6E9;               /* actual */
+  --ui-text-secondary: #C7C8CA;     /* actual */
+  --ui-text-muted: #919294;         /* actual; production-fix for placeholder / helper copy */
+  --ui-icon: #919294;               /* actual */
+  --ui-icon-quiet: #8A8B8F;         /* actual: rail close icon */
+  --ui-text-disabled: #6F7074;      /* actual-reassigned; contrast exempt; never normal copy */
+
+  /* --- Accent --- */
+  --ui-accent: #3D63DD;             /* actual: filled primary only, not dark-on-small text */
+  --ui-accent-hover: #476BE0;       /* addition */
+  --ui-accent-active: #3154C6;      /* addition */
+  --ui-accent-text: #748FE7;        /* addition: links / inline emphasis */
+  --ui-on-accent: #FFFFFF;          /* actual */
+
+  /* --- Status (all additions; window traffic lights are not status tokens) --- */
+  --ui-success: #5DCAA5;
+  --ui-warning: #E0B15C;
+  --ui-danger: #E27872;
+  --ui-info: #7AB8C6;
+  --ui-success-bg: #10211B;
+  --ui-warning-bg: #211C10;
+  --ui-danger-bg: #211414;
+  --ui-info-bg: #10181C;
+
+  /* --- 12-step neutrals (1–2 background, 3–5 fills, 6–8 line/border, 9–12 type) --- */
+  --ui-neutral-1: #0D0D0E;          /* actual */
+  --ui-neutral-2: #111112;          /* addition */
+  --ui-neutral-3: #151516;          /* actual */
+  --ui-neutral-4: #161617;          /* actual */
+  --ui-neutral-5: #1C1C1E;          /* addition */
+  --ui-neutral-6: #222224;          /* addition */
+  --ui-neutral-7: #2A2A2C;          /* addition: decorative only, never a text or focus surface */
+  --ui-neutral-8: #6F7074;          /* actual */
+  --ui-neutral-9: #8A8B8F;          /* actual */
+  --ui-neutral-10: #919294;         /* actual */
+  --ui-neutral-11: #C7C8CA;         /* actual */
+  --ui-neutral-12: #E5E6E9;         /* actual */
+
+  /* --- 12-step blue (only 9 is in the mock) --- */
+  --ui-blue-1: #050A1A;             /* addition */
+  --ui-blue-2: #070E27;             /* addition */
+  --ui-blue-3: #091334;             /* addition */
+  --ui-blue-4: #0C1A45;             /* addition */
+  --ui-blue-5: #0F2057;             /* addition */
+  --ui-blue-6: #142A71;             /* addition */
+  --ui-blue-7: #19358F;             /* addition */
+  --ui-blue-8: #2044B6;             /* addition */
+  --ui-blue-9: #3D63DD;             /* actual */
+  --ui-blue-10: #476BE0;            /* addition */
+  --ui-blue-11: #748FE7;            /* addition */
+  --ui-blue-12: #859DEA;            /* addition */
+
+  /* --- Motion tokens --- */
+  --ease-ui: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-ui-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --ease-ui-exit: cubic-bezier(0.4, 0, 1, 1);
+  --dur-micro: 120ms;
+  --dur-fast: 160ms;
+  --dur-base: 220ms;
+  --dur-sheet: 240ms;
 }
 
 @theme inline {
   --font-sans: var(--font-inter), var(--font-noto-sans-sc), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* Surface tokens */
+  --color-ui-bg: var(--ui-bg);
+  --color-ui-bg-hover: var(--ui-bg-hover);
+  --color-ui-surface: var(--ui-surface);
+  --color-ui-surface-input: var(--ui-surface-input);
+  --color-ui-bg-selected: var(--ui-bg-selected);
+  --color-ui-control-hover: var(--ui-control-hover);
+  --color-ui-control-active: var(--ui-control-active);
+  --color-ui-bg-disabled: var(--ui-bg-disabled);
+
+  /* Border tokens */
+  --color-ui-border-subtle: var(--ui-border-subtle);
+  --color-ui-border: var(--ui-border);
+  --color-ui-focus: var(--ui-focus);
+
+  /* Text & icon tokens */
+  --color-ui-text: var(--ui-text);
+  --color-ui-text-secondary: var(--ui-text-secondary);
+  --color-ui-text-muted: var(--ui-text-muted);
+  --color-ui-icon: var(--ui-icon);
+  --color-ui-icon-quiet: var(--ui-icon-quiet);
+  --color-ui-text-disabled: var(--ui-text-disabled);
+
+  /* Accent tokens */
+  --color-ui-accent: var(--ui-accent);
+  --color-ui-accent-hover: var(--ui-accent-hover);
+  --color-ui-accent-active: var(--ui-accent-active);
+  --color-ui-accent-text: var(--ui-accent-text);
+  --color-ui-on-accent: var(--ui-on-accent);
+
+  /* Status tokens */
+  --color-ui-success: var(--ui-success);
+  --color-ui-warning: var(--ui-warning);
+  --color-ui-danger: var(--ui-danger);
+  --color-ui-info: var(--ui-info);
+  --color-ui-success-bg: var(--ui-success-bg);
+  --color-ui-warning-bg: var(--ui-warning-bg);
+  --color-ui-danger-bg: var(--ui-danger-bg);
+  --color-ui-info-bg: var(--ui-info-bg);
+
+  /* Neutral scale */
+  --color-ui-n1: var(--ui-neutral-1);
+  --color-ui-n2: var(--ui-neutral-2);
+  --color-ui-n3: var(--ui-neutral-3);
+  --color-ui-n4: var(--ui-neutral-4);
+  --color-ui-n5: var(--ui-neutral-5);
+  --color-ui-n6: var(--ui-neutral-6);
+  --color-ui-n7: var(--ui-neutral-7);
+  --color-ui-n8: var(--ui-neutral-8);
+  --color-ui-n9: var(--ui-neutral-9);
+  --color-ui-n10: var(--ui-neutral-10);
+  --color-ui-n11: var(--ui-neutral-11);
+  --color-ui-n12: var(--ui-neutral-12);
 }
 
 @layer base {
-  :root {
-    /* ── Unified Apple Motion Language Tokens ───────────────────────── */
-    --ease-apple: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-apple-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
-    --ease-apple-exit: cubic-bezier(0.4, 0, 1, 1);
-    --dur-micro: 120ms;
-    --dur-fast: 160ms;
-    --dur-base: 220ms;
-    --dur-sheet: 260ms;
-  }
-
-  /* Visible keyboard focus ring for interactive controls (text fields keep their own ring) */
+  /* Visible keyboard focus ring using --ui-focus (3:1 on dark surfaces) */
   :where(
       a,
       button,
@@ -57,97 +175,92 @@
       input[type="radio"],
       input[type="color"]
     ):focus-visible {
-    outline: 2px solid var(--color-ink);
+    outline: 2px solid var(--ui-focus);
     outline-offset: 2px;
   }
 
   body {
-    background-color: var(--color-canvas);
-    color: var(--color-ink);
+    background-color: var(--ui-bg);
+    color: var(--ui-text);
     font-family: var(--font-inter), var(--font-noto-sans-sc), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
     text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
 @layer components {
-  /* Canonical pill input: 12% -> 30% -> full ink focus progression */
+  /* Canonical input / textarea for workbench composer & inspector forms */
   .ui-pill-input {
-    @apply h-11 rounded-full bg-canvas border border-black/[0.12] px-5 text-ink placeholder:text-ink-muted outline-none
-      transition-[border-color,background-color,box-shadow] duration-[160ms] ease-out motion-reduce:transition-none
-      hover:border-black/30
-      focus:bg-surface focus:border-ink focus:ring-4 focus:ring-black/[0.08]
-      disabled:opacity-60;
+    @apply h-10 rounded-lg bg-ui-surface-input border border-ui-border-subtle px-3.5 text-ui-text placeholder:text-ui-text-muted outline-none
+      transition-[border-color,background-color,box-shadow] duration-[150ms] ease-out motion-reduce:transition-none
+      hover:border-ui-border
+      focus:border-ui-focus focus:ring-2 focus:ring-ui-focus/25
+      disabled:bg-ui-bg-disabled disabled:text-ui-text-disabled disabled:cursor-not-allowed;
   }
 
-  /* Canonical box input / textarea for inspector & forms */
   .ui-field {
-    @apply rounded-xl bg-surface border border-black/[0.12] text-ink placeholder:text-ink-muted outline-none
-      transition-[border-color,background-color,box-shadow] duration-[160ms] ease-out motion-reduce:transition-none
-      hover:border-black/30
-      focus:border-ink focus:ring-4 focus:ring-black/[0.08]
-      disabled:opacity-60;
+    @apply rounded-lg bg-ui-surface-input border border-ui-border-subtle text-ui-text placeholder:text-ui-text-muted outline-none
+      transition-[border-color,background-color,box-shadow] duration-[150ms] ease-out motion-reduce:transition-none
+      hover:border-ui-border
+      focus:border-ui-focus focus:ring-2 focus:ring-ui-focus/25
+      disabled:bg-ui-bg-disabled disabled:text-ui-text-disabled disabled:cursor-not-allowed;
   }
 
-  /* Primary solid monochrome CTA with crisp Apple tactile press */
+  /* Primary filled accent CTA (--ui-accent / --ui-on-accent) */
   .ui-btn-primary {
-    @apply rounded-full bg-ink hover:bg-ink-hover text-white font-medium
+    @apply rounded-lg bg-ui-accent hover:bg-ui-accent-hover active:bg-ui-accent-active text-ui-on-accent font-medium
       transition-[background-color,transform,opacity] duration-[140ms] ease-out
-      active:scale-[0.975] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
-      disabled:bg-disabled-bg disabled:text-ink-secondary disabled:cursor-not-allowed;
+      active:scale-[0.98] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
+      disabled:bg-ui-bg-disabled disabled:text-ui-text-disabled disabled:border disabled:border-ui-border-subtle disabled:cursor-not-allowed;
   }
 
   /* Secondary outline CTA */
   .ui-btn-outline {
-    @apply rounded-full bg-surface border border-black/25 hover:border-ink hover:bg-black/[0.04] text-ink font-medium
+    @apply rounded-lg bg-transparent border border-ui-border hover:bg-ui-control-hover active:bg-ui-control-active text-ui-text font-medium
       transition-[background-color,border-color,transform,opacity] duration-[140ms] ease-out
-      active:scale-[0.975] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
-      disabled:bg-surface-muted disabled:border-black/[0.1] disabled:text-ink-muted disabled:cursor-not-allowed;
+      active:scale-[0.98] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
+      disabled:bg-ui-bg-disabled disabled:border-ui-border-subtle disabled:text-ui-text-disabled disabled:cursor-not-allowed;
   }
 
-  /* Subtle neutral pill button */
+  /* Subtle dark control button */
   .ui-btn-subtle {
-    @apply rounded-full bg-canvas hover:bg-black/[0.08] text-ink font-medium
-      transition-[background-color,transform,opacity] duration-[140ms] ease-out
-      active:scale-[0.975] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
-      disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply rounded-lg bg-ui-surface-input hover:bg-ui-control-hover active:bg-ui-control-active border border-ui-border-subtle text-ui-text-secondary hover:text-ui-text font-medium
+      transition-[background-color,color,border-color,transform,opacity] duration-[140ms] ease-out
+      active:scale-[0.98] disabled:active:scale-100 motion-reduce:transition-none cursor-pointer
+      disabled:bg-ui-bg-disabled disabled:text-ui-text-disabled disabled:cursor-not-allowed;
   }
 
-  /* Subtle tactile press utility for icon/toolbar buttons */
+  /* Elevated dark popover / menu surface */
+  .ui-popover {
+    background-color: var(--ui-surface);
+    border: 1px solid var(--ui-border-subtle);
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.4),
+      0 16px 40px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Tactile press utility for icon/toolbar buttons */
   .ui-press {
     @apply transition-[background-color,color,transform,opacity] duration-[120ms] ease-out
       active:scale-[0.96] disabled:active:scale-100;
   }
 }
 
-.apple-glass {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: saturate(180%) blur(22px);
-  -webkit-backdrop-filter: saturate(180%) blur(22px);
-}
-
 .slide-shadow {
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.08),
-    0 22px 48px rgba(0, 0, 0, 0.14),
-    0 0 0 1px rgba(0, 0, 0, 0.10);
-}
-
-.dock-shadow {
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.05),
-    0 10px 28px rgba(0, 0, 0, 0.09),
-    0 0 0 1px rgba(0, 0, 0, 0.08);
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    0 24px 56px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .thumb-selected {
   box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.94),
-    0 0 0 3.5px rgba(29, 29, 31, 0.86),
-    0 8px 18px rgba(0, 0, 0, 0.14);
+    0 0 0 1.5px var(--ui-accent),
+    0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .thumb-idle {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.09);
+  box-shadow: 0 0 0 1px var(--ui-border-subtle);
 }
 
 .clean-scroll::-webkit-scrollbar {
@@ -158,24 +271,25 @@
   background: transparent;
 }
 .clean-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.14);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 99px;
 }
 .clean-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.26);
+  background: rgba(255, 255, 255, 0.24);
 }
 
+/* In-slide clickable hover outline (content surface, not dark chrome) */
 .clickable-slot {
   border-radius: 6px;
-  transition: outline-color var(--dur-micro) var(--ease-apple);
+  transition: outline-color var(--dur-micro) var(--ease-ui);
 }
 .clickable-slot:hover {
-  outline: 1.5px dashed rgba(29, 29, 31, 0.38);
+  outline: 1.5px dashed rgba(61, 99, 221, 0.55);
   outline-offset: 6px;
   cursor: text;
 }
 
-/* ── GPU-Composited Apple Motion Primitives ─────────────────────────── */
+/* ── GPU-Composited Motion Primitives ───────────────────────────────── */
 
 @keyframes db-fade-in {
   from { opacity: 0; }
@@ -237,7 +351,7 @@
 }
 
 @keyframes db-slide-settle {
-  from { opacity: 0.72; }
+  from { opacity: 0.78; }
   to { opacity: 1; }
 }
 
@@ -252,84 +366,84 @@
 }
 
 .anim-scrim-in {
-  animation: db-fade-in var(--dur-fast) var(--ease-apple) both;
+  animation: db-fade-in var(--dur-fast) var(--ease-ui) both;
 }
 .anim-scrim-out {
-  animation: db-fade-out var(--dur-micro) var(--ease-apple-exit) both;
+  animation: db-fade-out var(--dur-micro) var(--ease-ui-exit) both;
 }
 
 .anim-modal-in {
-  animation: db-modal-in var(--dur-base) var(--ease-apple) both;
+  animation: db-modal-in var(--dur-base) var(--ease-ui) both;
 }
 .anim-modal-out {
-  animation: db-modal-out var(--dur-micro) var(--ease-apple-exit) both;
+  animation: db-modal-out var(--dur-micro) var(--ease-ui-exit) both;
 }
 
 .anim-drawer-right-in {
-  animation: db-drawer-right-in var(--dur-sheet) var(--ease-apple) both;
+  animation: db-drawer-right-in var(--dur-sheet) var(--ease-ui) both;
 }
 .anim-drawer-right-out {
-  animation: db-drawer-right-out var(--dur-fast) var(--ease-apple-exit) both;
+  animation: db-drawer-right-out var(--dur-fast) var(--ease-ui-exit) both;
 }
 
 .anim-popover-down-in {
   transform-origin: top right;
-  animation: db-popover-down-in var(--dur-fast) var(--ease-apple) both;
+  animation: db-popover-down-in var(--dur-fast) var(--ease-ui) both;
 }
 .anim-popover-down-out {
   transform-origin: top right;
-  animation: db-popover-down-out var(--dur-micro) var(--ease-apple-exit) both;
+  animation: db-popover-down-out var(--dur-micro) var(--ease-ui-exit) both;
 }
 
 .anim-popover-down-left-in {
   transform-origin: top left;
-  animation: db-popover-down-in var(--dur-fast) var(--ease-apple) both;
+  animation: db-popover-down-in var(--dur-fast) var(--ease-ui) both;
 }
 .anim-popover-down-left-out {
   transform-origin: top left;
-  animation: db-popover-down-out var(--dur-micro) var(--ease-apple-exit) both;
+  animation: db-popover-down-out var(--dur-micro) var(--ease-ui-exit) both;
 }
 
 .anim-popover-up-in {
   transform-origin: bottom left;
-  animation: db-popover-up-in var(--dur-fast) var(--ease-apple) both;
+  animation: db-popover-up-in var(--dur-fast) var(--ease-ui) both;
 }
 .anim-popover-up-out {
   transform-origin: bottom left;
-  animation: db-popover-up-out var(--dur-micro) var(--ease-apple-exit) both;
+  animation: db-popover-up-out var(--dur-micro) var(--ease-ui-exit) both;
 }
 
 .anim-toast-in {
-  animation: db-toast-in var(--dur-fast) var(--ease-apple) both;
+  animation: db-toast-in var(--dur-fast) var(--ease-ui) both;
 }
 .anim-toast-out {
-  animation: db-toast-out var(--dur-micro) var(--ease-apple-exit) both;
+  animation: db-toast-out var(--dur-micro) var(--ease-ui-exit) both;
 }
 
 .anim-dock-swap {
-  animation: db-dock-swap var(--dur-fast) var(--ease-apple) both;
+  animation: db-dock-swap var(--dur-fast) var(--ease-ui) both;
 }
 
 .anim-slide-settle {
-  animation: db-slide-settle var(--dur-micro) var(--ease-apple) both;
+  animation: db-slide-settle var(--dur-micro) var(--ease-ui) both;
 }
 
 .anim-check-pop {
-  animation: db-check-pop 200ms var(--ease-apple-spring) both;
+  animation: db-check-pop 200ms var(--ease-ui-spring) both;
 }
 
 .anim-msg-in {
-  animation: db-msg-in var(--dur-fast) var(--ease-apple) both;
+  animation: db-msg-in var(--dur-fast) var(--ease-ui) both;
 }
 
-/* Smooth interruptible grid-row disclosure (zero layout jump) */
+/* Smooth interruptible grid-row disclosure */
 .ui-collapse {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows var(--dur-base) var(--ease-apple),
-    opacity var(--dur-fast) var(--ease-apple);
+    grid-template-rows var(--dur-base) var(--ease-ui),
+    opacity var(--dur-fast) var(--ease-ui);
 }
 .ui-collapse[data-open="true"] {
   grid-template-rows: 1fr;

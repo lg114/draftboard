@@ -81,24 +81,24 @@ export function SourceContextModal({
       aria-modal="true"
       aria-label="原文溯源上下文"
       onClick={onClose}
-      className={`fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4 sm:p-6 ${
+      className={`fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4 sm:p-6 ${
         exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
       }`}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-3xl max-h-[82vh] bg-surface rounded-2xl border border-black/[0.1] shadow-2xl flex flex-col overflow-hidden ${
+        className={`w-full max-w-3xl max-h-[82vh] bg-ui-surface rounded-xl border border-ui-border-subtle shadow-2xl flex flex-col overflow-hidden ${
           exiting ? "anim-modal-out" : "anim-modal-in"
         }`}
       >
-        <div className="px-5 py-3.5 border-b border-black/[0.08] flex items-center justify-between gap-3 shrink-0 bg-surface-subtle">
+        <div className="px-5 py-3.5 border-b border-ui-border-subtle flex items-center justify-between gap-3 shrink-0 bg-ui-bg">
           <div className="flex items-center gap-2.5 min-w-0">
-            <FileText className="w-4 h-4 text-ink shrink-0" />
+            <FileText className="w-4 h-4 text-ui-icon shrink-0" />
             <div className="min-w-0">
-              <div className="text-[14.5px] font-semibold text-ink truncate">
+              <div className="text-[14.5px] font-semibold text-ui-text truncate">
                 {activeFrag.asset_id}
               </div>
-              <div className="text-[13px] text-ink-secondary">
+              <div className="text-[12.5px] text-ui-text-muted">
                 引用位置：{formatFragmentLocation(activeFrag.location)}（高亮区域为本页溯源依据）
               </div>
             </div>
@@ -107,14 +107,14 @@ export function SourceContextModal({
             type="button"
             onClick={onClose}
             aria-label="关闭原文视图"
-            className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-black/[0.06] cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto clean-scroll p-4 bg-canvas">
-          <div className="bg-surface rounded-xl border border-black/[0.08] overflow-hidden divide-y divide-black/[0.03] font-mono text-[13px] leading-relaxed">
+        <div className="flex-1 min-h-0 overflow-y-auto clean-scroll p-4 bg-ui-bg">
+          <div className="bg-ui-surface rounded-xl border border-ui-border-subtle overflow-hidden divide-y divide-ui-border-subtle/40 font-mono text-[13px] leading-relaxed">
             {lines.map((ln, i) => {
               const lineNo = i + 1;
               const hit = isHighlighted(lineNo, ln);
@@ -129,11 +129,11 @@ export function SourceContextModal({
                   ref={attachRef ? firstHighlightRef : undefined}
                   className={`flex items-start gap-3 px-3.5 py-1 ${
                     hit
-                      ? "bg-warning-bg border-l-[3px] border-l-warning-dot text-ink font-medium"
-                      : "text-ink-secondary"
+                      ? "bg-ui-warning-bg border-l-[3px] border-l-ui-warning text-ui-text font-medium"
+                      : "text-ui-text-secondary"
                   }`}
                 >
-                  <span className="w-9 text-right text-ink-muted select-none shrink-0 tabular-nums">
+                  <span className="w-9 text-right text-ui-text-disabled select-none shrink-0 tabular-nums">
                     {lineNo}
                   </span>
                   <span className="whitespace-pre-wrap break-words flex-1 min-w-0 font-sans">

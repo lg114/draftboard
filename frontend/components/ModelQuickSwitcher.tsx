@@ -154,16 +154,16 @@ export function ModelQuickSwitcher({
             ? `当前模型：${activeModel}，点击打开模型设置`
             : "尚未配置大模型，点击前往设置"
         }
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer min-w-0"
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[12.5px] text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer min-w-0"
       >
         {!configured ? (
-          <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
+          <span className="w-1.5 h-1.5 rounded-full bg-ui-warning shrink-0" />
         ) : (
           <ProviderIcon provider={activeProvider} size="sm" />
         )}
         <span
           className={`truncate font-mono ${
-            compact ? "max-w-[175px]" : "max-w-[215px]"
+            compact ? "max-w-[140px]" : "max-w-[190px]"
           }`}
         >
           {configured ? activeModel : "配置模型"}
@@ -180,18 +180,18 @@ export function ModelQuickSwitcher({
         aria-expanded={open}
         aria-label="切换或管理模型"
         title={`当前模型：${activeModel}（点击快速切换）`}
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[13px] text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer min-w-0"
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[12.5px] text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer min-w-0"
       >
         <ProviderIcon provider={activeProvider} size="sm" />
         <span
-          className={`truncate font-mono text-ink ${
-            compact ? "max-w-[175px]" : "max-w-[215px]"
+          className={`truncate font-mono text-ui-text-secondary ${
+            compact ? "max-w-[140px]" : "max-w-[190px]"
           }`}
         >
           {activeModel}
         </span>
         <ChevronDown
-          className={`w-3 h-3 text-ink-muted shrink-0 transition-transform duration-[160ms] ${
+          className={`w-3 h-3 text-ui-icon shrink-0 transition-transform duration-[160ms] ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -199,14 +199,14 @@ export function ModelQuickSwitcher({
 
       {mounted && (
         <div
-          className={`absolute bottom-full mb-1.5 z-50 w-72 apple-glass dock-shadow rounded-2xl p-1.5 space-y-1.5 ${
+          className={`absolute bottom-full mb-1.5 z-50 w-72 ui-popover rounded-xl p-1.5 space-y-1.5 ${
             align === "right" ? "right-0 origin-bottom-right" : "left-0 origin-bottom-left"
           } ${exiting ? "anim-popover-up-out pointer-events-none" : "anim-popover-up-in"}`}
         >
           <div className="max-h-64 overflow-y-auto clean-scroll space-y-2 p-0.5">
             {groups.map((grp) => (
               <div key={grp.key} className="space-y-0.5">
-                <div className="px-2 py-1 flex items-center gap-1.5 text-[13px] font-semibold text-ink-secondary">
+                <div className="px-2 py-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-ui-text-muted">
                   <ProviderIcon provider={grp.provider} size="sm" />
                   <span className="truncate">{grp.name}</span>
                 </div>
@@ -219,15 +219,15 @@ export function ModelQuickSwitcher({
                       type="button"
                       disabled={Boolean(switching)}
                       onClick={() => void handleQuickSelect(grp.profileId, m)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-[13px] transition-colors cursor-pointer ${
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-[13px] transition-colors cursor-pointer ${
                         isCurrent
-                          ? "bg-surface text-ink font-semibold shadow-2xs"
-                          : "text-ink-secondary hover:text-ink hover:bg-black/[0.05]"
+                          ? "bg-ui-bg-selected text-ui-text font-medium"
+                          : "text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover"
                       }`}
                     >
                       <span className="font-mono truncate">{m}</span>
                       {isCurrent && (
-                        <Check className="w-3.5 h-3.5 text-success shrink-0 anim-check-pop" />
+                        <Check className="w-3.5 h-3.5 text-ui-success shrink-0 anim-check-pop" />
                       )}
                     </button>
                   );
@@ -236,14 +236,14 @@ export function ModelQuickSwitcher({
             ))}
           </div>
 
-          <div className="pt-1 border-t border-black/[0.07]">
+          <div className="pt-1 border-t border-ui-border-subtle">
             <button
               type="button"
               onClick={() => {
                 setOpen(false);
                 onOpenSettings();
               }}
-              className="w-full text-left px-2.5 py-1.5 rounded-xl flex items-center gap-2 text-[13px] font-medium text-ink-secondary hover:text-ink hover:bg-black/[0.05] transition-colors cursor-pointer"
+              className="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-[13px] font-medium text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
             >
               <Settings className="w-3.5 h-3.5 shrink-0" />
               <span>管理服务商与模型设置…</span>

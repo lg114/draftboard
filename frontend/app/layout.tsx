@@ -27,8 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className={`${inter.variable} ${notoSansSC.variable}`}>
-      <body className="min-h-screen bg-canvas text-ink font-sans">
+    <html lang="zh-CN" data-theme="dark" className={`${inter.variable} ${notoSansSC.variable}`}>
+      <body className="min-h-screen bg-ui-bg text-ui-text font-sans">
         {children}
       </body>
     </html>

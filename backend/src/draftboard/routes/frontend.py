@@ -39,6 +39,16 @@ def next_static_assets(subpath: str):
     return FileResponse(target)
 
 
+@router.get("/providers/{subpath:path}")
+def provider_icon_assets(subpath: str):
+    web_root = _web_dir().resolve()
+    providers_root = (web_root / "providers").resolve()
+    target = (providers_root / subpath).resolve()
+    if not target.is_relative_to(providers_root) or not target.is_file():
+        raise HTTPException(404, "图标资源不存在")
+    return FileResponse(target)
+
+
 @router.api_route("/p/{rest_of_path:path}", methods=["GET", "HEAD"])
 def frontend_project_routes(rest_of_path: str):
     web_root = _web_dir().resolve()

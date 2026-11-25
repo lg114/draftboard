@@ -8,8 +8,8 @@ import {
   Images,
   Presentation,
 } from "lucide-react";
-import { usePresence } from "../../lib/usePresence";
 import { useDismiss } from "../../lib/useDismiss";
+import { usePresence } from "../../lib/usePresence";
 
 interface ExportFormatMenuProps {
   pid: string;
@@ -44,110 +44,109 @@ export function ExportFormatMenu({
         aria-haspopup="menu"
         aria-label={label}
         title={label}
-        className={`px-3 py-1.5 rounded-full text-[13px] font-medium text-ink transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+        className={`px-3 py-1.5 rounded-lg text-[13px] font-medium text-ui-text-secondary hover:text-ui-text border border-ui-border-subtle transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
           open
-            ? "bg-black/[0.1]"
-            : "bg-black/[0.05] hover:bg-black/[0.1]"
+            ? "bg-ui-bg-selected text-ui-text"
+            : "bg-ui-surface-input hover:bg-ui-control-hover"
         }`}
       >
-        <FileDown className="w-3.5 h-3.5 text-ink-secondary lg:hidden" />
+        <FileDown className="w-3.5 h-3.5 text-ui-icon lg:hidden" />
         <span className="hidden lg:inline">{label}</span>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-ink-secondary transition-transform ${
+          className={`w-3.5 h-3.5 text-ui-icon transition-transform ${
             open ? "rotate-180" : ""
           }`}
         />
       </button>
 
       {mounted && (
-        <>
-          <div
-            role="menu"
-            className={`absolute right-0 top-full mt-2 z-50 w-64 apple-glass dock-shadow rounded-2xl p-1.5 space-y-0.5 ${
-              exiting ? "anim-popover-down-out pointer-events-none" : "anim-popover-down-in"
-            }`}
-          >
-            {includePptx && (
+        <div
+          role="menu"
+          className={`absolute right-0 top-full mt-2 z-50 w-64 ui-popover rounded-xl p-1.5 space-y-0.5 ${
+            exiting
+              ? "anim-popover-down-out pointer-events-none"
+              : "anim-popover-down-in"
+          }`}
+        >
+          {includePptx && (
+            <a
+              role="menuitem"
+              href={`/api/projects/${pid}/download`}
+              download
+              onClick={() => setOpen(false)}
+              className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-ui-control-hover transition-colors"
+            >
+              <Presentation className="w-4 h-4 text-ui-icon shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium text-ui-text">
+                  下载旧版 PPTX
+                </div>
+                <div className="text-[12px] text-ui-text-muted">
+                  下载最近一次成功导出的文件
+                </div>
+              </div>
+            </a>
+          )}
+
+          {canDownloadRendered && (
+            <>
               <a
                 role="menuitem"
-                href={`/api/projects/${pid}/download`}
+                href={`/api/projects/${pid}/download/pdf`}
                 download
                 onClick={() => setOpen(false)}
-                className="flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-black/[0.05] transition-colors"
+                className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-ui-control-hover transition-colors"
               >
-                <Presentation className="w-4 h-4 text-ink-secondary shrink-0 mt-0.5" />
+                <FileDown className="w-4 h-4 text-ui-icon shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-ink">
-                    下载旧版 PPTX
+                  <div className="text-[13px] font-medium text-ui-text">
+                    导出矢量 PDF
                   </div>
-                  <div className="text-[13px] text-ink-muted">
-                    上一版已导出的演示文稿
+                  <div className="text-[12px] text-ui-text-muted">
+                    适合邮件审阅与跨设备分发
                   </div>
                 </div>
               </a>
-            )}
-
-            {canDownloadRendered && (
-              <>
-                <a
-                  role="menuitem"
-                  href={`/api/projects/${pid}/download/pdf`}
-                  download
-                  onClick={() => setOpen(false)}
-                  className="flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-black/[0.05] transition-colors"
-                >
-                  <FileDown className="w-4 h-4 text-ink-secondary shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-ink">
-                      PDF 文档
-                    </div>
-                    <div className="text-[13px] text-ink-muted">
-                      矢量排版，含逐页目录书签
-                    </div>
-                  </div>
-                </a>
-
-                <a
-                  role="menuitem"
-                  href={`/api/projects/${pid}/download/images`}
-                  download
-                  onClick={() => setOpen(false)}
-                  className="flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-black/[0.05] transition-colors"
-                >
-                  <Images className="w-4 h-4 text-ink-secondary shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-ink">
-                      逐页高清图片
-                    </div>
-                    <div className="text-[13px] text-ink-muted">
-                      1920×1080 PNG 打包 (.zip)
-                    </div>
-                  </div>
-                </a>
-              </>
-            )}
-
-            {canDownloadNotes && (
               <a
                 role="menuitem"
-                href={`/api/projects/${pid}/download/notes`}
+                href={`/api/projects/${pid}/download/pngs.zip`}
                 download
                 onClick={() => setOpen(false)}
-                className="flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-black/[0.05] transition-colors"
+                className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-ui-control-hover transition-colors"
               >
-                <FileText className="w-4 h-4 text-ink-secondary shrink-0 mt-0.5" />
+                <Images className="w-4 h-4 text-ui-icon shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-ink">
-                    演讲者讲稿与出处
+                  <div className="text-[13px] font-medium text-ui-text">
+                    导出逐页高清 PNG (ZIP)
                   </div>
-                  <div className="text-[13px] text-ink-muted">
-                    含口播备注与素材溯源 (.md)
+                  <div className="text-[12px] text-ui-text-muted">
+                    1920×1080 逐页高清图包
                   </div>
                 </div>
               </a>
-            )}
-          </div>
-        </>
+            </>
+          )}
+
+          {canDownloadNotes && (
+            <a
+              role="menuitem"
+              href={`/api/projects/${pid}/download/notes.md`}
+              download
+              onClick={() => setOpen(false)}
+              className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-ui-control-hover transition-colors"
+            >
+              <FileText className="w-4 h-4 text-ui-icon shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium text-ui-text">
+                  演讲者讲稿与出处 (MD)
+                </div>
+                <div className="text-[12px] text-ui-text-muted">
+                  含每页大纲、口播备注与溯源引用
+                </div>
+              </div>
+            </a>
+          )}
+        </div>
       )}
     </div>
   );

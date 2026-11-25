@@ -7,7 +7,12 @@ import {
   Check,
   ChevronDown,
   Download,
-  Play,
+  FileDown,
+  FileText,
+  Images,
+  PanelLeft,
+  PanelRight,
+  Presentation,
   Redo2,
   RefreshCw,
   Settings,
@@ -16,10 +21,9 @@ import {
   Undo2,
 } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
-import { usePresence } from "../../lib/usePresence";
 import { useDismiss } from "../../lib/useDismiss";
+import { usePresence } from "../../lib/usePresence";
 import { BrandLogo } from "../BrandLogo";
-import { ExportFormatMenu } from "./ExportFormatMenu";
 import {
   PROJECT_STAGE_STEPS,
   resolveWorkspaceStageKey,
@@ -75,7 +79,6 @@ export function WorkspaceHeader({
   isGenerating,
   currentStage,
   exportInSync,
-  showMaterialsDrawer,
   isChatOpen,
   llmConfigured = true,
   activeModelLabel = "",
@@ -95,12 +98,11 @@ export function WorkspaceHeader({
   onSaveOutline,
   onFlushBeforeLeave,
   onRenameProject,
-  onUploadClick,
-  onGenerateOutline,
   onConfirmGenerate,
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const [isVersionOpen, setIsVersionOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   const handleGuardedNavigate = async (
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -124,16 +126,26 @@ export function WorkspaceHeader({
       router.push(href);
     }
   };
+
   const { mounted: versionMounted, exiting: versionExiting } = usePresence(
     isVersionOpen,
     130
   );
+  const { mounted: exportMounted, exiting: exportExiting } = usePresence(
+    isExportOpen,
+    130
+  );
+
   const versionTriggerRef = useRef<HTMLButtonElement | null>(null);
   const versionPopoverRef = useRef<HTMLDivElement | null>(null);
+  const exportWrapRef = useRef<HTMLDivElement | null>(null);
+
   useDismiss(isVersionOpen, () => setIsVersionOpen(false), [
     versionTriggerRef,
     versionPopoverRef,
   ]);
+  useDismiss(isExportOpen, () => setIsExportOpen(false), [exportWrapRef]);
+
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
@@ -149,35 +161,23 @@ export function WorkspaceHeader({
       : sortedOutlines.length;
 
   const needsReexport = currentStage === "ppt_ready" && !exportInSync;
-
   const hasOutline = Boolean(outline && outline.items.length > 0);
-  const stageMeta = PROJECT_STAGE_STEPS[resolveWorkspaceStageKey(currentStage, outline)];
+  const stageMeta =
+    PROJECT_STAGE_STEPS[resolveWorkspaceStageKey(currentStage, outline)];
 
   return (
-    <header className="h-[52px] apple-glass border-b border-black/[0.07] px-4 flex items-center justify-between gap-3 sticky top-0 z-40 shrink-0">
-      {/* Left: Sidebar Toggle + Brand + Project Name & macOS Pages-style Version Popover */}
+    <header className="h-12 bg-ui-bg border-b border-ui-border-subtle px-3.5 flex items-center justify-between gap-3 sticky top-0 z-40 shrink-0 select-none">
+      {/* Left: Brand / Reopen Left Rail / Project Name / Save & Version */}
       <div className="flex items-center gap-2.5 min-w-0">
-        {hasOutline && (
+        {hasOutline && !leftOpen && (
           <button
             type="button"
             onClick={onToggleLeft}
-            title={leftOpen ? "收起幻灯片缩略轨" : "展开幻灯片缩略轨"}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-              leftOpen
-                ? "text-ink bg-black/[0.06] hover:bg-black/[0.1]"
-                : "text-ink-muted hover:text-ink hover:bg-black/[0.06]"
-            }`}
+            aria-label="展开左侧边栏"
+            title="展开左侧边栏"
+            className="p-1.5 rounded-md text-ui-icon hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer shrink-0"
           >
-            <svg
-              className="w-4 h-4"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
-              <line x1="7.5" y1="3.5" x2="7.5" y2="16.5" />
-            </svg>
+            <PanelLeft className="w-4 h-4" />
           </button>
         )}
 
@@ -187,10 +187,10 @@ export function WorkspaceHeader({
           className="hover:opacity-85 transition-opacity shrink-0"
           title="返回文稿列表"
         >
-          <BrandLogo className="w-7 h-7" />
+          <BrandLogo className="w-6 h-6" />
         </Link>
 
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           {isEditingName ? (
             <form
               onSubmit={(e) => {
@@ -211,8 +211,14 @@ export function WorkspaceHeader({
                     void onRenameProject(nameDraft.trim());
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setIsEditingName(false);
+                  }
+                }}
                 autoFocus
-                className="text-[14px] font-semibold bg-white border border-ink rounded-lg px-2 py-0.5 text-ink outline-none w-44"
+                className="ui-field text-[13.5px] font-semibold px-2 py-0.5 w-44"
               />
             </form>
           ) : (
@@ -224,32 +230,30 @@ export function WorkspaceHeader({
                 setIsEditingName(true);
               }}
               title="点击重命名文稿"
-              className="text-[14.5px] font-semibold tracking-[-0.015em] text-ink hover:opacity-70 truncate cursor-pointer transition-opacity"
+              className="text-[14px] font-semibold tracking-[-0.01em] text-ui-text hover:text-white truncate cursor-pointer transition-colors"
             >
               {project?.name || pid}
             </button>
           )}
 
-          {/* Inline Save / Version Trigger (macOS Pages style) */}
+          {/* Quiet Inline Save & Version Trigger */}
           {hasOutline && (
             <div className="relative flex items-center gap-1.5 shrink-0">
               {isSaving ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/[0.05] text-ink-secondary text-[13px] font-medium whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-ink animate-pulse" />
-                  <span>自动保存中…</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ui-text-muted whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-ui-accent animate-pulse" />
+                  <span>保存中…</span>
                 </span>
               ) : isStale ? (
                 <button
                   type="button"
                   onClick={onSaveOutline}
-                  className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-warning-dot/15 hover:bg-warning-dot/25 text-warning text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-ui-warning-bg text-ui-warning text-[12.5px] font-medium hover:brightness-110 transition-all cursor-pointer whitespace-nowrap"
                   title="立即保存修改 (Ctrl/⌘+S，或停顿 1.2 秒自动保存)"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-warning-dot" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-ui-warning" />
                   <span>未保存</span>
-                  <span className="font-semibold underline underline-offset-2">
-                    保存
-                  </span>
+                  <span className="underline underline-offset-2">保存</span>
                 </button>
               ) : (
                 <button
@@ -257,316 +261,386 @@ export function WorkspaceHeader({
                   type="button"
                   onClick={() => setIsVersionOpen(!isVersionOpen)}
                   aria-expanded={isVersionOpen}
-                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-black/[0.05] text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer whitespace-nowrap"
-                  title="查看与切换历史大纲版本"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-ui-bg-hover text-[12.5px] text-ui-text-muted hover:text-ui-text-secondary transition-colors cursor-pointer whitespace-nowrap"
+                  title={`已保存（第 ${versionOrdinal} 版），点击查看历史版本`}
                 >
-                  <span className="hidden md:inline">已保存</span>
-                  <span className="font-medium text-ink">
-                    第 {versionOrdinal} 版
-                  </span>
+                  <Check className="w-3.5 h-3.5 text-ui-icon" />
+                  <span>已保存</span>
                   <ChevronDown
-                    className={`w-3.5 h-3.5 transition-transform ${
+                    className={`w-3 h-3 text-ui-icon-quiet transition-transform ${
                       isVersionOpen ? "rotate-180" : ""
                     }`}
                   />
                 </button>
               )}
 
-              {(onUndo || onRedo) && (canUndo || canRedo) && (
-                <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-black/[0.08] anim-msg-in">
-                  <button
-                    type="button"
-                    disabled={!canUndo}
-                    onClick={onUndo}
-                    aria-label="撤销"
-                    title="撤销 (Ctrl/⌘+Z)"
-                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none ui-press cursor-pointer"
-                  >
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!canRedo}
-                    onClick={onRedo}
-                    aria-label="重做"
-                    title="重做 (Ctrl/⌘+Shift+Z)"
-                    className="p-1.5 rounded-lg text-ink-secondary hover:text-ink hover:bg-black/[0.06] disabled:opacity-30 disabled:pointer-events-none ui-press cursor-pointer"
-                  >
-                    <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
               {versionMounted && sortedOutlines.length > 0 && (
-                <>
-                  <div
-                    ref={versionPopoverRef}
-                    className={`absolute left-0 top-full mt-2 z-50 w-72 apple-glass dock-shadow rounded-2xl p-2 space-y-1 ${
-                      versionExiting
-                        ? "anim-popover-down-left-out pointer-events-none"
-                        : "anim-popover-down-left-in"
-                    }`}
-                  >
-                    <div className="px-2.5 py-1 text-[13px] font-semibold text-ink-secondary">
-                      大纲版本历史 ({sortedOutlines.length})
-                    </div>
-                    <div className="max-h-60 overflow-y-auto clean-scroll space-y-0.5">
-                      {sortedOutlines.map((o, idx) => {
-                        const isSelected = o.outline_version === version;
-                        const isExported =
-                          o.outline_version === project?.generated_outline_version;
-                        const num = sortedOutlines.length - idx;
-                        return (
-                          <button
-                            key={o.outline_version}
-                            type="button"
-                            onClick={() => {
-                              setIsVersionOpen(false);
-                              onSelectVersion(o.outline_version);
-                            }}
-                            className={`w-full text-left px-2.5 py-2 rounded-xl text-[13px] flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                              isSelected
-                                ? "bg-black/[0.06] text-ink font-medium"
-                                : "text-ink-secondary hover:bg-black/[0.04]"
-                            }`}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold text-ink">
-                                  第 {num} 版
-                                </span>
-                                <span className="font-mono text-[13px] text-ink-muted">
-                                  {o.outline_version}
-                                </span>
-                              </div>
-                              <div className="text-[13px] text-ink-muted flex items-center gap-2.5 mt-0.5">
-                                <span>{o.item_count} 页</span>
-                                <span>{o.is_confirmed ? "已确认" : "草稿"}</span>
-                                {isExported && (
-                                  <span className="text-ink font-medium">
-                                    当前 PPT
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <Check className="w-3.5 h-3.5 text-ink shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                <div
+                  ref={versionPopoverRef}
+                  className={`absolute left-0 top-full mt-2 z-50 w-72 ui-popover rounded-xl p-2 space-y-1 ${
+                    versionExiting
+                      ? "anim-popover-down-left-out pointer-events-none"
+                      : "anim-popover-down-left-in"
+                  }`}
+                >
+                  <div className="px-2.5 py-1 text-[12.5px] font-semibold text-ui-text-muted">
+                    大纲版本历史 ({sortedOutlines.length})
                   </div>
-                </>
+                  <div className="max-h-60 overflow-y-auto clean-scroll space-y-0.5">
+                    {sortedOutlines.map((o, idx) => {
+                      const isSelected = o.outline_version === version;
+                      const isExported =
+                        o.outline_version ===
+                        project?.generated_outline_version;
+                      const num = sortedOutlines.length - idx;
+                      return (
+                        <button
+                          key={o.outline_version}
+                          type="button"
+                          onClick={() => {
+                            setIsVersionOpen(false);
+                            onSelectVersion(o.outline_version);
+                          }}
+                          className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                            isSelected
+                              ? "bg-ui-bg-selected text-ui-text font-medium"
+                              : "text-ui-text-secondary hover:bg-ui-control-hover"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-ui-text">
+                                第 {num} 版
+                              </span>
+                              <span className="font-mono text-[12px] text-ui-text-muted">
+                                {o.outline_version}
+                              </span>
+                            </div>
+                            <div className="text-[12px] text-ui-text-muted flex items-center gap-2 mt-0.5">
+                              <span>{o.item_count} 页</span>
+                              <span>{o.is_confirmed ? "已确认" : "草稿"}</span>
+                              {isExported && (
+                                <span className="text-ui-accent-text font-medium">
+                                  当前 PPT
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-ui-accent-text shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Right: Quiet Utilities + Primary Action + Right Inspector Toggle */}
+      {/* Right: Quiet Utilities + Preview + Single Blue Export CTA */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* 4-Step Progress Indicator — only shown during pre-outline onboarding where stage guidance matters */}
         {!hasOutline && (
-          <div
-            className="flex items-center gap-2.5 px-2.5 py-1 rounded-full"
-            aria-label={`当前步骤 ${stageMeta.step}/4：${stageMeta.label}`}
-          >
-            <div className="flex items-center gap-1 w-[72px]">
-              {[1, 2, 3, 4].map((idx) => (
-                <span
-                  key={idx}
-                  className={`h-[3px] flex-1 rounded-full transition-colors ${
-                    idx <= stageMeta.step ? "bg-ink" : "bg-black/[0.12]"
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-[13px] font-medium text-ink tabular-nums whitespace-nowrap">
-              {stageMeta.step}/4 {stageMeta.label}
-            </span>
-          </div>
-        )}
-
-        {currentStage !== "no_materials" && (
-          <button
-            type="button"
-            onClick={onToggleMaterialsDrawer}
-            className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-              showMaterialsDrawer
-                ? "bg-black/[0.08] text-ink"
-                : "text-ink hover:bg-black/[0.05]"
-            }`}
-          >
-            <span>素材</span>
-            <span className="text-ink-secondary tabular-nums">
-              {materialsCount}
-            </span>
-          </button>
-        )}
-
-        {(!hasOutline || !rightOpen) && (
-          <button
-            type="button"
-            onClick={onToggleChat}
-            title="打开 PPT 创作 Agent 对话 (Ctrl/⌘+L)"
-            className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-              isChatOpen
-                ? "bg-black/[0.08] text-ink"
-                : "text-ink hover:bg-black/[0.05]"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">AI 对话</span>
-          </button>
-        )}
-
-        {hasOutline && onOpenPreflight && (
-          <button
-            type="button"
-            onClick={onOpenPreflight}
-            title="交付前体检：一键检查排版安全、事实溯源、配图与备注覆盖"
-            className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
-            <span className="hidden lg:inline">交付体检</span>
-          </button>
-        )}
-
-        {(project?.download_available || hasOutline) && (
-          <Link
-            href={`/p/${pid}/preview`}
-            onClick={(e) => void handleGuardedNavigate(e, `/p/${pid}/preview`)}
-            className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors flex items-center gap-1.5 whitespace-nowrap"
-            title="全屏放映与演讲者视图"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span className="hidden lg:inline">放映</span>
-          </Link>
-        )}
-
-        {/* Note: In `no_materials` & `has_materials_no_outline`, the center onboarding card owns the single primary CTA. */}
-
-        {currentStage === "outline_ready" && (
-          <div className="flex items-center gap-1.5">
-            <ExportFormatMenu
-              pid={pid}
-              label="更多格式"
-              canDownloadRendered={false}
-              canDownloadNotes={true}
-            />
-            <button
-              type="button"
-              onClick={onConfirmGenerate}
-              disabled={isGenerating || !version}
-              className="ui-btn-primary px-4 py-1.5 text-[13px] whitespace-nowrap disabled:opacity-45"
+          <>
+            <div
+              className="hidden sm:flex items-center gap-2 px-2 py-1"
+              aria-label={`当前步骤 ${stageMeta.step}/4：${stageMeta.label}`}
             >
-              {isGenerating ? "编译中…" : "生成 PPTX"}
-            </button>
-          </div>
-        )}
-
-        {currentStage === "ppt_ready" && (
-          <div className="flex items-center gap-1.5">
-            {needsReexport ? (
-              <>
-                <ExportFormatMenu
-                  pid={pid}
-                  label="更多格式"
-                  includePptx={true}
-                  canDownloadRendered={true}
-                  canDownloadNotes={true}
-                />
-                <button
-                  type="button"
-                  onClick={onConfirmGenerate}
-                  disabled={isGenerating}
-                  title="内容或主题已更新，点击重新编译最新版 PPTX 与 PDF"
-                  className="ui-btn-primary px-3.5 py-1.5 text-[13px] whitespace-nowrap disabled:opacity-45 flex items-center gap-1.5"
-                >
-                  <RefreshCw
-                    className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
+              <div className="flex items-center gap-1 w-14">
+                {[1, 2, 3, 4].map((idx) => (
+                  <span
+                    key={idx}
+                    className={`h-[3px] flex-1 rounded-full ${
+                      idx <= stageMeta.step
+                        ? "bg-ui-accent"
+                        : "bg-ui-border-subtle"
+                    }`}
                   />
-                  <span>{isGenerating ? "编译中…" : "更新 PPTX"}</span>
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onConfirmGenerate}
-                  disabled={isGenerating}
-                  className="p-1.5 rounded-full text-ink-secondary hover:text-ink hover:bg-black/[0.06] ui-press cursor-pointer disabled:opacity-45"
-                  title="重新编译 PPTX"
-                >
-                  <RefreshCw
-                    className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
-                  />
-                </button>
-                <ExportFormatMenu
-                  pid={pid}
-                  label="更多格式"
-                  canDownloadRendered={true}
-                  canDownloadNotes={true}
-                />
-                <a
-                  href={`/api/projects/${pid}/download`}
-                  download
-                  className="ui-btn-primary px-4 py-1.5 text-[13px] flex items-center gap-1.5 whitespace-nowrap"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>下载 PPTX</span>
-                </a>
-              </>
-            )}
-          </div>
-        )}
+                ))}
+              </div>
+              <span className="text-[12.5px] text-ui-text-muted tabular-nums whitespace-nowrap">
+                {stageMeta.step}/4 {stageMeta.label}
+              </span>
+            </div>
 
-        {/* Global App Chrome Group (separated from document actions) */}
-        <div className="flex items-center gap-1 pl-2 ml-0.5 border-l border-black/[0.09] shrink-0">
-          <button
-            type="button"
-            onClick={onOpenLLMSettings}
-            aria-label="模型设置"
-            title={
-              llmConfigured && activeModelLabel
-                ? `模型设置（当前：${activeModelLabel}）`
-                : "模型设置（尚未配置，点击前往设置）"
-            }
-            className="relative px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
-          >
-            <Settings className="w-4 h-4 shrink-0" />
-            <span className="hidden xl:inline">模型设置</span>
-            {!llmConfigured && (
-              <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
+            {currentStage !== "no_materials" && (
+              <button
+                type="button"
+                onClick={onToggleMaterialsDrawer}
+                className="px-2.5 py-1 rounded-md text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+              >
+                <span>材料</span>
+                <span className="text-ui-text-muted tabular-nums">
+                  {materialsCount}
+                </span>
+              </button>
             )}
-          </button>
 
-          {hasOutline && (
             <button
               type="button"
-              onClick={onToggleRight}
-              aria-label={rightOpen ? "收起右侧面板" : "展开右侧面板"}
-              title={rightOpen ? "收起右侧面板" : "展开右侧面板"}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                rightOpen
-                  ? "text-ink bg-black/[0.06] hover:bg-black/[0.1]"
-                  : "text-ink-muted hover:text-ink hover:bg-black/[0.06]"
+              onClick={onToggleChat}
+              title="打开 AI 助手对话 (Ctrl/⌘+L)"
+              className={`px-2.5 py-1 rounded-md text-[13px] transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                isChatOpen
+                  ? "bg-ui-bg-selected text-ui-text"
+                  : "text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover"
               }`}
             >
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
-                <line x1="12.5" y1="3.5" x2="12.5" y2="16.5" />
-              </svg>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">AI 助手</span>
             </button>
-          )}
-        </div>
+
+            <button
+              type="button"
+              onClick={onOpenLLMSettings}
+              aria-label="模型设置"
+              title={
+                llmConfigured && activeModelLabel
+                  ? `模型设置（当前：${activeModelLabel}）`
+                  : "模型设置（尚未配置，点击前往设置）"
+              }
+              className="p-1.5 rounded-md text-ui-icon hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer inline-flex items-center gap-1"
+            >
+              <Settings className="w-4 h-4" />
+              {!llmConfigured && (
+                <span className="w-1.5 h-1.5 rounded-full bg-ui-warning" />
+              )}
+            </button>
+          </>
+        )}
+
+        {hasOutline && (
+          <>
+            {/* Quiet circular Undo / Redo buttons matching mockup */}
+            {(onUndo || onRedo) && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={!canUndo}
+                  onClick={onUndo}
+                  aria-label="撤销"
+                  title="撤销 (Ctrl/⌘+Z)"
+                  className="w-7 h-7 rounded-full border border-ui-border-subtle flex items-center justify-center text-ui-icon hover:text-ui-text hover:bg-ui-bg-hover hover:border-ui-border disabled:opacity-30 disabled:pointer-events-none ui-press cursor-pointer transition-colors"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!canRedo}
+                  onClick={onRedo}
+                  aria-label="重做"
+                  title="重做 (Ctrl/⌘+Shift+Z)"
+                  className="w-7 h-7 rounded-full border border-ui-border-subtle flex items-center justify-center text-ui-icon hover:text-ui-text hover:bg-ui-bg-hover hover:border-ui-border disabled:opacity-30 disabled:pointer-events-none ui-press cursor-pointer transition-colors"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Quiet Preview link */}
+            <Link
+              href={`/p/${pid}/preview`}
+              onClick={(e) =>
+                void handleGuardedNavigate(e, `/p/${pid}/preview`)
+              }
+              className="px-2.5 py-1 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors whitespace-nowrap"
+              title="全屏放映与演讲者视图"
+            >
+              预览
+            </Link>
+
+            {/* Single Primary Blue Export CTA + Unified Export/Preflight Popover */}
+            <div ref={exportWrapRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsExportOpen((v) => !v)}
+                aria-expanded={isExportOpen}
+                aria-haspopup="menu"
+                className="ui-btn-primary h-8 px-3.5 text-[13px] inline-flex items-center gap-1.5 whitespace-nowrap"
+              >
+                {isGenerating ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                <span>{isGenerating ? "导出中…" : "导出"}</span>
+              </button>
+
+              {exportMounted && (
+                <div
+                  role="menu"
+                  className={`absolute right-0 top-full mt-2 z-50 w-72 ui-popover rounded-xl p-2 space-y-1.5 ${
+                    exportExiting
+                      ? "anim-popover-down-out pointer-events-none"
+                      : "anim-popover-down-in"
+                  }`}
+                >
+                  {/* Primary Compile / Download Action */}
+                  <div className="p-2 rounded-lg bg-ui-surface-input border border-ui-border-subtle space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                      <span className="inline-flex items-center gap-1.5 text-ui-text-secondary">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            currentStage === "ppt_ready" && !needsReexport
+                              ? "bg-ui-success"
+                              : "bg-ui-warning"
+                          }`}
+                        />
+                        <span>
+                          {currentStage === "ppt_ready" && !needsReexport
+                            ? "PPTX 已与当前文稿同步"
+                            : needsReexport
+                            ? "文稿已更新，需重新编译"
+                            : "尚未编译 PPTX 文件"}
+                        </span>
+                      </span>
+                    </div>
+
+                    {currentStage === "ppt_ready" && !needsReexport ? (
+                      <div className="flex items-center gap-1.5">
+                        <a
+                          role="menuitem"
+                          href={`/api/projects/${pid}/download`}
+                          download
+                          onClick={() => setIsExportOpen(false)}
+                          className="flex-1 ui-btn-primary h-8 px-3 text-[13px] inline-flex items-center justify-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>下载 PPTX</span>
+                        </a>
+                        <button
+                          type="button"
+                          disabled={isGenerating}
+                          onClick={() => {
+                            setIsExportOpen(false);
+                            onConfirmGenerate();
+                          }}
+                          title="重新编译 PPTX"
+                          className="ui-btn-subtle h-8 px-2.5 text-[13px] inline-flex items-center justify-center"
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${
+                              isGenerating ? "animate-spin" : ""
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isGenerating || !version}
+                        onClick={() => {
+                          setIsExportOpen(false);
+                          onConfirmGenerate();
+                        }}
+                        className="w-full ui-btn-primary h-8 px-3 text-[13px] inline-flex items-center justify-center gap-1.5"
+                      >
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${
+                            isGenerating ? "animate-spin" : ""
+                          }`}
+                        />
+                        <span>
+                          {isGenerating
+                            ? "正在编译 PPTX…"
+                            : needsReexport
+                            ? "重新编译最新版 PPTX"
+                            : "立即编译 PPTX"}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Secondary formats & preflight */}
+                  <div className="space-y-0.5">
+                    {onOpenPreflight && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setIsExportOpen(false);
+                          onOpenPreflight();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-ui-icon shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-medium">交付体检</div>
+                          <div className="text-[12px] text-ui-text-muted">
+                            检查排版安全、事实溯源与备注
+                          </div>
+                        </div>
+                      </button>
+                    )}
+
+                    {currentStage === "ppt_ready" && needsReexport && (
+                      <a
+                        role="menuitem"
+                        href={`/api/projects/${pid}/download`}
+                        download
+                        onClick={() => setIsExportOpen(false)}
+                        className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover transition-colors"
+                      >
+                        <Presentation className="w-4 h-4 text-ui-icon shrink-0" />
+                        <span>下载上一版 PPTX</span>
+                      </a>
+                    )}
+
+                    {currentStage === "ppt_ready" && (
+                      <>
+                        <a
+                          role="menuitem"
+                          href={`/api/projects/${pid}/download/pdf`}
+                          download
+                          onClick={() => setIsExportOpen(false)}
+                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover transition-colors"
+                        >
+                          <FileDown className="w-4 h-4 text-ui-icon shrink-0" />
+                          <span>导出矢量 PDF</span>
+                        </a>
+                        <a
+                          role="menuitem"
+                          href={`/api/projects/${pid}/download/pngs.zip`}
+                          download
+                          onClick={() => setIsExportOpen(false)}
+                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover transition-colors"
+                        >
+                          <Images className="w-4 h-4 text-ui-icon shrink-0" />
+                          <span>导出逐页高清 PNG (ZIP)</span>
+                        </a>
+                      </>
+                    )}
+
+                    <a
+                      role="menuitem"
+                      href={`/api/projects/${pid}/download/notes.md`}
+                      download
+                      onClick={() => setIsExportOpen(false)}
+                      className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover transition-colors"
+                    >
+                      <FileText className="w-4 h-4 text-ui-icon shrink-0" />
+                      <span>导出演讲者讲稿 (Markdown)</span>
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {!rightOpen && (
+              <button
+                type="button"
+                onClick={onToggleRight}
+                aria-label="展开右侧面板"
+                title="展开右侧面板（AI 助手 / 属性）"
+                className="p-1.5 rounded-md text-ui-icon hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer shrink-0"
+              >
+                <PanelRight className="w-4 h-4" />
+              </button>
+            )}
+          </>
+        )}
       </div>
     </header>
   );

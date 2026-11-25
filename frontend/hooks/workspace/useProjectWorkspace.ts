@@ -103,7 +103,7 @@ export function useProjectWorkspace() {
   const [showMaterialsDrawer, setShowMaterialsDrawer] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<"edit" | "chat">("edit");
+  const [rightPanelTab, setRightPanelTab] = useState<"edit" | "chat">("chat");
 
   // Start with side panels collapsed on narrow windows so the stage stays usable.
   // (Run after mount to keep the statically pre-rendered markup hydration-safe.)

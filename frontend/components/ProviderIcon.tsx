@@ -41,13 +41,17 @@ export function ProviderIcon({
       ? "w-9 h-9 rounded-xl p-[7px]"
       : "w-7 h-7 rounded-lg p-[5px]";
 
+  const hasOfficialSvg = OFFICIAL_PROVIDER_SVGS.has(key);
+
   return (
     <span
-      className={`inline-flex items-center justify-center shrink-0 bg-surface border border-black/[0.08] shadow-2xs transition-opacity ${boxClass} ${
-        muted ? "opacity-65" : "opacity-100"
-      } ${className}`}
+      className={`inline-flex items-center justify-center shrink-0 border transition-opacity ${
+        hasOfficialSvg
+          ? "bg-[#F4F4F5] border-white/10"
+          : "bg-ui-surface-input border-ui-border-subtle"
+      } ${boxClass} ${muted ? "opacity-75" : "opacity-100"} ${className}`}
     >
-      {OFFICIAL_PROVIDER_SVGS.has(key) ? (
+      {hasOfficialSvg ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={`/providers/${key}.svg`}
@@ -58,7 +62,7 @@ export function ProviderIcon({
         />
       ) : (
         <Terminal
-          className="w-full h-full text-ink-secondary"
+          className="w-full h-full text-ui-icon"
           strokeWidth={1.8}
           aria-hidden="true"
         />

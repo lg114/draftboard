@@ -1,14 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  BookmarkPlus,
-  Layers,
-  Plus,
-  RotateCcw,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { BookmarkPlus, Layers, Plus, RotateCcw, Sparkles, X } from "lucide-react";
 import type { CanvasElement, OutlineItem } from "../../../lib/api";
 import { Collapse } from "../../ui/Collapse";
 import { AutoGrowTextarea } from "./inspectorUtils";
@@ -56,14 +49,14 @@ export function CustomCanvasInspector({
 
   return (
     <section className="space-y-4">
-      <div className="p-3.5 rounded-2xl bg-surface border border-black/[0.09] space-y-2.5">
+      <div className="p-3 rounded-xl bg-ui-surface border border-ui-border-subtle space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <Layers className="w-4 h-4 text-ink shrink-0" />
-            <span className="text-[14px] font-semibold text-ink whitespace-nowrap">
+            <Layers className="w-4 h-4 text-ui-icon shrink-0" />
+            <span className="text-[13.5px] font-semibold text-ui-text whitespace-nowrap">
               自由画布排版
             </span>
-            <span className="text-[13px] text-ink-muted shrink-0">
+            <span className="text-[12.5px] text-ui-text-muted shrink-0">
               {elements.length} 个元素
             </span>
           </div>
@@ -76,7 +69,7 @@ export function CustomCanvasInspector({
                   setSaveLayoutOpen((v) => !v);
                 }}
                 title="将当前自由画布结构收藏为常用版式，随时复用到其他页面"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer"
+                className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-1 text-[12px]"
               >
                 <BookmarkPlus className="w-3.5 h-3.5" />
                 <span>收藏</span>
@@ -87,7 +80,7 @@ export function CustomCanvasInspector({
                 type="button"
                 onClick={onClearCustomLayout}
                 title="放弃自由画布，恢复使用标准模板版式"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/[0.05] hover:bg-black/[0.1] text-[13px] font-medium text-ink transition-colors cursor-pointer"
+                className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-1 text-[12px]"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>恢复标准</span>
@@ -116,35 +109,34 @@ export function CustomCanvasInspector({
               value={saveLayoutName}
               onChange={(e) => setSaveLayoutName(e.target.value)}
               placeholder="输入版式名称（如：3卡片KPI页）"
-              className="flex-1 min-w-0 h-8 px-2.5 rounded-lg bg-canvas border border-black/15 text-[13px] text-ink outline-none"
+              className="ui-field flex-1 min-w-0 h-8 px-2.5 text-[12.5px]"
             />
             <button
               type="submit"
               disabled={savingLayout || !saveLayoutName.trim()}
-              className="ui-btn-primary h-8 px-3 text-[13px] shrink-0"
+              className="ui-btn-primary h-8 px-3 text-[12.5px] shrink-0"
             >
               {savingLayout ? "保存…" : "保存"}
             </button>
           </form>
         </Collapse>
-        <p className="text-[13px] text-ink-secondary leading-relaxed">
-          点击左侧画布元素可直接拖拽对齐、缩放、改字号配色或切换图表类型；也可以在下方改文字，或用「AI
-          对话」重构整页布局。
+        <p className="text-[12.5px] text-ui-text-muted leading-relaxed">
+          点击左侧画布元素可直接拖拽、缩放、改配色或图表类型；也可以在下方修改文本与数据。
         </p>
         {onSwitchToChat && (
           <button
             type="button"
             onClick={onSwitchToChat}
-            className="inline-flex items-center gap-1 text-[13px] font-medium text-ink underline underline-offset-2 hover:opacity-70 cursor-pointer"
+            className="inline-flex items-center gap-1 text-[12.5px] font-medium text-ui-accent-text hover:underline cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>前往 AI 对话继续调整布局</span>
+            <span>前往 AI 助手重构布局</span>
           </button>
         )}
       </div>
 
       {customTextElements.length > 0 ? (
-        <div className="space-y-3.5">
+        <div className="space-y-3">
           {customTextElements.map((el, idx) => {
             const isHeading = el.id === primaryCustomHeadingId;
             const fs = Math.round(el.font_size ?? 18);
@@ -153,11 +145,11 @@ export function CustomCanvasInspector({
                 <div className="flex items-center justify-between gap-2">
                   <label
                     htmlFor={`custom-el-${el.id}`}
-                    className="text-[13px] font-semibold text-ink truncate"
+                    className="text-[12.5px] font-medium text-ui-text-muted truncate"
                   >
                     {isHeading ? "主标题文本" : `文本块 ${idx + 1}`}
                   </label>
-                  <span className="text-[13px] text-ink-muted font-mono shrink-0">
+                  <span className="text-[12px] text-ui-text-disabled font-mono shrink-0">
                     {fs}pt
                   </span>
                 </div>
@@ -175,14 +167,14 @@ export function CustomCanvasInspector({
         </div>
       ) : customTableElements.length === 0 &&
         customChartElements.length === 0 ? (
-        <div className="p-3.5 rounded-2xl bg-canvas border border-black/[0.07] text-[13px] text-ink-secondary">
+        <div className="p-3 rounded-xl bg-ui-surface border border-ui-border-subtle text-[13px] text-ui-text-muted">
           本页自由画布暂无可编辑文本、表格或图表。
         </div>
       ) : null}
 
       {/* Inline Table Data Editors */}
       {customTableElements.length > 0 && onUpdateCustomElement && (
-        <div className="space-y-3.5 pt-1">
+        <div className="space-y-3 pt-1">
           {customTableElements.map((el, tIdx) => {
             const headers = el.headers || [];
             const rows = el.rows || [];
@@ -190,10 +182,10 @@ export function CustomCanvasInspector({
             return (
               <div
                 key={`${el.id}-tbl-${tIdx}`}
-                className="rounded-2xl bg-surface border border-black/[0.08] p-3 space-y-2.5"
+                className="rounded-xl bg-ui-surface border border-ui-border-subtle p-3 space-y-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-semibold text-ink">
+                  <span className="text-[13px] font-semibold text-ui-text">
                     {customTableElements.length > 1
                       ? `表格 ${tIdx + 1}`
                       : "表格数据"}
@@ -206,7 +198,7 @@ export function CustomCanvasInspector({
                         rows: [...rows, newRow],
                       });
                     }}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-canvas hover:bg-black/[0.06] text-[13px] font-medium text-ink cursor-pointer transition-colors"
+                    className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
                   >
                     <Plus className="w-3 h-3" />
                     <span>加一行</span>
@@ -215,8 +207,13 @@ export function CustomCanvasInspector({
 
                 <div className="overflow-x-auto clean-scroll">
                   <table
-                    className="w-full table-fixed border-collapse text-[13px]"
-                    style={{ minWidth: colCount >= 3 ? 96 + (colCount - 1) * 58 + 26 : colCount * 76 + 26 }}
+                    className="w-full table-fixed border-collapse text-[12.5px]"
+                    style={{
+                      minWidth:
+                        colCount >= 3
+                          ? 92 + (colCount - 1) * 54 + 24
+                          : colCount * 76 + 24,
+                    }}
                   >
                     <colgroup>
                       {Array.from({ length: colCount }).map((_, ci) => (
@@ -224,12 +221,12 @@ export function CustomCanvasInspector({
                           key={ci}
                           style={
                             ci === 0 && colCount >= 3
-                              ? { width: "33%" }
+                              ? { width: "34%" }
                               : undefined
                           }
                         />
                       ))}
-                      <col style={{ width: 26 }} />
+                      <col style={{ width: 24 }} />
                     </colgroup>
                     {headers.length > 0 && (
                       <thead>
@@ -248,11 +245,11 @@ export function CustomCanvasInspector({
                                 }}
                                 placeholder={`列 ${ci + 1}`}
                                 title={h}
-                                className="w-full min-w-0 px-1.5 py-1 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] font-semibold text-ink outline-none"
+                                className="ui-field w-full min-w-0 px-1.5 py-1 text-[12.5px] font-semibold"
                               />
                             </th>
                           ))}
-                          <th className="w-7" />
+                          <th className="w-6" />
                         </tr>
                       </thead>
                     )}
@@ -279,11 +276,11 @@ export function CustomCanvasInspector({
                                   });
                                 }}
                                 title={row[ci] ?? ""}
-                                className="w-full min-w-0 px-1.5 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink outline-none"
+                                className="ui-field w-full min-w-0 px-1.5 py-1 text-[12.5px] bg-ui-bg"
                               />
                             </td>
                           ))}
-                          <td className="w-7 p-0.5 text-center">
+                          <td className="w-6 p-0.5 text-center">
                             {rows.length > 1 && (
                               <button
                                 type="button"
@@ -293,7 +290,7 @@ export function CustomCanvasInspector({
                                   })
                                 }
                                 title="删除该行"
-                                className="p-1 rounded-md text-ink-muted hover:text-danger hover:bg-danger-bg cursor-pointer transition-colors"
+                                className="p-1 rounded text-ui-icon-quiet hover:text-ui-danger hover:bg-ui-danger-bg cursor-pointer transition-colors"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -312,17 +309,17 @@ export function CustomCanvasInspector({
 
       {/* Inline Chart Data Editors */}
       {customChartElements.length > 0 && onUpdateCustomElement && (
-        <div className="space-y-3.5 pt-1">
+        <div className="space-y-3 pt-1">
           {customChartElements.map((el, cIdx) => {
             const cats = el.chart_categories || [];
             const series = el.chart_series || [];
             return (
               <div
                 key={`${el.id}-chart-${cIdx}`}
-                className="rounded-2xl bg-surface border border-black/[0.08] p-3 space-y-2.5"
+                className="rounded-xl bg-ui-surface border border-ui-border-subtle p-3 space-y-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-semibold text-ink">
+                  <span className="text-[13px] font-semibold text-ui-text">
                     {customChartElements.length > 1
                       ? `图表 ${cIdx + 1}`
                       : "图表数据"}
@@ -340,7 +337,7 @@ export function CustomCanvasInspector({
                         chart_series: nextSeries,
                       });
                     }}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-canvas hover:bg-black/[0.06] text-[13px] font-medium text-ink cursor-pointer transition-colors"
+                    className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
                   >
                     <Plus className="w-3 h-3" />
                     <span>加一项</span>
@@ -358,7 +355,7 @@ export function CustomCanvasInspector({
                     }
                     placeholder="图表标题（选填）"
                     title={el.chart_title || ""}
-                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
+                    className="ui-field flex-1 min-w-0 px-2.5 py-1.5 text-[12.5px]"
                   />
                   <input
                     type="text"
@@ -370,16 +367,16 @@ export function CustomCanvasInspector({
                     }
                     placeholder="单位"
                     title="数值单位后缀（如 %、万、ms）"
-                    className="w-[68px] shrink-0 px-2 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
+                    className="ui-field w-[62px] shrink-0 px-2 py-1.5 text-[12.5px]"
                   />
                 </div>
 
                 {cats.length > 0 && series.length > 0 && (
                   <div className="overflow-x-auto clean-scroll">
-                    <table className="w-full border-collapse text-[13px]">
+                    <table className="w-full border-collapse text-[12.5px]">
                       <thead>
                         <tr>
-                          <th className="p-0.5 text-left text-[13px] font-medium text-ink-muted">
+                          <th className="p-0.5 text-left text-[12px] font-medium text-ui-text-muted">
                             分类
                           </th>
                           {series.map((s, si) => (
@@ -398,7 +395,7 @@ export function CustomCanvasInspector({
                                   });
                                 }}
                                 placeholder={`系列 ${si + 1}`}
-                                className="w-full min-w-[64px] px-2 py-1 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] font-semibold text-ink outline-none"
+                                className="ui-field w-full min-w-[58px] px-1.5 py-1 text-[12.5px] font-semibold"
                               />
                             </th>
                           ))}
@@ -419,7 +416,7 @@ export function CustomCanvasInspector({
                                     chart_categories: nextCats,
                                   });
                                 }}
-                                className="w-full min-w-[68px] px-2 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink outline-none"
+                                className="ui-field w-full min-w-[60px] px-1.5 py-1 text-[12.5px] bg-ui-bg"
                               />
                             </td>
                             {series.map((s, si) => (
@@ -449,7 +446,7 @@ export function CustomCanvasInspector({
                                       chart_series: nextSeries,
                                     });
                                   }}
-                                  className="w-full min-w-[64px] px-2 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink font-mono tabular-nums outline-none"
+                                  className="ui-field w-full min-w-[58px] px-1.5 py-1 text-[12.5px] bg-ui-bg font-mono tabular-nums"
                                 />
                               </td>
                             ))}
@@ -471,7 +468,7 @@ export function CustomCanvasInspector({
                                     });
                                   }}
                                   title="删除该项"
-                                  className="p-1 rounded-md text-ink-muted hover:text-danger hover:bg-danger-bg cursor-pointer transition-colors"
+                                  className="p-1 rounded text-ui-icon-quiet hover:text-ui-danger hover:bg-ui-danger-bg cursor-pointer transition-colors"
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
