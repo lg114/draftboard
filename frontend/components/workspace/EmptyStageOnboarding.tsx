@@ -137,7 +137,7 @@ export function EmptyStageOnboarding({
                 >
                   改为手动粘贴正文
                 </button>
-                <span className="text-danger/80 text-[12.5px]">
+                <span className="text-danger/80 text-[13px]">
                   将自动保留上方来源链接，直接复制网页文字粘入即可
                 </span>
               </div>

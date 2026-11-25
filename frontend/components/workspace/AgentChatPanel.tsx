@@ -796,28 +796,34 @@ export function AgentChatPanel({
       <div className="px-3.5 pb-3.5 pt-1 bg-surface-subtle shrink-0 relative space-y-2">
         {/* Contextual Quick Action Chips */}
         {llmConfigured && totalSlides > 0 && !isStreaming && (
-          <div className="flex items-center gap-1.5 overflow-x-auto clean-scroll pb-0.5">
-            {(outline?.items[selectedIndex]?.custom_elements?.length
-              ? [
-                  `第 ${selectedIndex + 1} 页精简文字留白更多`,
-                  `给第 ${selectedIndex + 1} 页补一张柱状趋势图`,
-                  "按 10 分钟汇报节奏补全全稿演讲者备注",
-                ]
-              : [
-                  `把第 ${selectedIndex + 1} 页改成 3 张核心指标卡`,
-                  `把第 ${selectedIndex + 1} 页做成对比表格+图表`,
-                  "按 10 分钟汇报节奏补全全稿演讲者备注",
-                ]
-            ).map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => onSendMessage(chip)}
-                className="px-2.5 py-1 rounded-full bg-surface hover:bg-canvas border border-black/[0.08] hover:border-black/20 text-[13px] text-ink-secondary hover:text-ink transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                {chip}
-              </button>
-            ))}
+          <div className="relative">
+            <div className="flex items-center gap-1.5 overflow-x-auto clean-scroll pb-0.5 pr-6">
+              {(outline?.items[selectedIndex]?.custom_elements?.length
+                ? [
+                    `第 ${selectedIndex + 1} 页精简文字留白更多`,
+                    `给第 ${selectedIndex + 1} 页补一张柱状趋势图`,
+                    "按 10 分钟汇报节奏补全全稿演讲者备注",
+                  ]
+                : [
+                    `把第 ${selectedIndex + 1} 页改成 3 张核心指标卡`,
+                    `把第 ${selectedIndex + 1} 页做成对比表格+图表`,
+                    "按 10 分钟汇报节奏补全全稿演讲者备注",
+                  ]
+              ).map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => onSendMessage(chip)}
+                  className="px-2.5 py-1 rounded-full bg-surface hover:bg-canvas border border-black/[0.08] hover:border-black/20 text-[13px] text-ink-secondary hover:text-ink transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface-subtle to-transparent"
+            />
           </div>
         )}
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { Outline, Project } from "../../lib/api";
 import { usePresence } from "../../lib/usePresence";
+import { useDismiss } from "../../lib/useDismiss";
 import { BrandLogo } from "../BrandLogo";
 import { ExportFormatMenu } from "./ExportFormatMenu";
 import {
@@ -127,6 +128,12 @@ export function WorkspaceHeader({
     isVersionOpen,
     130
   );
+  const versionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const versionPopoverRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(isVersionOpen, () => setIsVersionOpen(false), [
+    versionTriggerRef,
+    versionPopoverRef,
+  ]);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
@@ -246,12 +253,14 @@ export function WorkspaceHeader({
                 </button>
               ) : (
                 <button
+                  ref={versionTriggerRef}
                   type="button"
                   onClick={() => setIsVersionOpen(!isVersionOpen)}
+                  aria-expanded={isVersionOpen}
                   className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-black/[0.05] text-[13px] text-ink-muted hover:text-ink transition-colors cursor-pointer whitespace-nowrap"
                   title="查看与切换历史大纲版本"
                 >
-                  <span>已保存</span>
+                  <span className="hidden md:inline">已保存</span>
                   <span className="font-medium text-ink">
                     第 {versionOrdinal} 版
                   </span>
@@ -291,10 +300,7 @@ export function WorkspaceHeader({
               {versionMounted && sortedOutlines.length > 0 && (
                 <>
                   <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsVersionOpen(false)}
-                  />
-                  <div
+                    ref={versionPopoverRef}
                     className={`absolute left-0 top-full mt-2 z-50 w-72 apple-glass dock-shadow rounded-2xl p-2 space-y-1 ${
                       versionExiting
                         ? "anim-popover-down-left-out pointer-events-none"
@@ -411,7 +417,7 @@ export function WorkspaceHeader({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>AI 对话</span>
+            <span className="hidden sm:inline">AI 对话</span>
           </button>
         )}
 
@@ -423,7 +429,7 @@ export function WorkspaceHeader({
             className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <ShieldCheck className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
-            <span className="hidden md:inline">交付体检</span>
+            <span className="hidden lg:inline">交付体检</span>
           </button>
         )}
 
@@ -435,7 +441,7 @@ export function WorkspaceHeader({
             title="全屏放映与演讲者视图"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span className="hidden sm:inline">放映</span>
+            <span className="hidden lg:inline">放映</span>
           </Link>
         )}
 

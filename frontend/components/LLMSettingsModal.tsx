@@ -715,7 +715,7 @@ export function LLMSettingsModal({
               模型与服务商设置
             </h2>
             <p className="text-[13px] text-ink-secondary mt-0.5">
-              密钥仅加密权限保存在本机后端文件，一家服务商配置一次即可随时秒切多个模型。
+              密钥仅保存在本机后端配置文件中，一家服务商配置一次即可随时秒切多个模型。
             </p>
           </div>
           <button
@@ -740,8 +740,8 @@ export function LLMSettingsModal({
         {/* Main Split Body */}
         <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
           {/* Left Rail: Provider-First Navigation */}
-          <div className="w-full md:w-[248px] shrink-0 bg-surface-subtle border-b md:border-b-0 md:border-r border-black/[0.07] flex flex-col min-h-0">
-            <div className="p-3 space-y-4 flex-1 md:overflow-y-auto clean-scroll">
+          <div className="w-full md:w-[248px] shrink-0 bg-surface-subtle border-b md:border-b-0 md:border-r border-black/[0.07] flex flex-col min-h-0 relative">
+            <div className="p-3 pb-7 space-y-4 flex-1 md:overflow-y-auto clean-scroll">
               {configuredEntries.length > 0 && (
                 <div className="space-y-1.5">
                   <div className="px-2 text-[13px] font-semibold text-ink-secondary">
@@ -847,6 +847,10 @@ export function LLMSettingsModal({
                 </button>
               </div>
             </div>
+            <div
+              aria-hidden
+              className="hidden md:block pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-surface-subtle to-transparent"
+            />
           </div>
 
           {/* Right Pane: Provider Inspector + Model Pool */}
@@ -854,10 +858,11 @@ export function LLMSettingsModal({
             onSubmit={(e) => void handleSaveCredentials(e)}
             className="flex-1 min-w-0 flex flex-col md:overflow-hidden"
           >
-            <div className="p-6 space-y-5 flex-1 md:overflow-y-auto clean-scroll">
+            <div className="flex-1 min-h-0 relative flex flex-col">
+            <div className="p-6 pb-8 space-y-5 flex-1 md:overflow-y-auto clean-scroll">
               {/* Provider Header */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-black/[0.06]">
-                <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-start justify-between gap-3 pb-4 border-b border-black/[0.06]">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
                   <ProviderIcon provider={currentEntry.provider} size="lg" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1287,6 +1292,11 @@ export function LLMSettingsModal({
                   </div>
                 )}
               </div>
+            </div>
+            <div
+              aria-hidden
+              className="hidden md:block pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-surface to-transparent"
+            />
             </div>
 
             {/* Sticky Bottom Footer */}

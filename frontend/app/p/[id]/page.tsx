@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Sparkles, Trash2, X } from "lucide-react";
 import { LLMSettingsModal } from "../../../components/LLMSettingsModal";
 import { AgentChatPanel } from "../../../components/workspace/AgentChatPanel";
@@ -10,12 +11,17 @@ import {
 } from "../../../components/workspace/layoutUtils";
 import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
 import { PreflightModal } from "../../../components/workspace/PreflightModal";
+import { ShortcutsModal } from "../../../components/workspace/ShortcutsModal";
 import { SlideInspector } from "../../../components/workspace/SlideInspector";
 import { SlideNavigator } from "../../../components/workspace/SlideNavigator";
 import { SlideStageCanvas } from "../../../components/workspace/SlideStageCanvas";
 import { SourceContextModal } from "../../../components/workspace/SourceContextModal";
 import { WorkspaceHeader } from "../../../components/workspace/WorkspaceHeader";
 import { useProjectWorkspace } from "../../../hooks/workspace/useProjectWorkspace";
+
+/** Below 1100px the right panel floats over the stage instead of squeezing it. */
+const NARROW_OVERLAY_ASIDE =
+  "max-[1099px]:fixed max-[1099px]:top-[52px] max-[1099px]:right-0 max-[1099px]:bottom-0 max-[1099px]:z-30 max-[1099px]:w-[min(380px,92vw)] max-[1099px]:shadow-[-12px_0_32px_rgba(0,0,0,0.14)]";
 
 export default function ProjectWorkspacePage() {
   const ws = useProjectWorkspace();
@@ -24,6 +30,28 @@ export default function ProjectWorkspacePage() {
     outlineEditor;
 
   const currentItem = outline?.items[ws.selectedIndex];
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "?") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setShowShortcuts((v) => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleOpenLLMSettings = () => {
     ws.setLlmModalReason(null);
@@ -88,6 +116,41 @@ export default function ProjectWorkspacePage() {
       </button>
     );
   };
+
+  const renderAgentChatPanel = (hasActiveOutline: boolean) => (
+    <AgentChatPanel
+      pid={ws.pid}
+      outline={hasActiveOutline ? outline : null}
+      selectedIndex={hasActiveOutline ? ws.selectedIndex : 0}
+      materials={ws.materials}
+      materialsCount={ws.materials.length}
+      themes={ws.themes}
+      selectedThemeId={ws.selectedThemeId}
+      autoFit={ws.autoFit}
+      messages={chat.chatMessages}
+      isStreaming={chat.isChatStreaming}
+      llmConfigured={ws.llmSettings ? ws.llmSettings.configured : true}
+      activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
+      llmSettings={ws.llmSettings}
+      onLLMSettingsUpdated={handleLLMSettingsSwitched}
+      diffPreviewVersion={
+        hasActiveOutline ? outlineEditor.diffPreviewVersion : undefined
+      }
+      onToggleDiffPreview={
+        hasActiveOutline
+          ? (ver) => void outlineEditor.toggleDiffPreview(ver)
+          : undefined
+      }
+      onOpenLLMSettings={handleOpenLLMSettings}
+      onSendMessage={(msg) => void chat.sendChatMessage(msg)}
+      onRetryMessage={chat.retryChatMessage}
+      onStopStreaming={chat.stopChatStreaming}
+      onJumpToSlide={ws.setSelectedIndex}
+      onRevertVersion={(v) => void outlineEditor.revertToOutlineVersion(v)}
+      onUploadClick={() => ws.fileInputRef.current?.click()}
+      onDropFiles={(files) => void ws.uploadFiles(files)}
+    />
+  );
 
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-canvas text-ink">
@@ -336,7 +399,15 @@ export default function ProjectWorkspacePage() {
           />
 
           {ws.rightOpen && (
-            <aside className="w-[344px] xl:w-[396px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0">
+            <div
+              aria-hidden
+              onClick={() => ws.setRightOpen(false)}
+              className="min-[1100px]:hidden fixed inset-x-0 top-[52px] bottom-0 z-20 bg-black/20 anim-scrim-in"
+            />
+          )}
+
+          {ws.rightOpen && (
+            <aside className={`w-[344px] xl:w-[396px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0 ${NARROW_OVERLAY_ASIDE}`}>
               {/* Dual-Mode Right Sidebar Top Bar: Edit vs AI Chat */}
               <div className="px-4 py-2.5 border-b border-black/[0.07] bg-surface-subtle flex items-center justify-between gap-2 shrink-0">
                 <div className="inline-flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5">
@@ -389,38 +460,7 @@ export default function ProjectWorkspacePage() {
               </div>
 
               {ws.rightPanelTab === "chat" ? (
-                <AgentChatPanel
-                  pid={ws.pid}
-                  outline={outline}
-                  selectedIndex={ws.selectedIndex}
-                  materials={ws.materials}
-                  materialsCount={ws.materials.length}
-                  themes={ws.themes}
-                  selectedThemeId={ws.selectedThemeId}
-                  autoFit={ws.autoFit}
-                  messages={chat.chatMessages}
-                  isStreaming={chat.isChatStreaming}
-                  llmConfigured={
-                    ws.llmSettings ? ws.llmSettings.configured : true
-                  }
-                  activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
-                  llmSettings={ws.llmSettings}
-                  onLLMSettingsUpdated={handleLLMSettingsSwitched}
-                  diffPreviewVersion={outlineEditor.diffPreviewVersion}
-                  onToggleDiffPreview={(ver) =>
-                    void outlineEditor.toggleDiffPreview(ver)
-                  }
-                  onOpenLLMSettings={handleOpenLLMSettings}
-                  onSendMessage={(msg) => void chat.sendChatMessage(msg)}
-                  onRetryMessage={chat.retryChatMessage}
-                  onStopStreaming={chat.stopChatStreaming}
-                  onJumpToSlide={ws.setSelectedIndex}
-                  onRevertVersion={(v) =>
-                    void outlineEditor.revertToOutlineVersion(v)
-                  }
-                  onUploadClick={() => ws.fileInputRef.current?.click()}
-                  onDropFiles={(files) => void ws.uploadFiles(files)}
-                />
+                renderAgentChatPanel(true)
               ) : (
                 <SlideInspector
                   pid={ws.pid}
@@ -506,7 +546,14 @@ export default function ProjectWorkspacePage() {
             onGenerateOutline={(p) => void generation.genOutline(p)}
           />
           {ws.onboardingChatOpen && (
-            <aside className="w-[360px] xl:w-[410px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0">
+            <div
+              aria-hidden
+              onClick={() => ws.setOnboardingChatOpen(false)}
+              className="min-[1100px]:hidden fixed inset-x-0 top-[52px] bottom-0 z-20 bg-black/20 anim-scrim-in"
+            />
+          )}
+          {ws.onboardingChatOpen && (
+            <aside className={`w-[360px] xl:w-[410px] shrink-0 bg-surface-subtle border-l border-black/[0.08] flex flex-col min-h-0 ${NARROW_OVERLAY_ASIDE}`}>
               <div className="px-4 py-2.5 border-b border-black/[0.07] bg-surface-subtle flex items-center justify-between gap-2 shrink-0">
                 <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink">
                   <Sparkles className="w-4 h-4" />
@@ -524,34 +571,7 @@ export default function ProjectWorkspacePage() {
                   </button>
                 </div>
               </div>
-              <AgentChatPanel
-                pid={ws.pid}
-                outline={null}
-                selectedIndex={0}
-                materials={ws.materials}
-                materialsCount={ws.materials.length}
-                themes={ws.themes}
-                selectedThemeId={ws.selectedThemeId}
-                autoFit={ws.autoFit}
-                messages={chat.chatMessages}
-                isStreaming={chat.isChatStreaming}
-                llmConfigured={
-                  ws.llmSettings ? ws.llmSettings.configured : true
-                }
-                activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
-                llmSettings={ws.llmSettings}
-                onLLMSettingsUpdated={handleLLMSettingsSwitched}
-                onOpenLLMSettings={handleOpenLLMSettings}
-                onSendMessage={(msg) => void chat.sendChatMessage(msg)}
-                onRetryMessage={chat.retryChatMessage}
-                onStopStreaming={chat.stopChatStreaming}
-                onJumpToSlide={ws.setSelectedIndex}
-                onRevertVersion={(v) =>
-                  void outlineEditor.revertToOutlineVersion(v)
-                }
-                onUploadClick={() => ws.fileInputRef.current?.click()}
-                onDropFiles={(files) => void ws.uploadFiles(files)}
-              />
+              {renderAgentChatPanel(false)}
             </aside>
           )}
         </div>
@@ -572,6 +592,11 @@ export default function ProjectWorkspacePage() {
         onBeforeCheck={ws.flushOutlineIfReady}
         onJumpToSlide={ws.setSelectedIndex}
         onClose={() => ws.setShowPreflight(false)}
+      />
+
+      <ShortcutsModal
+        open={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
       />
 
       <LLMSettingsModal

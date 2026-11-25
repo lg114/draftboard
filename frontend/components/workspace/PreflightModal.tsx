@@ -110,7 +110,7 @@ export function PreflightModal({
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-ink shrink-0" />
             <h2 className="text-[15px] font-semibold text-ink">
-              交付前体检
+              交付体检
             </h2>
           </div>
           <div className="flex items-center gap-1.5">

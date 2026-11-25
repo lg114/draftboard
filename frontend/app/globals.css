@@ -42,6 +42,25 @@
     --dur-sheet: 260ms;
   }
 
+  /* Visible keyboard focus ring for interactive controls (text fields keep their own ring) */
+  :where(
+      a,
+      button,
+      summary,
+      select,
+      [role="button"],
+      [role="switch"],
+      [role="tab"],
+      [role="menuitem"],
+      [tabindex]:not([tabindex="-1"]),
+      input[type="checkbox"],
+      input[type="radio"],
+      input[type="color"]
+    ):focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);

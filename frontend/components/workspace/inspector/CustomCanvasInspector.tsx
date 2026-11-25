@@ -57,10 +57,10 @@ export function CustomCanvasInspector({
   return (
     <section className="space-y-4">
       <div className="p-3.5 rounded-2xl bg-surface border border-black/[0.09] space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Layers className="w-4 h-4 text-ink shrink-0" />
-            <span className="text-[14px] font-semibold text-ink truncate">
+            <span className="text-[14px] font-semibold text-ink whitespace-nowrap">
               自由画布排版
             </span>
             <span className="text-[13px] text-ink-muted shrink-0">
@@ -214,7 +214,23 @@ export function CustomCanvasInspector({
                 </div>
 
                 <div className="overflow-x-auto clean-scroll">
-                  <table className="w-full border-collapse text-[13px]">
+                  <table
+                    className="w-full table-fixed border-collapse text-[13px]"
+                    style={{ minWidth: colCount >= 3 ? 96 + (colCount - 1) * 58 + 26 : colCount * 76 + 26 }}
+                  >
+                    <colgroup>
+                      {Array.from({ length: colCount }).map((_, ci) => (
+                        <col
+                          key={ci}
+                          style={
+                            ci === 0 && colCount >= 3
+                              ? { width: "33%" }
+                              : undefined
+                          }
+                        />
+                      ))}
+                      <col style={{ width: 26 }} />
+                    </colgroup>
                     {headers.length > 0 && (
                       <thead>
                         <tr>
@@ -231,11 +247,12 @@ export function CustomCanvasInspector({
                                   });
                                 }}
                                 placeholder={`列 ${ci + 1}`}
-                                className="w-full min-w-[68px] px-2 py-1 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] font-semibold text-ink outline-none"
+                                title={h}
+                                className="w-full min-w-0 px-1.5 py-1 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] font-semibold text-ink outline-none"
                               />
                             </th>
                           ))}
-                          <th className="w-6" />
+                          <th className="w-7" />
                         </tr>
                       </thead>
                     )}
@@ -261,11 +278,12 @@ export function CustomCanvasInspector({
                                     rows: nextRows,
                                   });
                                 }}
-                                className="w-full min-w-[68px] px-2 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink outline-none"
+                                title={row[ci] ?? ""}
+                                className="w-full min-w-0 px-1.5 py-1 rounded-lg bg-surface border border-black/[0.09] focus:border-ink text-[13px] text-ink outline-none"
                               />
                             </td>
                           ))}
-                          <td className="p-0.5 text-center">
+                          <td className="w-7 p-0.5 text-center">
                             {rows.length > 1 && (
                               <button
                                 type="button"
@@ -329,7 +347,7 @@ export function CustomCanvasInspector({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-12 gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="text"
                     value={el.chart_title || ""}
@@ -339,7 +357,8 @@ export function CustomCanvasInspector({
                       })
                     }
                     placeholder="图表标题（选填）"
-                    className="col-span-8 px-2.5 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
+                    title={el.chart_title || ""}
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
                   />
                   <input
                     type="text"
@@ -349,9 +368,9 @@ export function CustomCanvasInspector({
                         value_suffix: e.target.value,
                       })
                     }
-                    placeholder="单位如 %"
+                    placeholder="单位"
                     title="数值单位后缀（如 %、万、ms）"
-                    className="col-span-4 px-2.5 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
+                    className="w-[68px] shrink-0 px-2 py-1.5 rounded-lg bg-canvas border border-black/[0.1] focus:border-ink text-[13px] text-ink outline-none"
                   />
                 </div>
 

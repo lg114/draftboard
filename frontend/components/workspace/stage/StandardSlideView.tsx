@@ -1,13 +1,17 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import type {
   BrandKit,
+  CanvasElement,
   OutlineItem,
   OutlineLayout,
+  ThemeOption,
   ThemeSwatches,
 } from "../../../lib/api";
-import { normalizeEscapedNewlines } from "../layoutUtils";
+import { CustomSlideLayer } from "../CustomSlideLayer";
+import { inferEffectiveLayout, normalizeEscapedNewlines } from "../layoutUtils";
 
 export function BrandOverlay({
   pid,
@@ -63,16 +67,27 @@ export function BrandOverlay({
   );
 }
 
+export type RenderableSlideItem = {
+  title: string;
+  summary: string;
+  layout?: OutlineLayout | string | null;
+  column_right?: string | null;
+  image_asset_id?: string | null;
+  custom_bg?: string | null;
+  custom_elements?: CanvasElement[] | null;
+};
+
 interface StandardSlideViewProps {
   pid: string;
-  item: OutlineItem;
+  item: RenderableSlideItem | OutlineItem;
   layout: OutlineLayout;
   sw: ThemeSwatches;
   scale: number;
   selectedIndex: number;
   total: number;
   brand: BrandKit | null;
-  onFocusField: (fieldId: string) => void;
+  interactive?: boolean;
+  onFocusField?: (fieldId: string) => void;
 }
 
 export function StandardSlideView({
@@ -84,16 +99,25 @@ export function StandardSlideView({
   selectedIndex,
   total,
   brand,
+  interactive = true,
   onFocusField,
 }: StandardSlideViewProps) {
   const isHero = layout === "cover" || layout === "closing";
   const slideBg = isHero ? sw.cover_bg : sw.bg;
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
+  const canFocus = Boolean(interactive && onFocusField);
+  const slotClass = canFocus ? "clickable-slot" : undefined;
+  const focusProps = (fieldId: string) =>
+    canFocus ? { onClick: () => onFocusField!(fieldId) } : {};
 
   return (
     <div
-      className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 transition-colors duration-200"
+      className={`w-[960px] h-[540px] origin-top-left absolute top-0 left-0 text-left ${
+        interactive
+          ? "transition-colors duration-200"
+          : "pointer-events-none select-none"
+      }`}
       style={{
         transform: `scale(${scale})`,
         backgroundColor: slideBg,
@@ -113,8 +137,8 @@ export function StandardSlideView({
             }}
           />
           <div
-            onClick={() => onFocusField("input-title")}
-            className="clickable-slot"
+            {...focusProps("input-title")}
+            className={slotClass}
             style={{
               position: "absolute",
               left: 48,
@@ -131,8 +155,8 @@ export function StandardSlideView({
             {item.title || "未命名标题"}
           </div>
           <div
-            onClick={() => onFocusField("input-summary")}
-            className="clickable-slot"
+            {...focusProps("input-summary")}
+            className={slotClass}
             style={{
               position: "absolute",
               left: 48,
@@ -145,7 +169,7 @@ export function StandardSlideView({
               textAlign: "left",
             }}
           >
-            {normalizeEscapedNewlines(item.summary)}
+            {normalizeEscapedNewlines(item.summary || "")}
           </div>
         </>
       ) : layout === "closing" ? (
@@ -162,8 +186,8 @@ export function StandardSlideView({
             }}
           />
           <div
-            onClick={() => onFocusField("input-title")}
-            className="clickable-slot"
+            {...focusProps("input-title")}
+            className={slotClass}
             style={{
               position: "absolute",
               left: 48,
@@ -180,8 +204,8 @@ export function StandardSlideView({
             {item.title || "谢谢聆听"}
           </div>
           <div
-            onClick={() => onFocusField("input-summary")}
-            className="clickable-slot"
+            {...focusProps("input-summary")}
+            className={slotClass}
             style={{
               position: "absolute",
               left: 48,
@@ -194,7 +218,7 @@ export function StandardSlideView({
               textAlign: "center",
             }}
           >
-            {normalizeEscapedNewlines(item.summary)}
+            {normalizeEscapedNewlines(item.summary || "")}
           </div>
           <div
             style={{
@@ -210,8 +234,8 @@ export function StandardSlideView({
       ) : (
         <>
           <div
-            onClick={() => onFocusField("input-title")}
-            className="clickable-slot"
+            {...focusProps("input-title")}
+            className={slotClass}
             style={{
               position: "absolute",
               left: 48,
@@ -250,8 +274,8 @@ export function StandardSlideView({
 
           {layout === "bullets" ? (
             <ul
-              onClick={() => onFocusField("input-summary")}
-              className="clickable-slot"
+              {...focusProps("input-summary")}
+              className={slotClass}
               style={{
                 position: "absolute",
                 left: 48,
@@ -265,7 +289,7 @@ export function StandardSlideView({
                 gap: 16,
               }}
             >
-              {normalizeEscapedNewlines(item.summary)
+              {normalizeEscapedNewlines(item.summary || "")
                 .split("\n")
                 .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
                 .filter(Boolean)
@@ -328,8 +352,8 @@ export function StandardSlideView({
                 }}
               />
               <div
-                onClick={() => onFocusField("input-summary")}
-                className="clickable-slot"
+                {...focusProps("input-summary")}
+                className={slotClass}
                 style={{
                   position: "absolute",
                   left: 48,
@@ -341,11 +365,11 @@ export function StandardSlideView({
                   color: bodyCol,
                 }}
               >
-                {normalizeEscapedNewlines(item.summary)}
+                {normalizeEscapedNewlines(item.summary || "")}
               </div>
               <div
-                onClick={() => onFocusField("input-col-right")}
-                className="clickable-slot"
+                {...focusProps("input-col-right")}
+                className={slotClass}
                 style={{
                   position: "absolute",
                   left: 500,
@@ -359,14 +383,16 @@ export function StandardSlideView({
               >
                 {item.column_right
                   ? normalizeEscapedNewlines(item.column_right)
-                  : "（请在右侧填写右栏内容）"}
+                  : interactive
+                  ? "（请在右侧填写右栏内容）"
+                  : ""}
               </div>
             </>
           ) : layout === "text_image" ? (
             <>
               <div
-                onClick={() => onFocusField("input-summary")}
-                className="clickable-slot"
+                {...focusProps("input-summary")}
+                className={slotClass}
                 style={{
                   position: "absolute",
                   left: 48,
@@ -378,7 +404,7 @@ export function StandardSlideView({
                   color: bodyCol,
                 }}
               >
-                {normalizeEscapedNewlines(item.summary)}
+                {normalizeEscapedNewlines(item.summary || "")}
               </div>
               <div
                 style={{
@@ -400,7 +426,7 @@ export function StandardSlideView({
                 {item.image_asset_id ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={`/api/projects/${pid}/assets/${encodeURIComponent(
+                    src={`/api/projects/${encodeURIComponent(pid)}/assets/${encodeURIComponent(
                       item.image_asset_id
                     )}`}
                     alt={item.image_asset_id}
@@ -422,15 +448,15 @@ export function StandardSlideView({
                     }}
                   >
                     <ImageIcon className="w-8 h-8 opacity-60" />
-                    <span>请在右侧选择配图</span>
+                    {interactive && <span>请在右侧选择配图</span>}
                   </div>
                 )}
               </div>
             </>
           ) : (
             <div
-              onClick={() => onFocusField("input-summary")}
-              className="clickable-slot"
+              {...focusProps("input-summary")}
+              className={slotClass}
               style={{
                 position: "absolute",
                 left: 48,
@@ -442,7 +468,7 @@ export function StandardSlideView({
                 color: bodyCol,
               }}
             >
-              {normalizeEscapedNewlines(item.summary)}
+              {normalizeEscapedNewlines(item.summary || "")}
             </div>
           )}
         </>
@@ -498,6 +524,100 @@ export function StandardSlideView({
           {String(total).padStart(2, "0")}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Unified 960x540 proportional slide renderer for thumbnails, presenter previews,
+ * and library cards. Renders either freeform CustomSlideLayer or StandardSlideView.
+ * If `scale` is omitted, measures its own container width via ResizeObserver.
+ */
+export function SlideRenderer({
+  pid,
+  item,
+  index,
+  total,
+  theme,
+  brand = null,
+  scale: fixedScale,
+}: {
+  pid: string;
+  item: RenderableSlideItem;
+  index: number;
+  total: number;
+  theme: ThemeOption;
+  brand?: BrandKit | null;
+  scale?: number;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [measuredScale, setMeasuredScale] = useState(fixedScale ?? 0.35);
+
+  useEffect(() => {
+    if (fixedScale !== undefined) return;
+    const el = hostRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setMeasuredScale(w / 960);
+    };
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [fixedScale]);
+
+  const scale = fixedScale ?? measuredScale;
+  const isCustom = Boolean(
+    item.custom_elements && item.custom_elements.length > 0
+  );
+  const layout = inferEffectiveLayout(item.layout, index, total);
+  const sw = theme.swatches;
+
+  const inner =
+    isCustom && item.custom_elements ? (
+      <>
+        <CustomSlideLayer
+          pid={pid}
+          customBg={item.custom_bg}
+          elements={item.custom_elements}
+          theme={theme}
+          scale={scale}
+          interactive={false}
+        />
+        {brand && (
+          <BrandOverlay
+            pid={pid}
+            brand={brand}
+            mutedColor={sw.muted}
+            scale={scale}
+          />
+        )}
+      </>
+    ) : (
+      <StandardSlideView
+        pid={pid}
+        item={item}
+        layout={layout}
+        sw={sw}
+        scale={scale}
+        selectedIndex={index}
+        total={total}
+        brand={brand}
+        interactive={false}
+      />
+    );
+
+  if (fixedScale !== undefined) {
+    return inner;
+  }
+
+  return (
+    <div
+      ref={hostRef}
+      className="w-full h-full relative overflow-hidden select-none"
+    >
+      {inner}
     </div>
   );
 }

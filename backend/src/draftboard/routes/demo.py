@@ -113,7 +113,7 @@ def create_demo_project():
     outline = Outline(
         outline_version=f"v-{uuid.uuid4().hex[:8]}",
         project_id=pid,
-        is_confirmed=False,
+        is_confirmed=True,
         items=[
             OutlineItem(
                 outline_item_id="demo-s1",

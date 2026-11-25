@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Download,
   FileText,
   Image as ImageIcon,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -26,13 +27,12 @@ import {
   ProjectSummary,
   ThemeOption,
 } from "../lib/api";
+import { useDismiss } from "../lib/useDismiss";
 import { BackendStatus } from "../components/BackendStatus";
 import { BrandLogo } from "../components/BrandLogo";
 import { LLMSettingsModal } from "../components/LLMSettingsModal";
-import { AutoScaledCustomSlide } from "../components/workspace/CustomSlideLayer";
+import { SlideRenderer } from "../components/workspace/stage/StandardSlideView";
 import {
-  inferEffectiveLayout,
-  normalizeEscapedNewlines,
   PROJECT_STAGE_STEPS,
   ProjectStageKey,
 } from "../components/workspace/layoutUtils";
@@ -80,14 +80,6 @@ function isImageFilename(name: string): boolean {
   return /\.(png|jpe?g|webp|gif)$/i.test(name);
 }
 
-function parseBulletLines(summary: string): string[] {
-  return normalizeEscapedNewlines(summary)
-    .split(/\n+|[；;]\s*/)
-    .map((line) => line.replace(/^[-•·*\d.]+\s*/, "").trim())
-    .filter(Boolean)
-    .slice(0, 3);
-}
-
 function SlideCardPreview({
   project,
   theme,
@@ -97,7 +89,20 @@ function SlideCardPreview({
 }) {
   const [imgFailed, setImgFailed] = useState(false);
 
-  // Tier 1: Real rendered cover PNG (when exported & synced)
+  // Tier 1: Vector-crisp live miniature of Slide 1 via unified 960x540 renderer
+  if (project.cover_slide) {
+    return (
+      <SlideRenderer
+        pid={project.project_id}
+        item={project.cover_slide}
+        index={0}
+        total={Math.max(1, project.slide_count)}
+        theme={theme}
+      />
+    );
+  }
+
+  // Tier 2: Rendered cover PNG fallback when cover_slide metadata is absent
   if (project.preview_cover_url && !imgFailed) {
     return (
       <div className="w-full h-full bg-canvas relative">
@@ -112,218 +117,19 @@ function SlideCardPreview({
     );
   }
 
-  // Tier 2: Authentic live miniature of Slide 1 using the project's real theme
-  if (project.cover_slide) {
-    const slide = project.cover_slide;
-    if (slide.custom_elements && slide.custom_elements.length > 0) {
-      return (
-        <AutoScaledCustomSlide
-          pid={project.project_id}
-          customBg={slide.custom_bg}
-          elements={slide.custom_elements}
-          theme={theme}
-        />
-      );
-    }
-    const layout = inferEffectiveLayout(slide.layout, 0, Math.max(1, project.slide_count));
-    const sw = theme.swatches;
-    const isHero = layout === "cover" || layout === "closing";
-    const bg = isHero ? sw.cover_bg : sw.bg;
-    const titleCol = isHero ? sw.cover_title : sw.title;
-    const bodyCol = isHero ? sw.cover_body : sw.body;
-
-    if (layout === "cover") {
-      return (
-        <div
-          className="w-full h-full px-6 py-5 flex flex-col justify-between select-none"
-          style={{ backgroundColor: bg }}
-        >
-          <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
-            <div
-              className="w-8 h-[2.5px] rounded-full shrink-0 mb-0.5"
-              style={{ backgroundColor: sw.accent }}
-            />
-            <div
-              className="text-[17px] font-bold tracking-[-0.02em] leading-[1.28] line-clamp-2"
-              style={{ color: titleCol }}
-            >
-              {slide.title || "未命名封面"}
-            </div>
-            {slide.summary && (
-              <div
-                className="text-[12px] leading-[1.45] line-clamp-2"
-                style={{ color: bodyCol }}
-              >
-                {slide.summary}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (layout === "closing") {
-      return (
-        <div
-          className="w-full h-full px-6 py-5 flex flex-col items-center justify-between text-center select-none"
-          style={{ backgroundColor: bg }}
-        >
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 min-h-0">
-            <div
-              className="w-7 h-[2px] rounded-full shrink-0"
-              style={{ backgroundColor: sw.accent }}
-            />
-            <div
-              className="text-[16px] font-bold tracking-[-0.02em] leading-[1.3] line-clamp-2"
-              style={{ color: titleCol }}
-            >
-              {slide.title || "谢谢聆听"}
-            </div>
-            {slide.summary && (
-              <div
-                className="text-[12px] leading-[1.45] line-clamp-2"
-                style={{ color: bodyCol }}
-              >
-                {slide.summary}
-              </div>
-            )}
-          </div>
-          <div
-            className="w-2/3 h-px shrink-0"
-            style={{ backgroundColor: sw.divider }}
-          />
-        </div>
-      );
-    }
-
-    const headerBar = (
-      <div className="relative pb-2">
-        <div
-          className="text-[13.5px] font-semibold tracking-[-0.015em] truncate"
-          style={{ color: titleCol }}
-        >
-          {slide.title || "未命名页面"}
-        </div>
-        <div
-          className="absolute left-0 right-0 bottom-0 h-px"
-          style={{ backgroundColor: sw.divider }}
-        />
-        <div
-          className="absolute left-0 bottom-0 w-7 h-[2px] rounded-full"
-          style={{ backgroundColor: sw.accent }}
-        />
-      </div>
-    );
-
-    if (layout === "two_column") {
-      return (
-        <div
-          className="w-full h-full px-5 py-4 flex flex-col gap-2.5 select-none"
-          style={{ backgroundColor: bg }}
-        >
-          {headerBar}
-          <div className="grid grid-cols-2 gap-3 flex-1 min-h-0 overflow-hidden">
-            <div
-              className="text-[11px] leading-[1.5] line-clamp-4 pr-2 border-r"
-              style={{ color: bodyCol, borderColor: sw.divider }}
-            >
-              {slide.summary || "左栏内容"}
-            </div>
-            <div
-              className="text-[11px] leading-[1.5] line-clamp-4"
-              style={{ color: bodyCol }}
-            >
-              {slide.column_right || "右栏内容"}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (layout === "text_image") {
-      return (
-        <div
-          className="w-full h-full px-5 py-4 flex flex-col gap-2.5 select-none"
-          style={{ backgroundColor: bg }}
-        >
-          {headerBar}
-          <div className="grid grid-cols-12 gap-3 flex-1 min-h-0 items-center overflow-hidden">
-            <div
-              className="col-span-6 text-[11px] leading-[1.5] line-clamp-4"
-              style={{ color: bodyCol }}
-            >
-              {slide.summary || "正文内容"}
-            </div>
-            <div
-              className="col-span-6 h-full rounded-lg overflow-hidden flex items-center justify-center border"
-              style={{ backgroundColor: sw.surface, borderColor: sw.divider }}
-            >
-              {slide.image_asset_id ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={`/api/projects/${project.project_id}/assets/${encodeURIComponent(
-                    slide.image_asset_id
-                  )}`}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <ImageIcon className="w-4 h-4 opacity-35" style={{ color: bodyCol }} />
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    const bullets = parseBulletLines(slide.summary);
-    return (
-      <div
-        className="w-full h-full px-5 py-4 flex flex-col gap-2.5 select-none"
-        style={{ backgroundColor: bg }}
-      >
-        {headerBar}
-        {bullets.length > 1 ? (
-          <ul className="space-y-1.5 flex-1 min-h-0 overflow-hidden">
-            {bullets.map((line, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-[11px] leading-[1.45]"
-                style={{ color: bodyCol }}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full mt-[5px] shrink-0"
-                  style={{ backgroundColor: sw.accent }}
-                />
-                <span className="line-clamp-1">{line}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div
-            className="text-[11.5px] leading-[1.55] line-clamp-4 flex-1"
-            style={{ color: bodyCol }}
-          >
-            {slide.summary || "正文内容"}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   // Tier 3: Materials uploaded, outline not generated yet
   if (project.materials_count > 0) {
     return (
       <div className="w-full h-full bg-surface-subtle p-4 flex flex-col justify-center select-none">
         <div className="border border-dashed border-black/[0.12] rounded-xl bg-surface/70 px-4 py-3.5 space-y-2">
-          <div className="text-[11px] font-medium text-ink-secondary">
+          <div className="text-[13px] font-medium text-ink-secondary">
             已导入素材 · 等待生成大纲
           </div>
           <div className="space-y-1.5">
             {project.material_names.slice(0, 3).map((fname) => (
               <div
                 key={fname}
-                className="flex items-center gap-2 text-[12px] text-ink"
+                className="flex items-center gap-2 text-[13px] text-ink"
               >
                 {isImageFilename(fname) ? (
                   <ImageIcon className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
@@ -334,7 +140,7 @@ function SlideCardPreview({
               </div>
             ))}
             {project.materials_count > 3 && (
-              <div className="text-[11px] text-ink-secondary pl-5">
+              <div className="text-[13px] text-ink-secondary pl-5">
                 另有 {project.materials_count - 3} 份素材
               </div>
             )}
@@ -350,8 +156,85 @@ function SlideCardPreview({
       <div className="w-full h-full border border-dashed border-black/[0.12] rounded-xl flex flex-col items-center justify-center gap-2">
         <div className="w-12 h-1.5 rounded-full bg-black/[0.08]" />
         <div className="w-20 h-1.5 rounded-full bg-black/[0.05]" />
-        <span className="text-[12px] text-ink-secondary pt-1">空白画布</span>
+        <span className="text-[13px] text-ink-secondary pt-1">空白画布</span>
       </div>
+    </div>
+  );
+}
+
+function ProjectCardMenu({
+  project,
+  onRename,
+  onDelete,
+}: {
+  project: ProjectSummaryItem;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(open, () => setOpen(false), [wrapRef]);
+
+  return (
+    <div ref={wrapRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="更多操作"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="更多操作"
+        className={`p-1 rounded-full text-ink-secondary hover:text-ink hover:bg-black/[0.06] transition-colors cursor-pointer ${
+          open ? "bg-black/[0.06] text-ink" : ""
+        }`}
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1.5 z-30 w-36 apple-glass dock-shadow rounded-xl p-1 space-y-0.5 anim-popover-down-in"
+        >
+          {project.download_available && (
+            <a
+              role="menuitem"
+              href={`/api/projects/${project.project_id}/download`}
+              download
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-ink hover:bg-black/[0.06] transition-colors"
+            >
+              <Download className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+              <span>下载 PPTX</span>
+            </a>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onRename();
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-ink hover:bg-black/[0.06] transition-colors cursor-pointer text-left"
+          >
+            <Pencil className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
+            <span>重命名</span>
+          </button>
+          <div className="my-1 border-t border-black/[0.08]" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-danger hover:bg-danger-bg transition-colors cursor-pointer text-left"
+          >
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+            <span>删除文稿</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -539,7 +422,7 @@ export default function ProjectsPage() {
             className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <Settings className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
-            <span>模型设置</span>
+            <span className="hidden sm:inline">模型设置</span>
             {llmSettings && !llmSettings.configured && (
               <span className="w-1.5 h-1.5 rounded-full bg-warning-dot shrink-0" />
             )}
@@ -550,14 +433,15 @@ export default function ProjectsPage() {
                 type="button"
                 disabled={creatingDemo}
                 onClick={() => void handleCreateDemo()}
+                aria-label="体验示例"
                 className="px-3 py-1.5 rounded-full text-[13px] font-medium text-ink hover:bg-black/[0.05] transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5 text-ink-secondary shrink-0" />
-                <span>{creatingDemo ? "准备中…" : "体验示例"}</span>
+                <span className="hidden sm:inline">{creatingDemo ? "准备中…" : "体验示例"}</span>
               </button>
               <Link
                 href="/p/new"
-                className="ui-btn-primary px-4 py-1.5 text-[13px] inline-flex items-center gap-1.5"
+                className="ui-btn-primary px-4 py-1.5 text-[13px] inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>新建文稿</span>
@@ -623,12 +507,12 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={p.project_id}
-                  className="group bg-surface rounded-[16px] border border-black/[0.1] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-[180ms] ease-out flex flex-col"
+                  className="group bg-surface rounded-[16px] border border-black/[0.1] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-[180ms] ease-out flex flex-col"
                 >
                   {/* Top: Pure 16:9 Slide Content Preview */}
                   <Link
                     href={`/p/${p.project_id}`}
-                    className="block aspect-[16/9] overflow-hidden border-b border-black/[0.08] relative"
+                    className="block aspect-[16/9] rounded-t-[15px] overflow-hidden border-b border-black/[0.08] relative"
                   >
                     <SlideCardPreview project={p} theme={theme} />
                   </Link>
@@ -702,41 +586,18 @@ export default function ProjectsPage() {
                           >
                             {p.name}
                           </Link>
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfirmDeleteId(null);
-                                setEditingId(p.project_id);
-                                setEditNameValue(p.name);
-                              }}
-                              className="text-ink-secondary hover:text-ink p-1 rounded-full hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
-                              title="重命名文稿"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingId(null);
-                                setConfirmDeleteId(p.project_id);
-                              }}
-                              className="text-ink-secondary hover:text-danger p-1 rounded-full hover:bg-black/[0.06] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer"
-                              title="删除文稿"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                            {p.download_available && (
-                              <a
-                                href={`/api/projects/${p.project_id}/download`}
-                                download
-                                className="text-ink-secondary hover:text-ink p-1 rounded-full hover:bg-black/[0.06] transition-colors"
-                                title="下载 PPTX"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
+                          <ProjectCardMenu
+                            project={p}
+                            onRename={() => {
+                              setConfirmDeleteId(null);
+                              setEditingId(p.project_id);
+                              setEditNameValue(p.name);
+                            }}
+                            onDelete={() => {
+                              setEditingId(null);
+                              setConfirmDeleteId(p.project_id);
+                            }}
+                          />
                         </div>
                       )}
 
@@ -833,7 +694,31 @@ export default function ProjectsPage() {
               </button>
             </div>
           </section>
-        ) : null}
+        ) : (
+          <section
+            aria-label="正在加载文稿"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7"
+          >
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="bg-surface rounded-[16px] border border-black/[0.08] overflow-hidden animate-pulse"
+              >
+                <div className="aspect-[16/9] bg-surface-subtle border-b border-black/[0.06]" />
+                <div className="p-4 space-y-3">
+                  <div className="space-y-2">
+                    <div className="h-4 w-2/3 rounded-md bg-black/[0.07]" />
+                    <div className="h-3.5 w-1/2 rounded-md bg-black/[0.05]" />
+                  </div>
+                  <div className="pt-2.5 border-t border-black/[0.05] flex items-center gap-3">
+                    <div className="h-[3px] flex-1 rounded-full bg-black/[0.08]" />
+                    <div className="h-3 w-16 rounded-md bg-black/[0.06]" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
       </main>
 
       <LLMSettingsModal

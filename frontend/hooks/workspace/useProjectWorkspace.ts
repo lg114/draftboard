@@ -104,6 +104,14 @@ export function useProjectWorkspace() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<"edit" | "chat">("edit");
+
+  // Start with side panels collapsed on narrow windows so the stage stays usable.
+  // (Run after mount to keep the statically pre-rendered markup hydration-safe.)
+  useEffect(() => {
+    const w = window.innerWidth;
+    if (w < 1100) setRightOpen(false);
+    if (w < 900) setLeftOpen(false);
+  }, []);
   const [onboardingChatOpen, setOnboardingChatOpen] = useState(false);
   const [llmSettings, setLlmSettings] = useState<LLMSettingsResponse | null>(
     null
@@ -263,7 +271,9 @@ export function useProjectWorkspace() {
         } else {
           outlineEditor.clearOutlineState();
         }
-        await generation.loadPreview(targetPid);
+        if (data.download_available) {
+          await generation.loadPreview(targetPid);
+        }
         return data;
       } catch (e) {
         setRawError((e as Error).message);

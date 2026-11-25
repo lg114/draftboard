@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ChevronDown,
   FileDown,
@@ -9,6 +9,7 @@ import {
   Presentation,
 } from "lucide-react";
 import { usePresence } from "../../lib/usePresence";
+import { useDismiss } from "../../lib/useDismiss";
 
 interface ExportFormatMenuProps {
   pid: string;
@@ -27,34 +28,30 @@ export function ExportFormatMenu({
 }: ExportFormatMenuProps) {
   const [open, setOpen] = useState(false);
   const { mounted, exiting } = usePresence(open, 130);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(open, () => setOpen(false), [wrapRef]);
 
   if (!canDownloadRendered && !canDownloadNotes && !includePptx) {
     return null;
   }
 
   return (
-    <div className="relative">
+    <div ref={wrapRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label={label}
+        title={label}
         className={`px-3 py-1.5 rounded-full text-[13px] font-medium text-ink transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
           open
             ? "bg-black/[0.1]"
             : "bg-black/[0.05] hover:bg-black/[0.1]"
         }`}
       >
-        <span>{label}</span>
+        <FileDown className="w-3.5 h-3.5 text-ink-secondary lg:hidden" />
+        <span className="hidden lg:inline">{label}</span>
         <ChevronDown
           className={`w-3.5 h-3.5 text-ink-secondary transition-transform ${
             open ? "rotate-180" : ""
@@ -64,10 +61,6 @@ export function ExportFormatMenu({
 
       {mounted && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
           <div
             role="menu"
             className={`absolute right-0 top-full mt-2 z-50 w-64 apple-glass dock-shadow rounded-2xl p-1.5 space-y-0.5 ${

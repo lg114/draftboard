@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   Image as ImageIcon,
@@ -16,6 +16,7 @@ import type {
   ThemeOption,
 } from "../../../lib/api";
 import { usePresence } from "../../../lib/usePresence";
+import { useDismiss } from "../../../lib/useDismiss";
 import { LAYOUT_OPTIONS } from "../layoutUtils";
 import { LayoutIcon } from "./LayoutIcon";
 
@@ -70,6 +71,15 @@ export function StageDock({
 
   const sw = activeTheme.swatches;
 
+  const themeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const themePopoverRef = useRef<HTMLDivElement | null>(null);
+  const addWrapRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(themePopoverOpen, () => setThemePopoverOpen(false), [
+    themeTriggerRef,
+    themePopoverRef,
+  ]);
+  useDismiss(addPopoverOpen, () => setAddPopoverOpen(false), [addWrapRef]);
+
   useEffect(() => {
     setBrandDraft({
       accent_hex: brand?.accent_hex || "",
@@ -83,18 +93,14 @@ export function StageDock({
   return (
     <div key="standard-layout-dock" className="anim-dock-swap">
       {themePopoverMounted && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setThemePopoverOpen(false)}
-          />
-          <div
-            className={`absolute bottom-full left-0 mb-2.5 w-[348px] apple-glass dock-shadow rounded-2xl p-3 z-50 space-y-2.5 ${
-              themePopoverExiting
-                ? "anim-popover-up-out pointer-events-none"
-                : "anim-popover-up-in"
-            }`}
-          >
+        <div
+          ref={themePopoverRef}
+          className={`absolute bottom-full left-0 mb-2.5 w-[min(348px,calc(100vw-24px))] apple-glass dock-shadow rounded-2xl p-3 z-50 space-y-2.5 ${
+            themePopoverExiting
+              ? "anim-popover-up-out pointer-events-none"
+              : "anim-popover-up-in"
+          }`}
+        >
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center bg-black/[0.06] p-[3px] rounded-xl gap-0.5">
                 <button
@@ -364,14 +370,20 @@ export function StageDock({
                 })}
               </div>
             )}
-          </div>
-        </>
+        </div>
       )}
 
-      <div className="apple-glass dock-shadow rounded-2xl px-2 py-1.5 flex items-center gap-1.5 flex-nowrap">
+      <div
+        className={`apple-glass dock-shadow rounded-2xl px-2 py-1.5 flex items-center justify-center gap-1.5 max-w-full ${
+          compactDock ? "flex-wrap" : "flex-nowrap"
+        }`}
+      >
         <button
+          ref={themeTriggerRef}
           type="button"
           onClick={() => setThemePopoverOpen(!themePopoverOpen)}
+          aria-expanded={themePopoverOpen}
+          aria-haspopup="dialog"
           title={`切换主题：当前「${activeTheme.name}」`}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hover:bg-black/[0.05] transition-colors cursor-pointer whitespace-nowrap shrink-0"
         >
@@ -442,13 +454,17 @@ export function StageDock({
               }`}
             />
           </span>
-          {!compactDock && <span>自动缩字</span>}
+          {compactDock ? (
+            <span className="text-ink-secondary">缩字</span>
+          ) : (
+            <span>自动缩字</span>
+          )}
         </button>
 
         {isCustomCanvas && !diffPreviewActive && onQuickAddElement && (
           <>
             <div className="w-px h-5 bg-black/[0.08] shrink-0" />
-            <div className="relative shrink-0">
+            <div ref={addWrapRef} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -468,10 +484,6 @@ export function StageDock({
 
               {addPopoverMounted && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setAddPopoverOpen(false)}
-                  />
                   <div
                     className={`absolute bottom-full right-0 mb-2.5 w-[176px] apple-glass dock-shadow rounded-2xl p-1.5 z-50 space-y-0.5 ${
                       addPopoverExiting

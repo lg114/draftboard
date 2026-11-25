@@ -163,7 +163,7 @@ export function ModelQuickSwitcher({
         )}
         <span
           className={`truncate font-mono ${
-            compact ? "max-w-[135px]" : "max-w-[175px]"
+            compact ? "max-w-[175px]" : "max-w-[215px]"
           }`}
         >
           {configured ? activeModel : "配置模型"}
@@ -185,7 +185,7 @@ export function ModelQuickSwitcher({
         <ProviderIcon provider={activeProvider} size="sm" />
         <span
           className={`truncate font-mono text-ink ${
-            compact ? "max-w-[130px]" : "max-w-[165px]"
+            compact ? "max-w-[175px]" : "max-w-[215px]"
           }`}
         >
           {activeModel}
