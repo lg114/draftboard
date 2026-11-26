@@ -34,9 +34,9 @@ uv sync
 uv run draftboard serve
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) and click **体验示例** (shown as **10 秒体验示例文稿** when the library is empty).
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) and click **体验示例**.
 
-Review the five-slide outline, then click **生成 PPTX** to confirm and compile. You can download the PPTX, or use **更多格式** to also get a PDF, per-page PNGs, and a markdown speaker script with source excerpts.
+Review the five-slide outline, then open **导出** and click **立即编译 PPTX** to confirm and compile. From the same **导出** menu you can download the PPTX, vector PDF, per-page PNGs (ZIP), and a markdown speaker script with source excerpts.
 
 ## How it works
 
@@ -126,19 +126,19 @@ This skips `integration` tests that call a live model; offline tests use bundled
 
 ## Screenshots
 
-Local UI from this repository at `http://127.0.0.1:8000`. No model key was set.
+Local dark-studio UI from this repository at `http://127.0.0.1:8000`.
 
-Import step (outline generation waits for a model):
+Import step (materials attached, ready to draft an outline):
 
-![Materials imported, outline generation waiting on a model](docs/assets/01-import-materials.png)
+![Materials imported, ready to generate outline](docs/assets/01-import-materials.png)
 
-Built-in example:
+Built-in example (outline review, structured table/chart inspector, and unified export menu):
 
-![Demo outline before compile](docs/assets/02-outline-review.png)
+![Demo outline review with AI assistant](docs/assets/02-outline-review.png)
 
-![Compiled slide editor](docs/assets/03-slide-editor.png)
+![Compiled slide editor with table and chart inspector](docs/assets/03-slide-editor.png)
 
-![Export menu](docs/assets/04-export-formats.png)
+![Unified export menu](docs/assets/04-export-formats.png)
 
 ## Sample files
 

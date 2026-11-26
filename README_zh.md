@@ -34,9 +34,9 @@ uv sync
 uv run draftboard serve
 ```
 
-打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)，点击 **体验示例**（文稿库为空时会显示为 **10 秒体验示例文稿**）。
+打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)，点击 **体验示例**。
 
-看完 5 页大纲后，点 **生成 PPTX** 即可确认并编译。随后可以下载 PPTX，或在 **更多格式** 里导出 PDF、逐页 PNG、带出处的讲稿。
+看完 5 页大纲后，点右上角 **导出 → 立即编译 PPTX** 即可确认并编译。随后可在同一个 **导出** 菜单里下载 PPTX、矢量 PDF、逐页高清 PNG（ZIP）以及带出处摘录的 Markdown 讲稿。
 
 ## 完整流程
 
@@ -136,19 +136,19 @@ uv run pytest tests/ -m "not integration" -v
 
 ## 界面预览
 
-以下截图均来自本仓库本地运行的界面（`http://127.0.0.1:8000`），未配置模型。
+以下截图均来自本仓库本地运行的暗色工作台界面（`http://127.0.0.1:8000`）。
 
-导入材料后等待模型：
+导入材料与输入要求：
 
-![材料已导入，生成大纲等待模型配置](docs/assets/01-import-materials.png)
+![已就绪材料，准备生成大纲](docs/assets/01-import-materials.png)
 
-内置体验示例的大纲与编辑界面：
+内置体验示例的大纲审阅、图表/表格属性编辑与导出菜单：
 
-![编译前的示例大纲](docs/assets/02-outline-review.png)
+![示例大纲与右侧 AI 助手](docs/assets/02-outline-review.png)
 
-![编译后的幻灯片编辑器](docs/assets/03-slide-editor.png)
+![表格与图表画布及属性检查器](docs/assets/03-slide-editor.png)
 
-![导出菜单](docs/assets/04-export-formats.png)
+![统一导出菜单](docs/assets/04-export-formats.png)
 
 ## 示例文件
 
