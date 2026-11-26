@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Minus, Plus, Square, Type } from "lucide-react";
 import type {
   BrandKit,
@@ -53,7 +53,13 @@ interface SlideStageCanvasProps {
   onSelectedCustomElementChange?: (elementId: string | null) => void;
 }
 
-const ZOOM_STEPS = [50, 75, 100, 125, 150, 175];
+const MIN_ZOOM = 50;
+const MAX_ZOOM = 300;
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 175, 200, 250, 300];
+
+function clampZoom(value: number): number {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(value)));
+}
 
 export function SlideStageCanvas({
   pid,
@@ -83,10 +89,27 @@ export function SlideStageCanvas({
   onSelectedCustomElementChange,
 }: SlideStageCanvasProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const slideFrameRef = useRef<HTMLDivElement | null>(null);
   const [fitWidth, setFitWidth] = useState(720);
   const [zoomPct, setZoomPct] = useState(100);
+  const [spacePressed, setSpacePressed] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
   const [selectedElId, setSelectedElId] = useState<string | null>(null);
+
+  const pendingZoomAnchorRef = useRef<{
+    u: number;
+    v: number;
+    pointerX: number;
+    pointerY: number;
+  } | null>(null);
+  const panStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+  } | null>(null);
 
   const addWrapRef = useRef<HTMLDivElement | null>(null);
   const { mounted: addPopoverMounted, exiting: addPopoverExiting } =
@@ -102,8 +125,8 @@ export function SlideStageCanvas({
     const el = viewportRef.current;
     if (!el) return;
     const measure = () => {
-      const availW = Math.max(280, el.clientWidth - 64);
-      const availH = Math.max(180, el.clientHeight - 64);
+      const availW = Math.max(280, el.offsetWidth - 64);
+      const availH = Math.max(180, el.offsetHeight - 64);
       const byWidth = availW;
       const byHeight = (availH * 16) / 9;
       setFitWidth(Math.min(1080, byWidth, byHeight));
@@ -115,7 +138,86 @@ export function SlideStageCanvas({
   }, []);
 
   const renderedWidth = Math.max(240, Math.round((fitWidth * zoomPct) / 100));
+  const renderedHeight = Math.floor((renderedWidth * 9) / 16);
   const scale = renderedWidth / 960;
+
+  const applyZoomWithAnchor = useCallback(
+    (
+      updater: (prev: number) => number,
+      clientPoint?: { x: number; y: number }
+    ) => {
+      const vp = viewportRef.current;
+      const frame = slideFrameRef.current;
+      if (vp && frame) {
+        const vpRect = vp.getBoundingClientRect();
+        const frameRect = frame.getBoundingClientRect();
+        if (frameRect.width > 0 && frameRect.height > 0) {
+          const pointerX = clientPoint
+            ? clientPoint.x - vpRect.left
+            : vpRect.width / 2;
+          const pointerY = clientPoint
+            ? clientPoint.y - vpRect.top
+            : vpRect.height / 2;
+          const frameLeftInContent =
+            frameRect.left - vpRect.left + vp.scrollLeft;
+          const frameTopInContent =
+            frameRect.top - vpRect.top + vp.scrollTop;
+          pendingZoomAnchorRef.current = {
+            u: (vp.scrollLeft + pointerX - frameLeftInContent) / frameRect.width,
+            v: (vp.scrollTop + pointerY - frameTopInContent) / frameRect.height,
+            pointerX,
+            pointerY,
+          };
+        }
+      }
+      setZoomPct((prev) => {
+        const next = clampZoom(updater(prev));
+        if (next === prev) {
+          pendingZoomAnchorRef.current = null;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
+    const anchor = pendingZoomAnchorRef.current;
+    if (!anchor) return;
+    pendingZoomAnchorRef.current = null;
+    const vp = viewportRef.current;
+    const frame = slideFrameRef.current;
+    if (!vp || !frame) return;
+    const vpRect = vp.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    const frameLeftInContent = frameRect.left - vpRect.left + vp.scrollLeft;
+    const frameTopInContent = frameRect.top - vpRect.top + vp.scrollTop;
+    vp.scrollLeft =
+      frameLeftInContent + anchor.u * frameRect.width - anchor.pointerX;
+    vp.scrollTop =
+      frameTopInContent + anchor.v * frameRect.height - anchor.pointerY;
+  }, [renderedWidth, renderedHeight]);
+
+  // Ctrl/Cmd + mouse wheel (and trackpad pinch) zooms ONLY the slide canvas around the pointer
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      if (e.deltaY === 0) return;
+      const delta =
+        Math.abs(e.deltaY) >= 40
+          ? Math.sign(-e.deltaY) * 10
+          : Math.round(-e.deltaY * 0.6) || Math.sign(-e.deltaY);
+      applyZoomWithAnchor((prev) => prev + delta, {
+        x: e.clientX,
+        y: e.clientY,
+      });
+    };
+    vp.addEventListener("wheel", onWheel, { passive: false });
+    return () => vp.removeEventListener("wheel", onWheel);
+  }, [applyZoomWithAnchor]);
 
   const total = outline.items.length;
   const item = outline.items[selectedIndex];
@@ -306,15 +408,81 @@ export function SlideStageCanvas({
   const hasLayoutIssues =
     issues.length > 0 || Boolean(report && !report.success);
 
-  const stepZoom = (dir: -1 | 1) => {
-    const idx = ZOOM_STEPS.indexOf(zoomPct);
-    if (idx === -1) {
-      setZoomPct(100);
-      return;
-    }
-    const next = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + dir))];
-    setZoomPct(next);
-  };
+  const stepZoom = useCallback(
+    (dir: -1 | 1) => {
+      applyZoomWithAnchor((prev) => {
+        if (dir > 0) {
+          const next = ZOOM_STEPS.find((s) => s > prev);
+          return next ?? MAX_ZOOM;
+        }
+        for (let i = ZOOM_STEPS.length - 1; i >= 0; i -= 1) {
+          if (ZOOM_STEPS[i] < prev) return ZOOM_STEPS[i];
+        }
+        return MIN_ZOOM;
+      });
+    },
+    [applyZoomWithAnchor]
+  );
+
+  // Keyboard zoom (Ctrl/Cmd + +/-/0) & Space-to-pan modifier
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return Boolean(
+        el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.tagName === "SELECT" ||
+            el.isContentEditable)
+      );
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || isEditableTarget(e.target)) return;
+
+      if (e.code === "Space" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (zoomPct > 100) {
+          e.preventDefault();
+        }
+        if (!e.repeat) setSpacePressed(true);
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          stepZoom(1);
+        } else if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          stepZoom(-1);
+        } else if (e.key === "0") {
+          e.preventDefault();
+          applyZoomWithAnchor(() => 100);
+        }
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        setSpacePressed(false);
+      }
+    };
+
+    const onBlur = () => {
+      setSpacePressed(false);
+      panStateRef.current = null;
+      setIsPanning(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [zoomPct, stepZoom, applyZoomWithAnchor]);
 
   return (
     <main className="flex-1 bg-ui-bg px-1 pb-3 pt-0.5 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -470,17 +638,17 @@ export function SlideStageCanvas({
               <button
                 type="button"
                 onClick={() => stepZoom(-1)}
-                disabled={zoomPct <= ZOOM_STEPS[0]}
+                disabled={zoomPct <= MIN_ZOOM}
                 aria-label="缩小画布"
-                title="缩小画布"
+                title="缩小画布 (Ctrl + 滚轮 / Ctrl + -)"
                 className="p-1 rounded hover:bg-ui-control-hover text-ui-icon hover:text-ui-text disabled:opacity-30 cursor-pointer transition-colors"
               >
                 <Minus className="w-3 h-3" />
               </button>
               <button
                 type="button"
-                onClick={() => setZoomPct(100)}
-                title="点击重置为适应画布 (100%)"
+                onClick={() => applyZoomWithAnchor(() => 100)}
+                title="点击重置为 100% 适配 (Ctrl + 0)"
                 className="px-1.5 py-0.5 rounded hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text cursor-pointer transition-colors min-w-[44px] text-center"
               >
                 {zoomPct}%
@@ -488,9 +656,9 @@ export function SlideStageCanvas({
               <button
                 type="button"
                 onClick={() => stepZoom(1)}
-                disabled={zoomPct >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
+                disabled={zoomPct >= MAX_ZOOM}
                 aria-label="放大画布"
-                title="放大画布"
+                title="放大画布 (Ctrl + 滚轮 / Ctrl + +)"
                 className="p-1 rounded hover:bg-ui-control-hover text-ui-icon hover:text-ui-text disabled:opacity-30 cursor-pointer transition-colors"
               >
                 <Plus className="w-3 h-3" />
@@ -499,30 +667,88 @@ export function SlideStageCanvas({
           </div>
         </div>
 
-        {/* Pure 16:9 Slide Canvas Viewport */}
+        {/* Pure 16:9 Slide Canvas Viewport (Ctrl/Cmd + wheel zoom, Space/Middle-click pan, m-auto overflow-safe centering) */}
         {(() => {
           const slideBg = isCustomCanvas
             ? item?.custom_bg || sw.bg
             : layout === "cover" || layout === "closing"
             ? sw.cover_bg
             : sw.bg;
+          const canSpacePan = spacePressed && zoomPct > 100;
           return (
         <div
           ref={viewportRef}
           onClick={() => {
-            if (selectedElId) setSelectedElId(null);
+            if (selectedElId && !isPanning) setSelectedElId(null);
           }}
-          className="flex-1 min-h-0 overflow-auto clean-scroll flex items-center justify-center p-6 sm:p-8"
+          onPointerDown={(e) => {
+            const vp = viewportRef.current;
+            if (!vp) return;
+            const wantsPan = e.button === 1 || (e.button === 0 && canSpacePan);
+            if (!wantsPan) return;
+            e.preventDefault();
+            e.stopPropagation();
+            panStateRef.current = {
+              pointerId: e.pointerId,
+              startX: e.clientX,
+              startY: e.clientY,
+              startScrollLeft: vp.scrollLeft,
+              startScrollTop: vp.scrollTop,
+            };
+            vp.setPointerCapture(e.pointerId);
+            setIsPanning(true);
+          }}
+          onPointerMove={(e) => {
+            const pan = panStateRef.current;
+            const vp = viewportRef.current;
+            if (!pan || !vp || pan.pointerId !== e.pointerId) return;
+            vp.scrollLeft = pan.startScrollLeft - (e.clientX - pan.startX);
+            vp.scrollTop = pan.startScrollTop - (e.clientY - pan.startY);
+          }}
+          onPointerUp={(e) => {
+            const pan = panStateRef.current;
+            const vp = viewportRef.current;
+            if (!pan || pan.pointerId !== e.pointerId) return;
+            panStateRef.current = null;
+            setIsPanning(false);
+            if (vp?.hasPointerCapture(e.pointerId)) {
+              vp.releasePointerCapture(e.pointerId);
+            }
+          }}
+          onPointerCancel={(e) => {
+            const pan = panStateRef.current;
+            const vp = viewportRef.current;
+            if (!pan || pan.pointerId !== e.pointerId) return;
+            panStateRef.current = null;
+            setIsPanning(false);
+            if (vp?.hasPointerCapture(e.pointerId)) {
+              vp.releasePointerCapture(e.pointerId);
+            }
+          }}
+          className={`flex-1 min-h-0 overflow-auto clean-scroll ${
+            isPanning
+              ? "cursor-grabbing select-none"
+              : canSpacePan
+              ? "cursor-grab select-none"
+              : ""
+          }`}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: renderedWidth,
-              height: Math.floor((renderedWidth * 9) / 16),
-              backgroundColor: slideBg,
-            }}
-            className="shrink-0 rounded-[2px] overflow-hidden relative"
-          >
+          <div className="min-w-full min-h-full w-fit h-fit flex p-6 sm:p-8">
+            <div
+              ref={slideFrameRef}
+              onClick={(e) => {
+                if (canSpacePan || isPanning) return;
+                e.stopPropagation();
+              }}
+              style={{
+                width: renderedWidth,
+                height: renderedHeight,
+                backgroundColor: slideBg,
+              }}
+              className={`m-auto shrink-0 rounded-[2px] overflow-hidden relative ${
+                canSpacePan || isPanning ? "pointer-events-none" : ""
+              }`}
+            >
             <div
               key={`stage-${selectedIndex}-${diffPreviewActive ? "diff" : "live"}`}
               className="absolute inset-0 anim-slide-settle"
@@ -587,6 +813,7 @@ export function SlideStageCanvas({
                   onFocusField={onFocusField}
                 />
               ) : null}
+            </div>
             </div>
           </div>
         </div>
