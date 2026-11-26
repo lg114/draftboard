@@ -373,10 +373,10 @@ export function ThemeBrandModal({
               <div className="pt-3 border-t border-ui-border-subtle flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[13px] font-medium text-ui-text">
-                    排版自动缩字
+                    导出自动缩字
                   </div>
                   <div className="text-[12.5px] text-ui-text-muted">
-                    导出 PPTX 时文字过多自动缩小字号，防止超出版面
+                    导出 PPTX 与交付体检时，文字超框自动逐档缩字（关闭则严格锁定基准字号）
                   </div>
                 </div>
                 <button
@@ -385,7 +385,7 @@ export function ThemeBrandModal({
                   aria-checked={autoFit}
                   onClick={onToggleAutoFit}
                   className={`w-9 h-5 rounded-full p-[2px] flex items-center transition-colors shrink-0 cursor-pointer ${
-                    autoFit ? "bg-ui-accent" : "bg-ui-control-active border border-ui-border-subtle"
+                    autoFit ? "bg-ui-accent" : "bg-ui-control-active"
                   }`}
                 >
                   <span

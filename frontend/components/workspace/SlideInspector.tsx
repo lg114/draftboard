@@ -42,9 +42,7 @@ interface SlideInspectorProps {
   sourceFragments: SourceFragment[];
   slideIssues: Issue[];
   activeTheme?: ThemeOption;
-  autoFit?: boolean;
   onSelectLayout?: (layout: OutlineLayout) => void;
-  onToggleAutoFit?: () => void;
   onOpenThemeModal?: () => void;
   onUpdateField: (field: EditableOutlineField, value: string) => void;
   onUpdateCustomElementText?: (elementId: string, text: string) => void;
@@ -85,9 +83,7 @@ export function SlideInspector({
   sourceFragments,
   slideIssues,
   activeTheme,
-  autoFit = true,
   onSelectLayout,
-  onToggleAutoFit,
   onOpenThemeModal,
   onUpdateField,
   onUpdateCustomElementText,
@@ -245,27 +241,6 @@ export function SlideInspector({
                     </button>
                   );
                 })}
-              </div>
-            )}
-
-            {onToggleAutoFit && (
-              <div className="flex items-center justify-between pt-0.5 text-[12.5px]">
-                <span className="text-ui-text-muted">超框时自动缩字</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={autoFit}
-                  onClick={onToggleAutoFit}
-                  className={`w-8 h-[18px] rounded-full p-[2px] flex items-center transition-colors cursor-pointer ${
-                    autoFit ? "bg-ui-accent" : "bg-ui-control-active"
-                  }`}
-                >
-                  <span
-                    className={`w-3.5 h-3.5 rounded-full bg-ui-on-accent transition-transform ${
-                      autoFit ? "translate-x-[14px]" : "translate-x-0"
-                    }`}
-                  />
-                </button>
               </div>
             )}
           </section>

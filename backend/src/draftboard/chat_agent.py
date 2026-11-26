@@ -87,10 +87,11 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
    - 如果自检报 `[OVERFLOW]` 或 `[OVERLAP]`，主动精简文案或微调尺寸再测一次，争取交付时全部页面排版安全。
 4. **导出需尊重用户意图**：
    - 仅当用户明确提出“导出 / 生成 PPTX / 编译一下”时，才调用 `export_deck_now`。平时改完画布会自动实时刷新，简明汇报改动即可。
-5. **简洁、专业、可直接行动的回复**：
+5. **简洁、专业、面向用户的自然表达**：
    - 默认使用与用户和素材一致的语言（通常为自然流畅的简体中文）。
    - 提及具体页面时请使用「第 N 页」格式（例如「第 2 页」），前端会自动渲染为可点击的跳转标签。
-   - 不要暴露内部 `project_id` 或 `outline_item_id` 之类的技术标识，回复简洁有条理。
+   - **绝不向用户暴露任何内部技术标识**：回复正文中一律使用自然的产品中文名称（例如说「苹果白」「深空钛黑」「松柏森绿」「美术馆暖石」「自由画布」「卡片」「分割线」「对比表格」「柱状图」「双栏版式」），严禁出现内部工具函数名（如 `design_custom_slide`、`get_deck_state`、`set_deck_theme`、`check_deck_layout`、`export_deck_now`）、主题英文 ID（如 `keynote_light`、`keynote_dark`、`nordic_pine`、`gallery_sand`）、元素/版式英文枚举名（如 `card`、`line`、`chart`、`table`、`two_column`、`text_image`）以及 `project_id` / `outline_item_id`（这些英文标识仅在调用工具参数时使用）。
+   - Draftboard 预设主题固定为 4 套：**苹果白**（纯净画布）、**深空钛黑**（暗黑发布会）、**松柏森绿**（深松封面 + 象牙正文）、**美术馆暖石**（亚麻纸感 + 陶土点缀）；若需自定义单页配色或布局，可使用自由画布直接设计。
 """
 
 
@@ -549,12 +550,14 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                         ),
                     }
                 )
-        summary_msg = f"共 {len(slides_info)} 页，主题 {state.active_theme_id}"
+        theme_spec = get_theme(state.active_theme_id)
+        summary_msg = f"共 {len(slides_info)} 页，主题「{theme_spec.name}」"
         state.last_tool_summaries["get_deck_state"] = summary_msg
         return json.dumps(
             {
                 "project_name": meta.get("name") or state.project_id,
                 "theme_id": state.active_theme_id,
+                "theme_name": theme_spec.name,
                 "auto_fit": state.auto_fit,
                 "selected_slide_number": state.selected_slide_index + 1,
                 "total_slides": len(slides_info),
@@ -1163,7 +1166,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         ] = None,
         auto_fit: Optional[bool] = None,
     ) -> str:
-        """切换当前文稿的演示主题（keynote_light 苹果白 / keynote_dark 极简暗夜 / nordic_pine 北欧松林 / gallery_sand 美术馆暖石）或开启/关闭自动缩字。"""
+        """切换当前文稿的演示主题（keynote_light 苹果白 / keynote_dark 深空钛黑 / nordic_pine 松柏森绿 / gallery_sand 美术馆暖石）或开启/关闭导出自动缩字。"""
         if theme_id is None and auto_fit is None:
             return "ERROR: 请至少指定 theme_id 或 auto_fit。"
         meta = _load_meta(state.project_id)
@@ -1346,9 +1349,10 @@ def _build_turn_input(
         cur_it = outline.items[state.selected_slide_index]
         cur_slide_hint = f"第 {state.selected_slide_index + 1} 页「{cur_it.title}」"
 
+    active_theme_name = get_theme(state.active_theme_id).name
     context_header = (
         f"[当前工作台上下文：文稿名「{proj_name}」| 共 {total} 页 | "
-        f"当前选中 {cur_slide_hint} | 主题 {state.active_theme_id} | "
+        f"当前选中 {cur_slide_hint} | 主题 {active_theme_name}（{state.active_theme_id}）| "
         f"自动缩字 {'开' if state.auto_fit else '关'}]"
     )
 

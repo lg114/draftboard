@@ -487,9 +487,7 @@ export default function ProjectWorkspacePage() {
                   sourceFragments={ws.sourceFragments}
                   slideIssues={ws.currentSlideIssues}
                   activeTheme={ws.activeTheme}
-                  autoFit={ws.autoFit}
                   onSelectLayout={outlineEditor.handleSelectLayout}
-                  onToggleAutoFit={() => ws.setAutoFit((v) => !v)}
                   onOpenThemeModal={() => setShowThemeModal(true)}
                   llmConfigured={
                     ws.llmSettings ? ws.llmSettings.configured : true

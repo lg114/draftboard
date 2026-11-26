@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   AtSign,
@@ -67,7 +67,7 @@ function renderSlideLinkPill(
       type="button"
       onClick={() => onJumpToSlide(pageNum - 1)}
       title={`跳转到第 ${pageNum} 页`}
-      className={`inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-ui-surface-input hover:bg-ui-control-hover border border-ui-border-subtle text-[12.5px] text-ui-accent-text transition-colors cursor-pointer align-baseline ${
+      className={`inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-ui-bg-selected hover:bg-ui-control-active text-[12.5px] text-ui-accent-text transition-colors cursor-pointer align-baseline ${
         bold ? "font-semibold" : "font-medium"
       }`}
     >
@@ -79,67 +79,54 @@ function renderSlideLinkPill(
 function renderInlineWithSlideLinks(
   text: string,
   totalSlides: number,
-  onJumpToSlide: (idx: number) => void
-) {
-  const tokenRegex = /(\*\*[^*]+\*\*|`[^`]+`|第\s*\d+\s*页)/g;
+  onJumpToSlide: (idx: number) => void,
+  options?: { inBold?: boolean; keyPrefix?: string }
+): ReactNode[] {
+  const inBold = options?.inBold ?? false;
+  const keyPrefix = options?.keyPrefix ?? "in";
+  const tokenRegex = inBold
+    ? /(`[^`]+`|第\s*\d+\s*页)/g
+    : /(\*\*[^*]+\*\*|`[^`]+`|第\s*\d+\s*页)/g;
   const parts = text.split(tokenRegex);
   return parts.map((part, idx) => {
+    const key = `${keyPrefix}-${idx}`;
     if (!part) return null;
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+    if (!inBold && part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       const inner = part.slice(2, -2);
       const exactPage = /^第\s*(\d+)\s*页$/.exec(inner.trim());
       if (exactPage) {
         const pageNum = parseInt(exactPage[1], 10);
         if (pageNum >= 1 && pageNum <= totalSlides) {
-          return renderSlideLinkPill(pageNum, idx, onJumpToSlide, true);
+          return renderSlideLinkPill(pageNum, key, onJumpToSlide, true);
         }
       }
-      if (/第\s*\d+\s*页/.test(inner)) {
-        const subParts = inner.split(/(第\s*\d+\s*页)/g);
-        return (
-          <strong key={idx} className="font-semibold text-ui-text">
-            {subParts.map((sp, si) => {
-              const m = /^第\s*(\d+)\s*页$/.exec(sp);
-              if (m) {
-                const pn = parseInt(m[1], 10);
-                if (pn >= 1 && pn <= totalSlides) {
-                  return renderSlideLinkPill(
-                    pn,
-                    `${idx}-${si}`,
-                    onJumpToSlide,
-                    true
-                  );
-                }
-              }
-              return <Fragment key={`${idx}-${si}`}>{sp}</Fragment>;
-            })}
-          </strong>
-        );
-      }
       return (
-        <strong key={idx} className="font-semibold text-ui-text">
-          {inner}
+        <strong key={key} className="font-semibold text-ui-text">
+          {renderInlineWithSlideLinks(inner, totalSlides, onJumpToSlide, {
+            inBold: true,
+            keyPrefix: `${key}-b`,
+          })}
         </strong>
       );
     }
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
       return (
-        <span
-          key={idx}
-          className="px-1.5 py-0.5 rounded bg-ui-surface-input border border-ui-border-subtle text-[12.5px] font-mono text-ui-text-secondary"
+        <code
+          key={key}
+          className="px-1.5 py-0.5 mx-0.5 rounded bg-ui-bg-selected text-[12.5px] font-mono font-normal text-ui-text-secondary"
         >
           {part.slice(1, -1)}
-        </span>
+        </code>
       );
     }
     const pageMatch = /^第\s*(\d+)\s*页$/.exec(part);
     if (pageMatch) {
       const pageNum = parseInt(pageMatch[1], 10);
       if (pageNum >= 1 && pageNum <= totalSlides) {
-        return renderSlideLinkPill(pageNum, idx, onJumpToSlide, false);
+        return renderSlideLinkPill(pageNum, key, onJumpToSlide, inBold);
       }
     }
-    return <Fragment key={idx}>{part}</Fragment>;
+    return <Fragment key={key}>{part}</Fragment>;
   });
 }
 
@@ -229,7 +216,7 @@ function ToolStepsBar({
   const warningCount = steps.filter((s) => s.status === "warning").length;
 
   return (
-    <div className="rounded-lg bg-ui-surface border border-ui-border-subtle overflow-hidden">
+    <div className="rounded-lg bg-ui-surface overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -274,7 +261,7 @@ function ToolStepsBar({
       </button>
 
       <Collapse open={expanded || (isRunning && steps.length > 1)}>
-        <div className="px-2.5 pb-2 pt-1.5 border-t border-ui-border-subtle space-y-1.5">
+        <div className="px-2.5 pb-2 pt-1 space-y-1.5">
           {steps.map((st) => (
             <div
               key={st.id}
