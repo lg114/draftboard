@@ -75,27 +75,34 @@ def canonical_brand(brand: Optional[dict], logo_sha256: Optional[str]) -> Option
         return None
     from draftboard.user_library import _HEX_RE
 
-    accent = (brand.get("accent_hex") or "").strip()
-    bg = (brand.get("bg_hex") or "").strip()
-    if not _HEX_RE.fullmatch(accent):
-        accent = ""
-    if not _HEX_RE.fullmatch(bg):
-        bg = ""
+    def _valid(key: str) -> str:
+        raw = (brand.get(key) or "").strip()
+        return raw.upper() if _HEX_RE.fullmatch(raw) else ""
+
+    accent = _valid("accent_hex")
+    bg = _valid("bg_hex")
+    cover_bg = _valid("cover_bg_hex")
+    surface = _valid("surface_hex")
     footer = (brand.get("footer_text") or "").strip() or None
     logo = (brand.get("logo_asset_id") or "").strip() or None
     position = brand.get("logo_position") or "top_right"
     if position not in ("top_right", "bottom_left"):
         position = "top_right"
-    if not any((accent, bg, footer, logo)):
+    if not any((accent, bg, cover_bg, surface, footer, logo)):
         return None
-    return {
-        "accent_hex": accent.upper() or None,
-        "bg_hex": bg.upper() or None,
+    out = {
+        "accent_hex": accent or None,
+        "bg_hex": bg or None,
         "footer_text": footer,
         "logo_asset_id": logo,
         "logo_position": position,
         "logo_sha256": logo_sha256 if logo else None,
     }
+    if cover_bg:
+        out["cover_bg_hex"] = cover_bg
+    if surface:
+        out["surface_hex"] = surface
+    return out
 
 
 def read_project_brand(project_dir: pathlib.Path) -> Optional[dict]:

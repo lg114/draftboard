@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, Palette, Sparkles, Trash2 } from "lucide-react";
 import type {
   CanvasElement,
   Issue,
-  LLMSettingsResponse,
   Material,
   OutlineItem,
   OutlineLayout,
   SavedLayoutPreset,
-  SlideRefineCandidate,
   SourceFragment,
   ThemeOption,
 } from "../../lib/api";
@@ -60,17 +58,7 @@ interface SlideInspectorProps {
   onToggleSourceId: (sourceId: string) => void;
   onApplyImageToSlide: (imageAssetId: string, sourceId?: string) => void;
   onSplitTwoColumn: () => void;
-  onRefineSlide: (
-    mode: "concise" | "bullets" | "two_column" | "custom",
-    instruction?: string
-  ) => Promise<SlideRefineCandidate | null>;
-  onApplyRefineCandidate: (candidate: SlideRefineCandidate) => void;
   onUploadClick: () => void;
-  llmConfigured?: boolean;
-  activeModelLabel?: string;
-  llmSettings?: LLMSettingsResponse | null;
-  onLLMSettingsUpdated?: (next: LLMSettingsResponse) => void;
-  onOpenLLMSettings?: () => void;
   embedded?: boolean;
 }
 
@@ -98,26 +86,10 @@ export function SlideInspector({
   onToggleSourceId,
   onApplyImageToSlide,
   onSplitTwoColumn,
-  onRefineSlide,
-  onApplyRefineCandidate,
   onUploadClick,
-  llmConfigured = true,
-  activeModelLabel = "",
-  llmSettings = null,
-  onLLMSettingsUpdated,
-  onOpenLLMSettings,
   embedded = false,
 }: SlideInspectorProps) {
   const [notesOpen, setNotesOpen] = useState(true);
-  const [refiningMode, setRefiningMode] = useState<string | null>(null);
-  const [refineCandidate, setRefineCandidate] =
-    useState<SlideRefineCandidate | null>(null);
-  const [refineNotice, setRefineNotice] = useState("");
-
-  useEffect(() => {
-    setRefineCandidate(null);
-    setRefineNotice("");
-  }, [item.outline_item_id]);
 
   const layout = inferEffectiveLayout(item.layout, slideIndex, totalSlides);
   const isCustomCanvas = Boolean(
@@ -128,35 +100,6 @@ export function SlideInspector({
 
   const primaryInputBase =
     "ui-field text-[13.5px] px-3 py-2 leading-relaxed";
-
-  async function triggerRefine(
-    mode: "concise" | "bullets" | "two_column" | "custom",
-    instruction?: string
-  ) {
-    setRefiningMode(mode);
-    setRefineNotice("");
-    try {
-      const candidate = await onRefineSlide(mode, instruction);
-      if (candidate) {
-        const unchanged =
-          candidate.title.trim() === item.title.trim() &&
-          candidate.summary.trim() === item.summary.trim() &&
-          (candidate.column_right || "").trim() ===
-            (item.column_right || "").trim() &&
-          (!candidate.layout || candidate.layout === layout);
-        if (unchanged) {
-          setRefineCandidate(null);
-          setRefineNotice(
-            "当前内容已足够精炼，无需改动（可用「自定义」指定改写方向）。"
-          );
-        } else {
-          setRefineCandidate(candidate);
-        }
-      }
-    } finally {
-      setRefiningMode(null);
-    }
-  }
 
   function fillFromExcerpt(
     targetField: "summary" | "column_right",
@@ -253,17 +196,16 @@ export function SlideInspector({
               <div className="text-[13px] font-semibold text-ui-danger">
                 本页排版校验未通过
               </div>
-              <button
-                type="button"
-                disabled={Boolean(refiningMode)}
-                onClick={() => void triggerRefine("concise")}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-ui-danger text-ui-bg text-[12.5px] font-medium hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>
-                  {refiningMode === "concise" ? "精简中…" : "AI 精简"}
-                </span>
-              </button>
+              {onSwitchToChat && (
+                <button
+                  type="button"
+                  onClick={onSwitchToChat}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-ui-danger text-ui-bg text-[12.5px] font-medium hover:brightness-110 transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>让 AI 调整</span>
+                </button>
+              )}
             </div>
             {slideIssues.map((iss, i) => (
               <p
@@ -309,23 +251,9 @@ export function SlideInspector({
             layout={layout}
             imageAssets={imageAssets}
             primaryInputBase={primaryInputBase}
-            refiningMode={refiningMode}
-            refineCandidate={refineCandidate}
-            refineNotice={refineNotice}
-            llmConfigured={llmConfigured}
-            activeModelLabel={activeModelLabel}
-            llmSettings={llmSettings}
-            onLLMSettingsUpdated={onLLMSettingsUpdated}
-            onOpenLLMSettings={onOpenLLMSettings}
             onUpdateField={onUpdateField}
             onSplitTwoColumn={onSplitTwoColumn}
             onUploadClick={onUploadClick}
-            onTriggerRefine={triggerRefine}
-            onDismissCandidate={() => setRefineCandidate(null)}
-            onApplyCandidate={(cand) => {
-              onApplyRefineCandidate(cand);
-              setRefineCandidate(null);
-            }}
           />
         )}
 

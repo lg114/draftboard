@@ -401,16 +401,25 @@ function ChangeReceiptCard({
   const themeName = changes.theme_id
     ? themes.find((t) => t.id === changes.theme_id)?.name || changes.theme_id
     : null;
+  const customPaletteLabel = changes.brand_updated
+    ? changes.palette_name || (themeName ? null : "自定义配色")
+    : null;
   const canRevert = Boolean(
     changes.before_outline_version && changes.after_outline_version
   );
 
-  if (!touched.length && !themeName && !changes.exported && !canRevert) {
+  if (
+    !touched.length &&
+    !themeName &&
+    !customPaletteLabel &&
+    !changes.exported &&
+    !canRevert
+  ) {
     return null;
   }
 
   return (
-    <div className="p-2.5 rounded-lg bg-ui-surface border border-ui-border-subtle space-y-2 anim-msg-in">
+    <div className="p-2.5 rounded-lg bg-ui-surface space-y-2 anim-msg-in">
       <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
         {touched.length > 0 && (
           <>
@@ -420,7 +429,7 @@ function ChangeReceiptCard({
                 key={num}
                 type="button"
                 onClick={() => onJumpToSlide(num - 1)}
-                className="px-1.5 py-0.5 rounded bg-ui-surface-input hover:bg-ui-control-hover border border-ui-border-subtle text-ui-text transition-colors cursor-pointer"
+                className="px-1.5 py-0.5 rounded bg-ui-bg-selected hover:bg-ui-control-active text-ui-text transition-colors cursor-pointer"
               >
                 第 {num} 页
               </button>
@@ -432,8 +441,14 @@ function ChangeReceiptCard({
         )}
 
         {themeName && (
-          <span className="px-1.5 py-0.5 rounded bg-ui-surface-input border border-ui-border-subtle text-ui-text-secondary">
+          <span className="px-1.5 py-0.5 rounded bg-ui-bg-selected text-ui-text-secondary">
             主题：{themeName}
+          </span>
+        )}
+
+        {customPaletteLabel && (
+          <span className="px-1.5 py-0.5 rounded bg-ui-bg-selected text-ui-text-secondary">
+            配色：{customPaletteLabel}
           </span>
         )}
 

@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { BrandKit, Outline, ThemeOption } from "../../lib/api";
 import { useDismiss } from "../../lib/useDismiss";
-import { inferEffectiveLayout } from "./layoutUtils";
+import { inferEffectiveLayout, needsContrastHairline } from "./layoutUtils";
 import { SlideRenderer } from "./stage/StandardSlideView";
 
 interface SlideNavigatorProps {
@@ -285,7 +285,13 @@ export function SlideNavigator({
                         ? "thumb-selected"
                         : "thumb-idle opacity-90 group-hover:opacity-100"
                     }`}
-                    style={{ backgroundColor: bg }}
+                    style={{
+                      backgroundColor: bg,
+                      outline:
+                        !active && needsContrastHairline(bg, "#0D0D0E", 24)
+                          ? "1px solid var(--ui-border-subtle)"
+                          : undefined,
+                    }}
                   >
                     <SlideRenderer
                       pid={pid}

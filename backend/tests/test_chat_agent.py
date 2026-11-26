@@ -450,3 +450,86 @@ def test_error_classification_history_filtering_tool_status_and_retry(
     assert len(msgs) == 2
     assert msgs[1]["content"] == "重试成功。"
     assert not msgs[1].get("is_error")
+
+
+def test_custom_palette_derivation_and_agent_tool(client):
+    """Custom palette derives contrast-safe text/surfaces, preserves footer, and resets cleanly."""
+    import asyncio
+
+    from draftboard.themes import get_theme
+    from draftboard.user_library import apply_brand_to_theme, _relative_luminance
+
+    # 1. Dark cover + dark body auto-derives bright readable text
+    dark_custom = apply_brand_to_theme(
+        get_theme("keynote_light"),
+        {
+            "palette_name": "金融深海蓝金",
+            "cover_bg_hex": "#0B1D3A",
+            "bg_hex": "#101828",
+            "accent_hex": "#D4AF37",
+        },
+    )
+    assert dark_custom.name == "金融深海蓝金"
+    assert dark_custom.cover_bg_hex == "#0B1D3A"
+    assert dark_custom.bg_hex == "#101828"
+    assert dark_custom.accent_hex == "#D4AF37"
+    assert _relative_luminance(dark_custom.title_hex) > 0.7
+    assert _relative_luminance(dark_custom.cover_title_hex) > 0.7
+    assert dark_custom.chart_palette[0] == "#D4AF37"
+
+    # 2. Light cover + light body auto-derives dark readable ink
+    light_custom = apply_brand_to_theme(
+        get_theme("keynote_dark"),
+        {
+            "cover_bg_hex": "#F7F3E9",
+            "bg_hex": "#FDFBF7",
+            "accent_hex": "#2E7D63",
+        },
+    )
+    assert _relative_luminance(light_custom.title_hex) < 0.08
+    assert _relative_luminance(light_custom.cover_title_hex) < 0.08
+
+    # 3. Agent set_custom_palette preserves footer_text and set_deck_theme clears color overrides
+    pid = _seed_project(client, pid="studio-palette-1")
+    r_brand = client.patch(
+        f"/api/projects/{pid}/brand",
+        json={"footer_text": "内部机密 · 2026"},
+    )
+    assert r_brand.status_code == 200
+
+    state = chat_agent.StudioTurnState(project_id=pid, active_theme_id="keynote_light")
+    tools = {t.name: t for t in chat_agent.build_studio_tools(state)}
+    out = asyncio.run(
+        _invoke(
+            tools["set_custom_palette"],
+            {
+                "palette_name": "深海蓝金",
+                "cover_bg_hex": "#0B1D3A",
+                "bg_hex": "#F8FAFC",
+                "accent_hex": "#C89B3C",
+            },
+        )
+    )
+    parsed = json.loads(out)
+    assert parsed["ok"] is True
+    assert parsed["palette_name"] == "深海蓝金"
+    assert state.to_changes_dict()["brand_updated"] is True
+    assert state.to_changes_dict()["palette_name"] == "深海蓝金"
+
+    proj = client.get(f"/api/projects/{pid}").json()
+    assert proj["brand"]["cover_bg_hex"] == "#0B1D3A"
+    assert proj["brand"]["bg_hex"] == "#F8FAFC"
+    assert proj["brand"]["accent_hex"] == "#C89B3C"
+    assert proj["brand"]["footer_text"] == "内部机密 · 2026"
+
+    # Switching back to preset theme clears custom colors but keeps footer_text
+    out_theme = asyncio.run(
+        _invoke(tools["set_deck_theme"], {"theme_id": "nordic_pine"})
+    )
+    assert json.loads(out_theme)["ok"] is True
+    proj2 = client.get(f"/api/projects/{pid}").json()
+    assert proj2["theme_id"] == "nordic_pine"
+    assert proj2["brand"]["cover_bg_hex"] is None
+    assert proj2["brand"]["bg_hex"] is None
+    assert proj2["brand"]["accent_hex"] is None
+    assert proj2["brand"]["footer_text"] == "内部机密 · 2026"

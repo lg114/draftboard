@@ -186,3 +186,48 @@ export function extractIssueSlideIndices(issues: Issue[]): Set<number> {
   }
   return result;
 }
+
+function parseColorRgb(color: string | null | undefined): [number, number, number] | null {
+  if (!color) return null;
+  const s = color.trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+  if (hex) {
+    const raw = hex[1];
+    if (raw.length === 3) {
+      return [
+        parseInt(raw[0] + raw[0], 16),
+        parseInt(raw[1] + raw[1], 16),
+        parseInt(raw[2] + raw[2], 16),
+      ];
+    }
+    return [
+      parseInt(raw.slice(0, 2), 16),
+      parseInt(raw.slice(2, 4), 16),
+      parseInt(raw.slice(4, 6), 16),
+    ];
+  }
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(s);
+  if (rgb) {
+    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  }
+  return null;
+}
+
+/**
+ * Returns true when a slide background color is visually too close to the
+ * surrounding dark UI surface (e.g. `#111113` on `#151516`), so we can add
+ * an unobtrusive 1px outer hairline (`--ui-neutral-7`) only when needed.
+ */
+export function needsContrastHairline(
+  slideColor: string | null | undefined,
+  surfaceColor: string,
+  threshold = 18
+): boolean {
+  const a = parseColorRgb(slideColor);
+  const b = parseColorRgb(surfaceColor);
+  if (!a || !b) return false;
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return Math.hypot(dr, dg, db) < threshold;
+}

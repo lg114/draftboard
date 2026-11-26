@@ -79,6 +79,55 @@ export function humanizeWorkspaceError(rawError: string | null): string | null {
   return rawError;
 }
 
+const HEX6_RE = /^#[0-9a-fA-F]{6}$/;
+
+function validHex(val?: string | null): string | null {
+  const s = (val || "").trim();
+  return HEX6_RE.test(s) ? s.toUpperCase() : null;
+}
+
+function parseHexRgb(hex: string): [number, number, number] {
+  const h = hex.replace(/^#/, "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+function mixHex(hexA: string, hexB: string, weightB: number): string {
+  const [ra, ga, ba] = parseHexRgb(hexA);
+  const [rb, gb, bb] = parseHexRgb(hexB);
+  const w = Math.max(0, Math.min(1, weightB));
+  const fmt = (v: number) =>
+    Math.max(0, Math.min(255, Math.round(v)))
+      .toString(16)
+      .padStart(2, "0")
+      .toUpperCase();
+  return `#${fmt(ra * (1 - w) + rb * w)}${fmt(ga * (1 - w) + gb * w)}${fmt(
+    ba * (1 - w) + bb * w
+  )}`;
+}
+
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = parseHexRgb(hex);
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+export function hasCustomPalette(brand?: BrandKit | null): boolean {
+  if (!brand) return false;
+  return Boolean(
+    validHex(brand.accent_hex) ||
+      validHex(brand.bg_hex) ||
+      validHex(brand.cover_bg_hex) ||
+      validHex(brand.surface_hex)
+  );
+}
+
 export function computeActiveTheme(
   themes: ThemeOption[],
   selectedThemeId: string,
@@ -88,19 +137,84 @@ export function computeActiveTheme(
     themes.find((t) => t.id === selectedThemeId) ||
     themes[0] ||
     FALLBACK_THEMES[0];
-  if (!brand || (!brand.accent_hex && !brand.bg_hex)) return base;
-  const nextPalette = [...(base.chart_palette || [])];
-  if (brand.accent_hex && nextPalette.length > 0) {
-    nextPalette[0] = brand.accent_hex;
+  if (!brand) return base;
+
+  const paletteName = (brand.palette_name || "").trim().slice(0, 24) || null;
+  const accent = validHex(brand.accent_hex);
+  const bg = validHex(brand.bg_hex);
+  const coverBg = validHex(brand.cover_bg_hex);
+  const surface = validHex(brand.surface_hex);
+
+  if (!paletteName && !accent && !bg && !coverBg && !surface) {
+    return base;
   }
+
+  const swatches = { ...base.swatches };
+
+  if (bg) {
+    swatches.bg = bg;
+    const lumBg = relativeLuminance(bg);
+    if (lumBg < 0.28) {
+      swatches.title = mixHex(bg, "#FFFFFF", 0.92);
+      swatches.body = mixHex(bg, "#F2F4F8", 0.72);
+      swatches.muted = mixHex(bg, "#D8DCE4", 0.48);
+      swatches.divider = mixHex(bg, "#FFFFFF", 0.16);
+      if (!surface) {
+        swatches.surface = mixHex(bg, "#FFFFFF", 0.07);
+      }
+    } else {
+      swatches.title = mixHex(bg, "#121316", 0.88);
+      swatches.body = mixHex(bg, "#1C1E22", 0.72);
+      swatches.muted = mixHex(bg, "#2A2D33", 0.46);
+      swatches.divider = mixHex(bg, "#1A1B1E", 0.12);
+      if (!surface) {
+        swatches.surface =
+          lumBg > 0.95
+            ? mixHex(bg, "#1A1B1E", 0.04)
+            : mixHex(bg, "#FFFFFF", 0.52);
+      }
+    }
+  }
+
+  if (surface) {
+    swatches.surface = surface;
+  }
+
+  if (coverBg) {
+    swatches.cover_bg = coverBg;
+    const lumCover = relativeLuminance(coverBg);
+    if (lumCover < 0.3) {
+      swatches.cover_title = mixHex(coverBg, "#FFFFFF", 0.94);
+      swatches.cover_body = mixHex(coverBg, "#EFF2F7", 0.74);
+    } else {
+      swatches.cover_title = mixHex(coverBg, "#121316", 0.88);
+      swatches.cover_body = mixHex(coverBg, "#1F2126", 0.68);
+    }
+  }
+
+  let chartPalette = base.chart_palette;
+  if (accent) {
+    swatches.accent = accent;
+    const darkBg = relativeLuminance(swatches.bg) < 0.28;
+    const tintTarget = darkBg ? "#FFFFFF" : "#121316";
+    const softAccent = mixHex(accent, darkBg ? "#FFFFFF" : swatches.bg, 0.35);
+    const deepAccent = mixHex(accent, tintTarget, 0.32);
+    chartPalette = [
+      accent,
+      swatches.title,
+      softAccent,
+      deepAccent,
+      swatches.muted,
+    ];
+  }
+
   return {
     ...base,
-    swatches: {
-      ...base.swatches,
-      accent: brand.accent_hex || base.swatches.accent,
-      bg: brand.bg_hex || base.swatches.bg,
-    },
-    chart_palette: nextPalette.length > 0 ? nextPalette : base.chart_palette,
+    name:
+      paletteName ||
+      (hasCustomPalette(brand) ? "自定义配色" : base.name),
+    swatches,
+    chart_palette: chartPalette,
   };
 }
 

@@ -1,22 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import {
   Columns2,
   Image as ImageIcon,
   Plus,
-  Sparkles,
 } from "lucide-react";
 import type {
-  LLMSettingsResponse,
   Material,
   OutlineItem,
   OutlineLayout,
-  SlideRefineCandidate,
 } from "../../../lib/api";
-import { ModelQuickSwitcher } from "../../ModelQuickSwitcher";
-import { Collapse } from "../../ui/Collapse";
-import { EditableOutlineField, LAYOUT_LABELS } from "../layoutUtils";
+import { EditableOutlineField } from "../layoutUtils";
 import { AutoGrowTextarea, formatAssetLabel } from "./inspectorUtils";
 
 interface StandardSlideEditorProps {
@@ -25,23 +19,9 @@ interface StandardSlideEditorProps {
   layout: OutlineLayout;
   imageAssets: Material[];
   primaryInputBase: string;
-  refiningMode: string | null;
-  refineCandidate: SlideRefineCandidate | null;
-  refineNotice: string;
-  llmConfigured: boolean;
-  activeModelLabel: string;
-  llmSettings: LLMSettingsResponse | null;
-  onLLMSettingsUpdated?: (next: LLMSettingsResponse) => void;
-  onOpenLLMSettings?: () => void;
   onUpdateField: (field: EditableOutlineField, value: string) => void;
   onSplitTwoColumn: () => void;
   onUploadClick: () => void;
-  onTriggerRefine: (
-    mode: "concise" | "bullets" | "two_column" | "custom",
-    instruction?: string
-  ) => Promise<void>;
-  onDismissCandidate: () => void;
-  onApplyCandidate: (candidate: SlideRefineCandidate) => void;
 }
 
 export function StandardSlideEditor({
@@ -50,23 +30,10 @@ export function StandardSlideEditor({
   layout,
   imageAssets,
   primaryInputBase,
-  refiningMode,
-  refineCandidate,
-  refineNotice,
-  llmConfigured,
-  activeModelLabel,
-  llmSettings,
-  onLLMSettingsUpdated,
-  onOpenLLMSettings,
   onUpdateField,
   onSplitTwoColumn,
   onUploadClick,
-  onTriggerRefine,
-  onDismissCandidate,
-  onApplyCandidate,
 }: StandardSlideEditorProps) {
-  const [customOpen, setCustomOpen] = useState(false);
-  const [customInstruction, setCustomInstruction] = useState("");
 
   const missingTitle = !item.title.trim();
   const missingSummary = !item.summary.trim();
@@ -295,194 +262,6 @@ export function StandardSlideEditor({
           )}
         </div>
       )}
-
-      {/* Lightweight Inline AI Refine Action Strip */}
-      <div className="space-y-2 pt-1">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-ui-text-muted"
-            title="对本页标题与正文整体改写，确认后生效"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-ui-icon" />
-            <span>本页 AI 精修</span>
-          </span>
-          {onOpenLLMSettings &&
-            (llmSettings ? (
-              <ModelQuickSwitcher
-                settings={llmSettings}
-                onSettingsUpdated={onLLMSettingsUpdated}
-                onOpenSettings={onOpenLLMSettings}
-                align="right"
-                compact={true}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenLLMSettings}
-                aria-label="模型设置"
-                title={
-                  llmConfigured && activeModelLabel
-                    ? `当前模型：${activeModelLabel}，点击切换或修改`
-                    : "尚未配置大模型，点击前往模型设置"
-                }
-                className="inline-flex items-center gap-1.5 text-[12.5px] text-ui-text-muted hover:text-ui-text transition-colors cursor-pointer min-w-0"
-              >
-                {!llmConfigured && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-ui-warning shrink-0" />
-                )}
-                <span className="truncate max-w-[140px] font-mono">
-                  {llmConfigured && activeModelLabel
-                    ? activeModelLabel
-                    : "未配置模型"}
-                </span>
-              </button>
-            ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            disabled={Boolean(refiningMode)}
-            onClick={() => void onTriggerRefine("concise")}
-            className="ui-btn-subtle px-2.5 py-1 text-[12.5px]"
-          >
-            {refiningMode === "concise"
-              ? "处理中…"
-              : layout === "cover" || layout === "closing"
-              ? "润色整页"
-              : "精简整页"}
-          </button>
-          {(layout === "content" || layout === "two_column") && (
-            <button
-              type="button"
-              disabled={Boolean(refiningMode)}
-              onClick={() => void onTriggerRefine("bullets")}
-              className="ui-btn-subtle px-2.5 py-1 text-[12.5px]"
-            >
-              {refiningMode === "bullets" ? "提炼中…" : "转分点"}
-            </button>
-          )}
-          {(layout === "content" || layout === "bullets") && (
-            <button
-              type="button"
-              disabled={Boolean(refiningMode)}
-              onClick={() => void onTriggerRefine("two_column")}
-              className="ui-btn-subtle px-2.5 py-1 text-[12.5px]"
-            >
-              {refiningMode === "two_column" ? "拆分中…" : "转双栏"}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setCustomOpen((v) => !v)}
-            className={`px-2.5 py-1 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer ${
-              customOpen
-                ? "bg-ui-bg-selected ring-1 ring-ui-accent text-ui-text"
-                : "bg-ui-surface-input text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover"
-            }`}
-          >
-            自定义
-          </button>
-        </div>
-
-        {refineNotice && (
-          <div className="text-[12.5px] text-ui-text-muted px-0.5">
-            {refineNotice}
-          </div>
-        )}
-
-        <Collapse open={customOpen}>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!customInstruction.trim() || refiningMode) return;
-              void onTriggerRefine("custom", customInstruction.trim());
-            }}
-            className="flex items-center gap-1.5 pt-0.5"
-          >
-            <input
-              type="text"
-              value={customInstruction}
-              onChange={(e) => setCustomInstruction(e.target.value)}
-              placeholder="输入改写要求（如：更简洁、突出数据）…"
-              className="ui-field flex-1 min-w-0 text-[13px] px-2.5 py-1.5"
-            />
-            <button
-              type="submit"
-              disabled={!customInstruction.trim() || Boolean(refiningMode)}
-              className="ui-btn-primary px-3 py-1.5 text-[12.5px] shrink-0"
-            >
-              {refiningMode === "custom" ? "生成中…" : "生成"}
-            </button>
-          </form>
-        </Collapse>
-
-        {/* Non-Destructive Diff Candidate Card */}
-        {refineCandidate && (
-          <div className="p-3 rounded-xl bg-ui-surface border border-ui-accent/50 space-y-2.5 anim-msg-in">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[12.5px] font-semibold text-ui-text flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-ui-accent-text shrink-0" />
-                <span>
-                  {refineCandidate.source === "fallback"
-                    ? "本地规则整理"
-                    : "AI 修改建议"}
-                </span>
-              </span>
-              {refineCandidate.layout && refineCandidate.layout !== layout && (
-                <span className="text-[12px] text-ui-accent-text bg-ui-surface-input px-2 py-0.5 rounded border border-ui-border-subtle">
-                  切为：
-                  {LAYOUT_LABELS[refineCandidate.layout] ||
-                    refineCandidate.layout}
-                </span>
-              )}
-            </div>
-
-            {refineCandidate.rationale && (
-              <p className="text-[12.5px] text-ui-text-muted leading-snug">
-                {refineCandidate.rationale}
-              </p>
-            )}
-
-            <div className="p-2.5 rounded-lg bg-ui-bg border border-ui-border-subtle space-y-1.5 text-[13px]">
-              {refineCandidate.title !== item.title && (
-                <div className="font-semibold text-ui-text pb-1 border-b border-ui-border-subtle">
-                  标题：{refineCandidate.title}
-                </div>
-              )}
-              <div className="text-ui-text-secondary whitespace-pre-wrap leading-relaxed">
-                {refineCandidate.summary}
-              </div>
-              {refineCandidate.layout === "two_column" &&
-                refineCandidate.column_right && (
-                  <div className="pt-1.5 border-t border-ui-border-subtle text-ui-text-secondary whitespace-pre-wrap leading-relaxed">
-                    <span className="text-[12px] font-semibold text-ui-text-muted block mb-0.5">
-                      右栏对比：
-                    </span>
-                    {refineCandidate.column_right}
-                  </div>
-                )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-0.5">
-              <button
-                type="button"
-                onClick={onDismissCandidate}
-                className="px-2.5 py-1 rounded-md text-[12.5px] text-ui-text-muted hover:text-ui-text cursor-pointer"
-              >
-                放弃
-              </button>
-              <button
-                type="button"
-                onClick={() => onApplyCandidate(refineCandidate)}
-                className="ui-btn-primary px-3 py-1 text-[12.5px]"
-              >
-                确认应用
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
     </section>
   );
 }

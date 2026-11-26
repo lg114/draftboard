@@ -31,6 +31,7 @@ import {
 } from "../../../../lib/api";
 import { ExportFormatMenu } from "../../../../components/workspace/ExportFormatMenu";
 import { SlideRenderer } from "../../../../components/workspace/stage/StandardSlideView";
+import { computeActiveTheme } from "../../../../hooks/workspace/outlineHelpers";
 
 function formatTimer(sec: number): string {
   const neg = sec < 0;
@@ -266,16 +267,7 @@ export default function PreviewPage() {
 
   const activeTheme = useMemo(() => {
     const tid = project?.theme_id || project?.latest_template_id || "keynote_light";
-    const base = themes.find((t) => t.id === tid) || themes[0] || FALLBACK_THEMES[0];
-    if (!project?.brand) return base;
-    return {
-      ...base,
-      swatches: {
-        ...base.swatches,
-        accent: project.brand.accent_hex || base.swatches.accent,
-        bg: project.brand.bg_hex || base.swatches.bg,
-      },
-    };
+    return computeActiveTheme(themes, tid, project?.brand);
   }, [themes, project]);
 
   const currentPageSrc = preview?.pages?.[selected] || "";

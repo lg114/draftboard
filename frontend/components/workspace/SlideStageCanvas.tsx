@@ -16,7 +16,7 @@ import type {
 import { useDismiss } from "../../lib/useDismiss";
 import { usePresence } from "../../lib/usePresence";
 import { CustomSlideLayer } from "./CustomSlideLayer";
-import { inferEffectiveLayout } from "./layoutUtils";
+import { inferEffectiveLayout, needsContrastHairline } from "./layoutUtils";
 import { SelectedElementBar } from "./stage/SelectedElementBar";
 import { BrandOverlay, StandardSlideView } from "./stage/StandardSlideView";
 
@@ -744,6 +744,9 @@ export function SlideStageCanvas({
                 width: renderedWidth,
                 height: renderedHeight,
                 backgroundColor: slideBg,
+                outline: needsContrastHairline(slideBg, "#151516", 18)
+                  ? "1px solid var(--ui-neutral-7)"
+                  : undefined,
               }}
               className={`m-auto shrink-0 rounded-[2px] overflow-hidden relative ${
                 canSpacePan || isPanning ? "pointer-events-none" : ""

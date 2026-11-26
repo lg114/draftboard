@@ -50,6 +50,13 @@ from draftboard.tasks import (
 )
 from draftboard.themes import get_theme, is_valid_theme, list_themes, resolve_theme_id
 from draftboard.tools import normalize_outline_item_text
+from draftboard.user_library import (
+    BrandKit,
+    apply_brand_to_theme,
+    clear_brand_palette_overrides,
+    has_any_brand_fields,
+    has_custom_palette,
+)
 
 
 TOOL_LABELS_CN: dict[str, str] = {
@@ -62,6 +69,7 @@ TOOL_LABELS_CN: dict[str, str] = {
     "design_custom_slide": "设计自由画布排版",
     "check_deck_layout": "执行真实字体排版自检",
     "set_deck_theme": "切换主题与排版设置",
+    "set_custom_palette": "定制全局配色方案",
     "export_deck_now": "编译导出 PPTX 与矢量 PDF",
 }
 
@@ -90,8 +98,9 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
 5. **简洁、专业、面向用户的自然表达**：
    - 默认使用与用户和素材一致的语言（通常为自然流畅的简体中文）。
    - 提及具体页面时请使用「第 N 页」格式（例如「第 2 页」），前端会自动渲染为可点击的跳转标签。
-   - **绝不向用户暴露任何内部技术标识**：回复正文中一律使用自然的产品中文名称（例如说「苹果白」「深空钛黑」「松柏森绿」「美术馆暖石」「自由画布」「卡片」「分割线」「对比表格」「柱状图」「双栏版式」），严禁出现内部工具函数名（如 `design_custom_slide`、`get_deck_state`、`set_deck_theme`、`check_deck_layout`、`export_deck_now`）、主题英文 ID（如 `keynote_light`、`keynote_dark`、`nordic_pine`、`gallery_sand`）、元素/版式英文枚举名（如 `card`、`line`、`chart`、`table`、`two_column`、`text_image`）以及 `project_id` / `outline_item_id`（这些英文标识仅在调用工具参数时使用）。
-   - Draftboard 预设主题固定为 4 套：**苹果白**（纯净画布）、**深空钛黑**（暗黑发布会）、**松柏森绿**（深松封面 + 象牙正文）、**美术馆暖石**（亚麻纸感 + 陶土点缀）；若需自定义单页配色或布局，可使用自由画布直接设计。
+   - **绝不向用户暴露任何内部技术标识**：回复正文中一律使用自然的产品中文名称（例如说「苹果白」「深空钛黑」「松柏森绿」「美术馆暖石」「自由画布」「自定义配色」「卡片」「分割线」「对比表格」「柱状图」「双栏版式」），严禁出现内部工具函数名（如 `design_custom_slide`、`get_deck_state`、`set_deck_theme`、`set_custom_palette`、`check_deck_layout`、`export_deck_now`）、主题英文 ID（如 `keynote_light`、`keynote_dark`、`nordic_pine`、`gallery_sand`）、元素/版式英文枚举名（如 `card`、`line`、`chart`、`table`、`two_column`、`text_image`）以及 `project_id` / `outline_item_id`（这些英文标识仅在调用工具参数时使用）。
+   - Draftboard 预设主题固定为 4 套：**苹果白**（纯净画布）、**深空钛黑**（暗黑发布会）、**松柏森绿**（深松封面 + 象牙正文）、**美术馆暖石**（亚麻纸感 + 陶土点缀）。
+   - **如果用户 4 套预设都不喜欢，或提出任意专属风格/色系**（如「金融蓝金」「日系抹茶米白」「暗黑紫霓虹」「柔和莫兰迪」「医疗青白」等），**直接调用 `set_custom_palette` 为整套文稿定制全局配色**（指定封面底色、正文底色和主强调色即可，系统会自动按对比度推导出安全的标题色、正文色、卡片面色与图表色板，全套页面实时生效），不必把每页都改写为自由画布；若仅需单页突破全局风格，再用自由画布单独设计该页。
 """
 
 
@@ -221,6 +230,8 @@ class StudioTurnState:
     after_outline_version: Optional[str] = None
     touched_slides: set[int] = field(default_factory=set)  # 1-based slide numbers
     theme_changed_to: Optional[str] = None
+    brand_changed: bool = False
+    palette_name_changed_to: Optional[str] = None
     auto_fit_changed_to: Optional[bool] = None
     exported: bool = False
     layout_checked_ok: Optional[bool] = None
@@ -233,6 +244,7 @@ class StudioTurnState:
         return bool(
             self.after_outline_version
             or self.theme_changed_to
+            or self.brand_changed
             or self.auto_fit_changed_to is not None
             or self.exported
         )
@@ -245,6 +257,8 @@ class StudioTurnState:
             "after_outline_version": self.after_outline_version,
             "touched_slides": sorted(self.touched_slides),
             "theme_id": self.theme_changed_to,
+            "brand_updated": self.brand_changed or None,
+            "palette_name": self.palette_name_changed_to,
             "auto_fit": self.auto_fit_changed_to,
             "exported": self.exported,
             "layout_checked_ok": self.layout_checked_ok,
@@ -550,7 +564,8 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                         ),
                     }
                 )
-        theme_spec = get_theme(state.active_theme_id)
+        raw_brand = meta.get("brand") if isinstance(meta.get("brand"), dict) else None
+        theme_spec = apply_brand_to_theme(get_theme(state.active_theme_id), raw_brand)
         summary_msg = f"共 {len(slides_info)} 页，主题「{theme_spec.name}」"
         state.last_tool_summaries["get_deck_state"] = summary_msg
         return json.dumps(
@@ -558,6 +573,18 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                 "project_name": meta.get("name") or state.project_id,
                 "theme_id": state.active_theme_id,
                 "theme_name": theme_spec.name,
+                "custom_palette_active": has_custom_palette(raw_brand),
+                "custom_palette": (
+                    {
+                        "palette_name": raw_brand.get("palette_name"),
+                        "cover_bg_hex": raw_brand.get("cover_bg_hex"),
+                        "bg_hex": raw_brand.get("bg_hex"),
+                        "accent_hex": raw_brand.get("accent_hex"),
+                        "surface_hex": raw_brand.get("surface_hex"),
+                    }
+                    if has_custom_palette(raw_brand) and raw_brand
+                    else None
+                ),
                 "auto_fit": state.auto_fit,
                 "selected_slide_number": state.selected_slide_index + 1,
                 "total_slides": len(slides_info),
@@ -1177,6 +1204,14 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                 return f"ERROR: 不支持的主题 '{theme_id}'，可选：{', '.join(valid_names)}"
             resolved = resolve_theme_id(theme_id)
             meta["theme_id"] = resolved
+            if has_custom_palette(meta.get("brand")):
+                next_brand = clear_brand_palette_overrides(meta.get("brand"))
+                if next_brand:
+                    meta["brand"] = next_brand
+                else:
+                    meta.pop("brand", None)
+                state.brand_changed = True
+                state.palette_name_changed_to = None
             _save_meta(state.project_id, meta)
             state.active_theme_id = resolved
             state.theme_changed_to = resolved
@@ -1189,6 +1224,92 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         summary = "，".join(changes)
         state.last_tool_summaries["set_deck_theme"] = summary
         return json.dumps({"ok": True, "summary": summary}, ensure_ascii=False)
+
+    @function_tool
+    def set_custom_palette(
+        palette_name: Optional[str] = None,
+        cover_bg_hex: Optional[str] = None,
+        bg_hex: Optional[str] = None,
+        accent_hex: Optional[str] = None,
+        surface_hex: Optional[str] = None,
+        reset_to_preset: bool = False,
+    ) -> str:
+        """为整套文稿定制全局自定义配色（当用户 4 套预设都不喜欢或指定了任意风格色系时使用）。只需提供和谐的封面底色 cover_bg_hex、正文底色 bg_hex 和强调色 accent_hex（均为 #RRGGBB），系统会自动按对比度推导安全的标题色、正文色、分割线、卡片底色与图表色板；传入 reset_to_preset=True 可清除自定义配色并恢复当前预设主题。"""
+        meta = _load_meta(state.project_id)
+        existing_brand = meta.get("brand") if isinstance(meta.get("brand"), dict) else {}
+
+        if reset_to_preset:
+            next_brand = clear_brand_palette_overrides(existing_brand)
+            if next_brand:
+                meta["brand"] = next_brand
+            else:
+                meta.pop("brand", None)
+            _save_meta(state.project_id, meta)
+            state.brand_changed = True
+            state.palette_name_changed_to = None
+            base_name = get_theme(state.active_theme_id).name
+            summary = f"已恢复预设主题「{base_name}」"
+            state.last_tool_summaries["set_custom_palette"] = summary
+            return json.dumps({"ok": True, "summary": summary}, ensure_ascii=False)
+
+        if not any((palette_name, cover_bg_hex, bg_hex, accent_hex, surface_hex)):
+            return "ERROR: 请至少提供一个颜色参数（如 cover_bg_hex、bg_hex 或 accent_hex）。"
+
+        merged_payload = {
+            "palette_name": (
+                palette_name
+                if palette_name is not None
+                else existing_brand.get("palette_name")
+            ),
+            "cover_bg_hex": (
+                cover_bg_hex
+                if cover_bg_hex is not None
+                else existing_brand.get("cover_bg_hex")
+            ),
+            "bg_hex": bg_hex if bg_hex is not None else existing_brand.get("bg_hex"),
+            "accent_hex": (
+                accent_hex
+                if accent_hex is not None
+                else existing_brand.get("accent_hex")
+            ),
+            "surface_hex": (
+                surface_hex
+                if surface_hex is not None
+                else existing_brand.get("surface_hex")
+            ),
+            "footer_text": existing_brand.get("footer_text"),
+            "logo_asset_id": existing_brand.get("logo_asset_id"),
+            "logo_position": existing_brand.get("logo_position") or "top_right",
+        }
+        try:
+            cleaned = BrandKit.model_validate(merged_payload).cleaned()
+        except Exception as exc:
+            return f"ERROR: 颜色格式无效（需使用 6 位十六进制如 #1B365D）：{exc}"
+
+        brand_dict = cleaned.model_dump()
+        if has_any_brand_fields(brand_dict):
+            meta["brand"] = brand_dict
+        else:
+            meta.pop("brand", None)
+        _save_meta(state.project_id, meta)
+
+        resolved_theme = apply_brand_to_theme(
+            get_theme(state.active_theme_id), meta.get("brand")
+        )
+        display_name = cleaned.palette_name or "自定义配色"
+        state.brand_changed = True
+        state.palette_name_changed_to = display_name
+        summary = f"已应用「{display_name}」全局配色"
+        state.last_tool_summaries["set_custom_palette"] = summary
+        return json.dumps(
+            {
+                "ok": True,
+                "summary": summary,
+                "palette_name": display_name,
+                "resolved_swatches": resolved_theme.to_public_dict()["swatches"],
+            },
+            ensure_ascii=False,
+        )
 
     @function_tool
     def export_deck_now() -> str:
@@ -1263,6 +1384,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         design_custom_slide,
         check_deck_layout,
         set_deck_theme,
+        set_custom_palette,
         export_deck_now,
     ]
 
@@ -1349,10 +1471,18 @@ def _build_turn_input(
         cur_it = outline.items[state.selected_slide_index]
         cur_slide_hint = f"第 {state.selected_slide_index + 1} 页「{cur_it.title}」"
 
-    active_theme_name = get_theme(state.active_theme_id).name
+    raw_brand = meta.get("brand") if isinstance(meta.get("brand"), dict) else None
+    active_theme_spec = apply_brand_to_theme(
+        get_theme(state.active_theme_id), raw_brand
+    )
+    theme_hint = (
+        f"自定义配色「{active_theme_spec.name}」（封面 {active_theme_spec.cover_bg_hex} / 正文 {active_theme_spec.bg_hex} / 强调 {active_theme_spec.accent_hex}）"
+        if has_custom_palette(raw_brand)
+        else f"主题 {active_theme_spec.name}（{state.active_theme_id}）"
+    )
     context_header = (
         f"[当前工作台上下文：文稿名「{proj_name}」| 共 {total} 页 | "
-        f"当前选中 {cur_slide_hint} | 主题 {active_theme_name}（{state.active_theme_id}）| "
+        f"当前选中 {cur_slide_hint} | {theme_hint} | "
         f"自动缩字 {'开' if state.auto_fit else '关'}]"
     )
 

@@ -489,13 +489,6 @@ export default function ProjectWorkspacePage() {
                   activeTheme={ws.activeTheme}
                   onSelectLayout={outlineEditor.handleSelectLayout}
                   onOpenThemeModal={() => setShowThemeModal(true)}
-                  llmConfigured={
-                    ws.llmSettings ? ws.llmSettings.configured : true
-                  }
-                  activeModelLabel={ws.llmSettings?.active_summary?.model || ""}
-                  llmSettings={ws.llmSettings}
-                  onLLMSettingsUpdated={handleLLMSettingsSwitched}
-                  onOpenLLMSettings={handleOpenLLMSettings}
                   embedded={true}
                   onUpdateField={(field, val) =>
                     outlineEditor.patchItem(ws.selectedIndex, { [field]: val })
@@ -535,12 +528,6 @@ export default function ProjectWorkspacePage() {
                   }
                   onSplitTwoColumn={() =>
                     outlineEditor.splitTwoColumn(ws.selectedIndex)
-                  }
-                  onRefineSlide={(mode, inst) =>
-                    outlineEditor.refineSlideItem(ws.selectedIndex, mode, inst)
-                  }
-                  onApplyRefineCandidate={(cand) =>
-                    outlineEditor.applyRefineCandidate(ws.selectedIndex, cand)
                   }
                   onUploadClick={() => ws.fileInputRef.current?.click()}
                 />

@@ -169,10 +169,9 @@ def delete_material(project_id: str, asset_id: str):
                 and loaded_meta["brand"].get("logo_asset_id") == asset_id
             ):
                 loaded_meta["brand"]["logo_asset_id"] = None
-                if not any(
-                    loaded_meta["brand"].get(k)
-                    for k in ("accent_hex", "bg_hex", "footer_text", "logo_asset_id")
-                ):
+                from draftboard.user_library import has_any_brand_fields
+
+                if not has_any_brand_fields(loaded_meta["brand"]):
                     loaded_meta.pop("brand", None)
                 meta_path.write_text(
                     json.dumps(loaded_meta, ensure_ascii=False), encoding="utf-8"

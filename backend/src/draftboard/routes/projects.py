@@ -218,14 +218,7 @@ def update_project_brand(project_id: str, req: user_library.BrandKit):
             pass
 
     brand_dict = cleaned.model_dump()
-    if any(
-        [
-            brand_dict.get("accent_hex"),
-            brand_dict.get("bg_hex"),
-            brand_dict.get("footer_text"),
-            brand_dict.get("logo_asset_id"),
-        ]
-    ):
+    if user_library.has_any_brand_fields(brand_dict):
         meta["brand"] = brand_dict
     else:
         meta.pop("brand", None)

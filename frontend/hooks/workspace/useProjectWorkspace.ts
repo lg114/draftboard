@@ -536,8 +536,40 @@ export function useProjectWorkspace() {
         `/api/projects/${targetPid}`,
         jsonOptions("PATCH", { theme_id: themeId })
       ).catch(() => {});
+
+      // Switching back to a preset theme clears custom palette color overrides while preserving logo & footer
+      const curBrand = project?.brand;
+      if (
+        curBrand &&
+        (curBrand.palette_name ||
+          curBrand.accent_hex ||
+          curBrand.bg_hex ||
+          curBrand.cover_bg_hex ||
+          curBrand.surface_hex)
+      ) {
+        const clearedBrand: BrandKit = {
+          palette_name: null,
+          accent_hex: null,
+          bg_hex: null,
+          cover_bg_hex: null,
+          surface_hex: null,
+          footer_text: curBrand.footer_text ?? null,
+          logo_asset_id: curBrand.logo_asset_id ?? null,
+          logo_position: curBrand.logo_position || "top_right",
+        };
+        void api<{ brand?: BrandKit | null }>(
+          `/api/projects/${targetPid}/brand`,
+          jsonOptions("PATCH", clearedBrand)
+        )
+          .then((res) => {
+            setProject((prev) =>
+              prev ? { ...prev, brand: res.brand ?? null } : prev
+            );
+          })
+          .catch(() => {});
+      }
     },
-    [getTargetPid]
+    [getTargetPid, project?.brand]
   );
 
   const handleToggleChat = useCallback(() => {

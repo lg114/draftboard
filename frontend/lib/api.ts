@@ -248,8 +248,11 @@ export interface ProjectSummary {
 }
 
 export interface BrandKit {
+  palette_name?: string | null;
   accent_hex?: string | null;
   bg_hex?: string | null;
+  cover_bg_hex?: string | null;
+  surface_hex?: string | null;
   footer_text?: string | null;
   logo_asset_id?: string | null;
   logo_position?: "top_right" | "bottom_left";
@@ -354,6 +357,8 @@ export interface ChatDeckChanges {
   after_outline_version?: string | null;
   touched_slides?: number[];
   theme_id?: string | null;
+  brand_updated?: boolean | null;
+  palette_name?: string | null;
   auto_fit?: boolean | null;
   exported?: boolean;
   layout_checked_ok?: boolean | null;
