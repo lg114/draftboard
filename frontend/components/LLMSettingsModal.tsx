@@ -1144,6 +1144,12 @@ export function LLMSettingsModal({
                       onChange={(e) => setNewModelInput(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
+                          if (
+                            e.nativeEvent.isComposing ||
+                            e.nativeEvent.keyCode === 229
+                          ) {
+                            return;
+                          }
                           e.preventDefault();
                           handleAddModelToPool(newModelInput);
                         }

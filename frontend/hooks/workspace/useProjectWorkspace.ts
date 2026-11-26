@@ -264,7 +264,7 @@ export function useProjectWorkspace() {
         setMaterials(mats.materials || []);
         setSourceFragments(mats.source_fragments || []);
 
-        const outlines = [...data.outlines].sort((a, b) => b.mtime - a.mtime);
+        const outlines = data.outlines.toSorted((a, b) => b.mtime - a.mtime);
         if (outlines.length > 0) {
           await outlineEditor.showOutline(
             outlines[0].outline_version,

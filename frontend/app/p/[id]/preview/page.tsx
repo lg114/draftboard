@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -25,11 +25,13 @@ import {
   FALLBACK_THEMES,
   GenerationSync,
   Outline,
+  OutlineItem,
   Preview,
   Project,
   ThemeOption,
 } from "../../../../lib/api";
 import { ExportFormatMenu } from "../../../../components/workspace/ExportFormatMenu";
+import { needsContrastHairline } from "../../../../components/workspace/layoutUtils";
 import { SlideRenderer } from "../../../../components/workspace/stage/StandardSlideView";
 import { computeActiveTheme } from "../../../../hooks/workspace/outlineHelpers";
 
@@ -42,6 +44,18 @@ function formatTimer(sec: number): string {
     2,
     "0"
   )}`;
+}
+
+function resolveSlideBg(
+  item: OutlineItem | null | undefined,
+  index: number,
+  theme: ThemeOption
+): string | null {
+  if (item?.custom_bg) return item.custom_bg;
+  if (index === 0 || item?.layout === "cover") {
+    return theme.swatches.cover_bg || theme.swatches.bg || null;
+  }
+  return theme.swatches.bg || null;
 }
 
 export default function PreviewPage() {
@@ -72,6 +86,8 @@ export default function PreviewPage() {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [targetMinutes, setTargetMinutes] = useState<number>(10);
 
+  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
   const load = useCallback(async () => {
     api<{ themes: ThemeOption[] }>("/api/themes")
       .then((res) => {
@@ -84,14 +100,15 @@ export default function PreviewPage() {
       proj = await api<Project>(`/api/projects/${pid}`);
       setProject(proj);
       if (proj.generated_outline_version) {
-        const params = new URLSearchParams({
+        const qs = new URLSearchParams({
           outline_version: proj.generated_outline_version,
-          template_id: proj.theme_id || proj.latest_template_id || "keynote_light",
+          template_id:
+            proj.theme_id || proj.latest_template_id || "keynote_light",
           auto_fit: String(Boolean(proj.latest_auto_fit)),
         });
         try {
           const sync = await api<GenerationSync>(
-            `/api/projects/${encodeURIComponent(pid)}/generation-sync?${params}`
+            `/api/projects/${encodeURIComponent(pid)}/generation-sync?${qs}`
           );
           setHistoricalExport(!sync.in_sync);
         } catch {
@@ -100,7 +117,9 @@ export default function PreviewPage() {
       } else {
         setHistoricalExport(false);
       }
-      const sorted = [...(proj.outlines || [])].sort((a, b) => b.mtime - a.mtime);
+      const sorted = (proj.outlines || []).toSorted(
+        (a, b) => b.mtime - a.mtime
+      );
       if (sorted.length > 0) {
         const latestVer =
           proj.generated_outline_version || sorted[0].outline_version;
@@ -139,12 +158,20 @@ export default function PreviewPage() {
     void load();
   }, [load]);
 
-  const totalSlides =
-    preview?.pages.length || outline?.items.length || 0;
+  const totalSlides = preview?.pages.length || outline?.items.length || 0;
 
   useEffect(() => {
     setSelected((s) => Math.min(s, Math.max(0, totalSlides - 1)));
   }, [totalSlides]);
+
+  useEffect(() => {
+    if (presenterMode || isFullscreen) return;
+    thumbRefs.current[selected]?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [selected, presenterMode, isFullscreen]);
 
   useEffect(() => {
     if (!timerRunning) return;
@@ -178,13 +205,13 @@ export default function PreviewPage() {
         setIsFullscreen(true);
       }
     } catch {
-      // Fallback to viewport fullscreen theater if browser disallows native API
       setIsFullscreen((v) => !v);
     }
   }, [isFullscreen]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -214,7 +241,8 @@ export default function PreviewPage() {
         e.key.toLowerCase() === "p" &&
         !e.metaKey &&
         !e.ctrlKey &&
-        !e.altKey
+        !e.altKey &&
+        totalSlides > 0
       ) {
         if (isFullscreen) {
           if (document.fullscreenElement) {
@@ -251,7 +279,7 @@ export default function PreviewPage() {
 
   async function renderNow() {
     setRendering(true);
-    setNotice("正在渲染逐页高清矢量预览…");
+    setNotice("正在渲染逐页高清预览…");
     try {
       const p = await api<Preview>(`/api/projects/${pid}/preview/render`, {
         method: "POST",
@@ -266,7 +294,8 @@ export default function PreviewPage() {
   }
 
   const activeTheme = useMemo(() => {
-    const tid = project?.theme_id || project?.latest_template_id || "keynote_light";
+    const tid =
+      project?.theme_id || project?.latest_template_id || "keynote_light";
     return computeActiveTheme(themes, tid, project?.brand);
   }, [themes, project]);
 
@@ -278,55 +307,77 @@ export default function PreviewPage() {
     ? `${currentPageSrc}${currentPageSrc.includes("?") ? "&" : "?"}download=1`
     : "";
 
+  const currentNeedsRim = needsContrastHairline(
+    resolveSlideBg(currentOutlineItem, selected, activeTheme),
+    "#0D0D0E",
+    28
+  );
+  const nextNeedsRim = needsContrastHairline(
+    resolveSlideBg(nextOutlineItem, selected + 1, activeTheme),
+    "#151516",
+    28
+  );
+
   const remainingSec = targetMinutes * 60 - elapsedSec;
   const isOvertime = remainingSec < 0;
 
   return (
-    <div className="min-h-screen flex flex-col bg-ui-bg text-ui-text">
-      {/* Unified Dark Cinema / Presenter Top Bar */}
-      <header className="h-12 bg-ui-bg px-4 flex items-center justify-between gap-3 sticky top-0 z-30">
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="h-dvh flex flex-col bg-ui-bg text-ui-text overflow-hidden">
+      {/* Compact Single-Row Screening Room Header */}
+      <header className="h-12 bg-ui-bg px-4 sm:px-5 flex items-center justify-between gap-3 shrink-0 z-30">
+        <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href={`/p/${pid}`}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ui-text-secondary hover:text-ui-text transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors whitespace-nowrap shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>返回工作台</span>
+            <ArrowLeft className="w-4 h-4 text-ui-icon" />
+            <span className="hidden sm:inline">返回工作台</span>
           </Link>
-          <span className="text-ui-border-subtle">/</span>
-          <span className="text-[14px] font-semibold text-ui-text truncate">
-            {project?.name || pid}
+          <span className="hidden sm:inline text-ui-text-disabled select-none">
+            /
           </span>
+          <h1 className="text-[14px] font-medium tracking-[-0.01em] text-ui-text truncate">
+            {project?.name || pid}
+          </h1>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Mode Toggle: Cinema vs Presenter View */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Borderless Mode Switcher */}
           {totalSlides > 0 && (
-            <div className="inline-flex items-center bg-ui-surface-input border border-ui-border-subtle p-0.5 rounded-lg gap-0.5">
+            <div
+              role="group"
+              aria-label="预览模式"
+              className="inline-flex items-center bg-ui-surface p-0.5 rounded-lg gap-0.5"
+            >
               <button
                 type="button"
+                aria-pressed={!presenterMode}
+                title="放映视图"
+                aria-label="放映视图"
                 onClick={() => setPresenterMode(false)}
-                className={`px-2.5 py-1 rounded-md text-[13px] inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-7 px-2 sm:px-2.5 rounded-md text-[12.5px] inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                   !presenterMode
                     ? "bg-ui-bg-selected text-ui-text font-medium"
                     : "text-ui-text-muted hover:text-ui-text"
                 }`}
               >
                 <Monitor className="w-3.5 h-3.5" />
-                <span>放映</span>
+                <span className="hidden sm:inline">放映</span>
               </button>
               <button
                 type="button"
+                aria-pressed={presenterMode}
                 onClick={() => setPresenterMode(true)}
-                title="切换演讲者视图 (快捷键 P)"
-                className={`px-2.5 py-1 rounded-md text-[13px] inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                title="切换演讲者视图 (P)"
+                aria-label="演讲者视图"
+                className={`h-7 px-2 sm:px-2.5 rounded-md text-[12.5px] inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                   presenterMode
                     ? "bg-ui-bg-selected text-ui-text font-medium"
                     : "text-ui-text-muted hover:text-ui-text"
                 }`}
               >
                 <Presentation className="w-3.5 h-3.5" />
-                <span>演讲者视图</span>
+                <span className="hidden sm:inline">演讲者</span>
               </button>
             </div>
           )}
@@ -335,11 +386,12 @@ export default function PreviewPage() {
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
-              title="进入全屏放映 (快捷键 F)"
-              className="px-2.5 py-1.5 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              title="全屏放映 (F)"
+              aria-label="全屏放映"
+              className="h-8 px-2 sm:px-2.5 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ui-press"
             >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">全屏</span>
+              <Maximize2 className="w-3.5 h-3.5 text-ui-icon" />
+              <span className="hidden md:inline">全屏</span>
             </button>
           )}
 
@@ -348,88 +400,106 @@ export default function PreviewPage() {
               type="button"
               onClick={renderNow}
               disabled={rendering}
-              className="px-2.5 py-1.5 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap"
+              title={rendering ? "正在重新渲染…" : "重新渲染逐页预览"}
+              aria-label="重新渲染"
+              className="hidden sm:inline-flex h-8 px-2 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors items-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap ui-press"
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 ${rendering ? "animate-spin" : ""}`}
+                className={`w-3.5 h-3.5 text-ui-icon ${
+                  rendering ? "animate-spin" : ""
+                }`}
               />
-              <span className="hidden lg:inline">{rendering ? "渲染中…" : "重新渲染"}</span>
+              <span className="hidden xl:inline">
+                {rendering ? "渲染中…" : "重新渲染"}
+              </span>
             </button>
           )}
+
           {currentPageDownloadUrl && (
             <a
               href={currentPageDownloadUrl}
               download
-              className="px-2.5 py-1.5 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors flex items-center gap-1.5 whitespace-nowrap"
-              title={`将第 ${selected + 1} 页保存为高清 PNG 图片`}
+              className="hidden sm:inline-flex h-8 px-2 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors items-center gap-1.5 whitespace-nowrap ui-press"
+              title={`保存第 ${selected + 1} 页为高清 PNG`}
+              aria-label="保存当前页图片"
             >
-              <ImageDown className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">保存当前页</span>
+              <ImageDown className="w-3.5 h-3.5 text-ui-icon" />
+              <span className="hidden xl:inline">存图</span>
             </a>
           )}
+
           <ExportFormatMenu
             pid={pid}
             label="更多格式"
             canDownloadRendered={Boolean(report?.success)}
             canDownloadNotes={true}
           />
+
           {project?.download_available && (
             <a
               href={`/api/projects/${pid}/download`}
               download
-              className="ui-btn-primary h-8 px-3.5 text-[13px] flex items-center gap-1.5 whitespace-nowrap"
+              className="ui-btn-primary h-8 px-3.5 text-[13px] inline-flex items-center gap-1.5 whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>下载 PPTX</span>
+              <span className="hidden sm:inline">下载 PPTX</span>
             </a>
           )}
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-5 sm:p-6 gap-5">
-        {historicalExport && (
-          <p className="text-[13px] text-ui-warning font-medium">
-            正在放映的是最近一次成功导出的文件，它与当前文稿设置不一致。
-          </p>
-        )}
+      {historicalExport && (
+        <div className="bg-ui-warning-bg px-5 py-1.5 text-center text-[12.5px] text-ui-warning shrink-0">
+          当前放映的是上次导出的成稿，与工作台最新修改尚不一致。
+        </div>
+      )}
+
+      <main className="flex-1 min-h-0 flex flex-col overflow-y-auto lg:overflow-hidden clean-scroll px-4 sm:px-6 pb-5 pt-2">
         {totalSlides > 0 ? (
           presenterMode ? (
-            /* ── Dual-Pane Presenter View ── */
+            /* ── Dual-Zone Presenter Desk ── */
             <div
               key="view-presenter"
-              className="w-full max-w-[1380px] flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch anim-msg-in"
+              className="w-full max-w-[1400px] mx-auto flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.58fr)_minmax(340px,1fr)] gap-5 lg:gap-6 items-stretch anim-msg-in"
             >
-              {/* Left 8 cols: Current Slide + Nav Controls */}
-              <div className="lg:col-span-8 flex flex-col justify-center gap-4">
-                <div className="aspect-[16/9] w-full rounded-[3px] bg-white overflow-hidden slide-shadow relative">
-                  <div key={`pres-${selected}`} className="absolute inset-0 anim-slide-settle">
-                  {currentPageSrc ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={currentPageSrc}
-                      alt={`第 ${selected + 1} 页`}
-                      className="w-full h-full object-contain select-none"
-                    />
-                  ) : currentOutlineItem ? (
-                    <SlideRenderer
-                      pid={pid}
-                      item={currentOutlineItem}
-                      index={selected}
-                      total={totalSlides}
-                      theme={activeTheme}
-                      brand={project?.brand}
-                    />
-                  ) : null}
+              {/* Left Zone: Current Slide Stage + Quiet Controls */}
+              <div className="flex flex-col justify-center gap-4 min-h-0">
+                <div
+                  className={`aspect-[16/9] w-[min(100%,calc((100dvh-160px)*16/9))] mx-auto rounded-lg bg-ui-surface overflow-clip relative ${
+                    currentNeedsRim ? "ring-1 ring-ui-n7" : ""
+                  }`}
+                >
+                  <div
+                    key={`pres-${selected}`}
+                    className="absolute inset-0 anim-slide-settle"
+                  >
+                    {currentPageSrc ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={currentPageSrc}
+                        alt={`第 ${selected + 1} 页`}
+                        className="w-full h-full object-contain block select-none"
+                      />
+                    ) : currentOutlineItem ? (
+                      <SlideRenderer
+                        pid={pid}
+                        item={currentOutlineItem}
+                        index={selected}
+                        total={totalSlides}
+                        theme={activeTheme}
+                        brand={project?.brand}
+                      />
+                    ) : null}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 px-1">
+                <div className="w-[min(100%,calc((100dvh-160px)*16/9))] mx-auto flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       disabled={selected === 0}
                       onClick={() => setSelected((s) => Math.max(0, s - 1))}
-                      className="ui-btn-outline h-9 px-3.5 text-[13px] inline-flex items-center gap-1 disabled:opacity-35"
+                      className="ui-btn-subtle h-9 px-3.5 text-[13px] inline-flex items-center gap-1 disabled:opacity-35"
                     >
                       <ChevronLeft className="w-4 h-4" />
                       <span>上一页</span>
@@ -446,31 +516,31 @@ export default function PreviewPage() {
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="text-[13.5px] font-semibold text-ui-text tabular-nums">
+                  <div className="text-[13px] text-ui-text-secondary tabular-nums">
                     第 {selected + 1} / {totalSlides} 页
                   </div>
                 </div>
               </div>
 
-              {/* Right 4 cols: Next Slide + Speaker Notes + Timer */}
-              <div className="lg:col-span-4 flex flex-col gap-4 min-h-0">
-                {/* Timer Card */}
-                <div className="p-4 rounded-xl bg-ui-surface border border-ui-border-subtle space-y-3 shrink-0">
+              {/* Right Zone: Unified Borderless Presenter Console */}
+              <aside className="rounded-2xl bg-ui-surface p-5 flex flex-col gap-5 min-h-0 lg:overflow-hidden">
+                {/* Pacing Timer */}
+                <div className="space-y-3 shrink-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ui-text-secondary">
-                      <Clock className="w-4 h-4 text-ui-icon" />
+                    <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ui-text-secondary">
+                      <Clock className="w-3.5 h-3.5 text-ui-icon" />
                       <span>演讲计时</span>
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="inline-flex items-center bg-ui-bg p-0.5 rounded-lg gap-0.5">
                       {[5, 10, 15].map((m) => (
                         <button
                           key={m}
                           type="button"
                           onClick={() => setTargetMinutes(m)}
-                          className={`px-2 py-0.5 rounded-md text-[12.5px] cursor-pointer ${
+                          className={`px-2 py-0.5 rounded-md text-[12px] transition-colors cursor-pointer tabular-nums ${
                             targetMinutes === m
-                              ? "bg-ui-accent text-ui-on-accent font-medium"
-                              : "bg-ui-surface-input text-ui-text-muted hover:text-ui-text"
+                              ? "bg-ui-bg-selected text-ui-text font-medium"
+                              : "text-ui-text-muted hover:text-ui-text"
                           }`}
                         >
                           {m}分
@@ -478,14 +548,17 @@ export default function PreviewPage() {
                       ))}
                     </div>
                   </div>
+
                   <div className="flex items-end justify-between gap-3">
                     <div>
-                      <div className="text-[28px] font-bold tabular-nums tracking-tight text-ui-text leading-none">
+                      <div className="text-[30px] font-semibold tabular-nums tracking-[-0.03em] text-ui-text leading-none">
                         {formatTimer(elapsedSec)}
                       </div>
                       <div
-                        className={`text-[13px] mt-1 tabular-nums ${
-                          isOvertime ? "text-ui-danger font-semibold" : "text-ui-text-muted"
+                        className={`text-[12.5px] mt-1.5 tabular-nums ${
+                          isOvertime
+                            ? "text-ui-danger font-medium"
+                            : "text-ui-text-muted"
                         }`}
                       >
                         {isOvertime
@@ -497,7 +570,7 @@ export default function PreviewPage() {
                       <button
                         type="button"
                         onClick={() => setTimerRunning((v) => !v)}
-                        className="ui-btn-outline h-9 px-3 text-[13px] inline-flex items-center gap-1"
+                        className="ui-btn-subtle h-8.5 px-3 text-[13px] inline-flex items-center gap-1.5 bg-ui-bg hover:bg-ui-control-hover"
                       >
                         {timerRunning ? (
                           <>
@@ -518,7 +591,8 @@ export default function PreviewPage() {
                           setElapsedSec(0);
                         }}
                         title="重置计时器"
-                        className="ui-btn-subtle p-2"
+                        aria-label="重置计时器"
+                        className="ui-btn-subtle h-8.5 w-8.5 inline-flex items-center justify-center bg-ui-bg hover:bg-ui-control-hover"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
@@ -526,26 +600,35 @@ export default function PreviewPage() {
                   </div>
                 </div>
 
-                {/* Next Slide Preview */}
-                <div className="p-3.5 rounded-xl bg-ui-surface border border-ui-border-subtle space-y-2 shrink-0">
-                  <div className="flex items-center justify-between text-[13px]">
-                    <span className="font-semibold text-ui-text-secondary">
-                      下一页预览
+                {/* Up Next Preview */}
+                <div className="space-y-2 shrink-0">
+                  <div className="flex items-center justify-between gap-3 text-[12.5px]">
+                    <span className="font-medium text-ui-text-secondary shrink-0">
+                      下一页
                     </span>
                     {nextOutlineItem && (
-                      <span className="text-ui-text-muted truncate max-w-[180px]">
-                        第 {selected + 2} 页 · {nextOutlineItem.title}
+                      <span className="text-ui-text-muted truncate tabular-nums">
+                        第 {selected + 2} 页 {nextOutlineItem.title}
                       </span>
                     )}
                   </div>
                   {selected + 1 < totalSlides ? (
-                    <div className="aspect-[16/9] w-full rounded-[4px] overflow-hidden border border-ui-border-subtle bg-white">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelected((s) => Math.min(totalSlides - 1, s + 1))
+                      }
+                      aria-label={`跳至第 ${selected + 2} 页`}
+                      className={`block aspect-[16/9] w-full rounded-lg overflow-clip bg-ui-bg relative cursor-pointer transition-shadow hover:ring-1 hover:ring-ui-border/55 ${
+                        nextNeedsRim ? "ring-1 ring-ui-n7" : ""
+                      }`}
+                    >
                       {nextPageSrc ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
                           src={nextPageSrc}
                           alt={`第 ${selected + 2} 页`}
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-contain block"
                         />
                       ) : nextOutlineItem ? (
                         <SlideRenderer
@@ -557,18 +640,18 @@ export default function PreviewPage() {
                           brand={project?.brand}
                         />
                       ) : null}
-                    </div>
+                    </button>
                   ) : (
-                    <div className="py-5 rounded-lg bg-ui-bg text-center text-[13px] text-ui-text-muted">
+                    <div className="py-5 rounded-xl bg-ui-bg text-center text-[12.5px] text-ui-text-muted">
                       当前已是最后一页
                     </div>
                   )}
                 </div>
 
                 {/* Speaker Notes Reader */}
-                <div className="p-4 rounded-xl bg-ui-surface border border-ui-border-subtle flex-1 flex flex-col min-h-[180px] space-y-2.5">
+                <div className="flex-1 flex flex-col min-h-[160px] gap-2.5">
                   <div className="flex items-center justify-between gap-2 shrink-0">
-                    <span className="text-[13px] font-semibold text-ui-text-secondary">
+                    <span className="text-[12.5px] font-medium text-ui-text-secondary">
                       演讲者备注
                     </span>
                     <div className="flex items-center gap-1">
@@ -577,7 +660,8 @@ export default function PreviewPage() {
                         onClick={() =>
                           setNoteFontSize((s) => Math.max(13, s - 2))
                         }
-                        className="ui-btn-subtle px-2 py-0.5 text-[12.5px]"
+                        aria-label="减小备注字号"
+                        className="h-7 px-2 rounded-md bg-ui-bg hover:bg-ui-control-hover text-[12px] text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer"
                       >
                         A-
                       </button>
@@ -586,46 +670,58 @@ export default function PreviewPage() {
                         onClick={() =>
                           setNoteFontSize((s) => Math.min(24, s + 2))
                         }
-                        className="ui-btn-subtle px-2 py-0.5 text-[12.5px]"
+                        aria-label="增大备注字号"
+                        className="h-7 px-2 rounded-md bg-ui-bg hover:bg-ui-control-hover text-[12px] text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer"
                       >
                         A+
                       </button>
                     </div>
                   </div>
                   <div
-                    className="flex-1 overflow-y-auto clean-scroll leading-relaxed text-ui-text whitespace-pre-wrap"
+                    className="flex-1 overflow-y-auto clean-scroll rounded-xl bg-ui-bg p-3.5 leading-[1.7] text-ui-text whitespace-pre-wrap"
                     style={{ fontSize: noteFontSize }}
                   >
                     {currentOutlineItem?.speaker_notes?.trim()
                       ? currentOutlineItem.speaker_notes
-                      : "本页暂未填写演讲者备注（可在工作台右侧或让 AI 助手自动生成口播稿）。"}
+                      : "本页暂未填写演讲者备注，可在工作台右侧补充或让 AI 助手生成口播稿。"}
                   </div>
                 </div>
-              </div>
+              </aside>
             </div>
           ) : (
-            /* ── Cinema Full-Stage View ── */
-            <div key="view-cinema" className="w-full flex flex-col items-center gap-5 anim-msg-in">
-              <div className="w-full max-w-[1120px] relative group">
-                <div className="aspect-[16/9] w-full rounded-[3px] bg-white overflow-hidden slide-shadow flex items-center justify-center relative">
-                  <div key={`cin-${selected}`} className="absolute inset-0 anim-slide-settle">
-                  {currentPageSrc ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={currentPageSrc}
-                      alt={`第 ${selected + 1} 页`}
-                      className="w-full h-full object-contain select-none"
-                    />
-                  ) : currentOutlineItem ? (
-                    <SlideRenderer
-                      pid={pid}
-                      item={currentOutlineItem}
-                      index={selected}
-                      total={totalSlides}
-                      theme={activeTheme}
-                      brand={project?.brand}
-                    />
-                  ) : null}
+            /* ── Cinema Screening View ── */
+            <div
+              key="view-cinema"
+              className="w-full flex-1 min-h-0 flex flex-col items-center justify-center gap-4 anim-msg-in"
+            >
+              {/* Maximized Viewport-Fit 16:9 Stage */}
+              <div className="w-[min(100%,calc((100dvh-204px)*16/9),1180px)] relative stage-reveal-host">
+                <div
+                  className={`aspect-[16/9] w-full rounded-lg bg-ui-surface overflow-clip relative ${
+                    currentNeedsRim ? "ring-1 ring-ui-n7" : ""
+                  }`}
+                >
+                  <div
+                    key={`cin-${selected}`}
+                    className="absolute inset-0 anim-slide-settle"
+                  >
+                    {currentPageSrc ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={currentPageSrc}
+                        alt={`第 ${selected + 1} 页`}
+                        className="w-full h-full object-contain block select-none"
+                      />
+                    ) : currentOutlineItem ? (
+                      <SlideRenderer
+                        pid={pid}
+                        item={currentOutlineItem}
+                        index={selected}
+                        total={totalSlides}
+                        theme={activeTheme}
+                        brand={project?.brand}
+                      />
+                    ) : null}
                   </div>
                 </div>
 
@@ -633,7 +729,7 @@ export default function PreviewPage() {
                   type="button"
                   disabled={selected === 0}
                   onClick={() => setSelected((s) => Math.max(0, s - 1))}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full ui-popover text-ui-text flex items-center justify-center opacity-50 hover:opacity-100 group-hover:opacity-90 focus-visible:opacity-100 transition-[opacity,transform] duration-[150ms] active:scale-95 disabled:opacity-0 disabled:pointer-events-none cursor-pointer"
+                  className="stage-reveal-control absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full ui-popover text-ui-text flex items-center justify-center active:scale-95 disabled:opacity-0 disabled:pointer-events-none cursor-pointer"
                   aria-label="上一页"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -644,31 +740,49 @@ export default function PreviewPage() {
                   onClick={() =>
                     setSelected((s) => Math.min(totalSlides - 1, s + 1))
                   }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full ui-popover text-ui-text flex items-center justify-center opacity-50 hover:opacity-100 group-hover:opacity-90 focus-visible:opacity-100 transition-[opacity,transform] duration-[150ms] active:scale-95 disabled:opacity-0 disabled:pointer-events-none cursor-pointer"
+                  className="stage-reveal-control absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full ui-popover text-ui-text flex items-center justify-center active:scale-95 disabled:opacity-0 disabled:pointer-events-none cursor-pointer"
                   aria-label="下一页"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="w-full max-w-[1120px] flex flex-col items-center gap-2">
-                <div className="flex items-start gap-3.5 overflow-x-auto max-w-full py-2.5 px-3 clean-scroll">
+              {/* Borderless Swipeable Contact-Sheet Filmstrip */}
+              <div className="w-[min(100%,1180px)] flex flex-col items-center gap-2 shrink-0">
+                <div
+                  role="region"
+                  aria-label="幻灯片缩略图列表"
+                  className="filmstrip-scroller flex items-start gap-3 overflow-x-auto max-w-full py-1.5 px-2 clean-scroll"
+                >
                   {Array.from({ length: totalSlides }).map((_, idx) => {
                     const src = preview?.pages?.[idx];
                     const item = outline?.items?.[idx];
                     const isSelected = idx === selected;
+                    const thumbNeedsRim = needsContrastHairline(
+                      resolveSlideBg(item, idx, activeTheme),
+                      "#0D0D0E",
+                      28
+                    );
+
                     return (
                       <button
                         key={idx}
+                        ref={(el) => {
+                          thumbRefs.current[idx] = el;
+                        }}
                         type="button"
+                        aria-current={isSelected ? "true" : undefined}
+                        aria-label={`切换到第 ${idx + 1} 页`}
                         onClick={() => setSelected(idx)}
-                        className="group/thumb flex flex-col items-center gap-1.5 shrink-0 cursor-pointer"
+                        className="filmstrip-item group/thumb flex flex-col items-center gap-1.5 shrink-0 cursor-pointer"
                       >
                         <div
-                          className={`w-28 aspect-[16/9] rounded-[4px] bg-white overflow-hidden relative transition-all duration-200 ${
+                          className={`w-28 aspect-[16/9] rounded-md bg-ui-surface overflow-clip relative transition-[opacity,box-shadow] duration-[150ms] ease-out ${
                             isSelected
-                              ? "thumb-selected -translate-y-0.5 scale-[1.03]"
-                              : "thumb-idle opacity-75 group-hover/thumb:opacity-100 group-hover/thumb:-translate-y-0.5"
+                              ? "opacity-100 ring-[1.5px] ring-ui-text/85"
+                              : `opacity-55 group-hover/thumb:opacity-95 ${
+                                  thumbNeedsRim ? "ring-1 ring-ui-n7" : ""
+                                }`
                           }`}
                         >
                           {src ? (
@@ -676,7 +790,7 @@ export default function PreviewPage() {
                             <img
                               src={src}
                               alt={`第 ${idx + 1} 页`}
-                              className="w-full h-full object-contain"
+                              className="w-full h-full object-contain block"
                             />
                           ) : item ? (
                             <SlideRenderer
@@ -690,48 +804,57 @@ export default function PreviewPage() {
                           ) : null}
                         </div>
                         <span
-                          className={`h-[3px] rounded-full transition-all duration-200 ${
+                          className={`text-[11.5px] tabular-nums leading-none transition-colors ${
                             isSelected
-                              ? "w-5 bg-ui-accent"
-                              : "w-1.5 bg-ui-border-subtle group-hover/thumb:bg-ui-border"
+                              ? "text-ui-text font-medium"
+                              : "text-ui-text-muted/75 group-hover/thumb:text-ui-text-secondary"
                           }`}
-                        />
+                        >
+                          {idx + 1}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[13px] text-ui-text-muted tabular-nums">
-                  <span className="font-medium text-ui-text">
+
+                <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[12.5px] text-ui-text-muted tabular-nums">
+                  <span className="text-ui-text-secondary font-medium">
                     第 {selected + 1} / {totalSlides} 页
                   </span>
-                  <span>支持 ← / → / 空格翻页，按 F 全屏放映，按 P 切换演讲者视图</span>
+                  <span className="hidden sm:inline">
+                    方向键或空格翻页
+                  </span>
+                  <span className="hidden sm:inline">F 全屏</span>
+                  <span className="hidden sm:inline">P 演讲者视图</span>
                 </div>
               </div>
             </div>
           )
         ) : (
-          <div className="bg-ui-surface rounded-xl p-10 border border-ui-border-subtle max-w-md w-full text-center space-y-4">
-            <div className="text-[16px] font-semibold text-ui-text">
-              {notice || "尚未生成预览"}
+          <div className="my-auto mx-auto bg-ui-surface rounded-2xl p-9 sm:p-11 max-w-md w-full text-center space-y-5">
+            <div className="space-y-2">
+              <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ui-text">
+                {notice || "尚未生成成稿预览"}
+              </h2>
+              <p className="text-[13.5px] text-ui-text-muted leading-relaxed">
+                {report?.success
+                  ? "立即渲染逐页高清预览图与矢量 PDF。"
+                  : "请先返回工作台生成大纲并导出 PPTX。"}
+              </p>
             </div>
-            <p className="text-[13.5px] text-ui-text-muted leading-relaxed">
-              {report?.success
-                ? "点击下方按钮立即生成逐页高清预览图与矢量 PDF。"
-                : "请先回到工作台创建大纲或导出 PPTX。"}
-            </p>
             {report?.success ? (
               <button
                 type="button"
                 onClick={renderNow}
                 disabled={rendering}
-                className="ui-btn-primary px-5 py-2 text-[13.5px]"
+                className="ui-btn-primary h-9.5 px-5 text-[13.5px]"
               >
-                {rendering ? "正在渲染…" : "生成高清预览图"}
+                {rendering ? "正在渲染…" : "生成高清预览"}
               </button>
             ) : (
               <Link
                 href={`/p/${pid}`}
-                className="inline-block ui-btn-primary px-5 py-2 text-[13.5px]"
+                className="inline-flex items-center justify-center ui-btn-primary h-9.5 px-5 text-[13.5px]"
               >
                 返回工作台
               </Link>
@@ -740,10 +863,10 @@ export default function PreviewPage() {
         )}
       </main>
 
-      {/* True Distraction-Free Fullscreen Theater Overlay (F to toggle, Esc to exit) */}
+      {/* Distraction-Free Fullscreen Theater Overlay (F to toggle, Esc to exit) */}
       {isFullscreen && totalSlides > 0 && (
         <div
-          className="fixed inset-0 z-50 bg-black flex items-center justify-center group/fs select-none"
+          className="fixed inset-0 z-50 bg-black flex items-center justify-center stage-reveal-host select-none"
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
@@ -754,7 +877,7 @@ export default function PreviewPage() {
             }
           }}
         >
-          <div className="w-[min(100vw,calc(100vh*16/9))] aspect-[16/9] bg-surface overflow-hidden relative shadow-2xl">
+          <div className="w-[min(100dvw,calc(100dvh*16/9))] aspect-[16/9] bg-black overflow-clip relative">
             <div
               key={`fs-${selected}`}
               className="absolute inset-0 anim-slide-settle"
@@ -764,7 +887,7 @@ export default function PreviewPage() {
                 <img
                   src={currentPageSrc}
                   alt={`第 ${selected + 1} 页`}
-                  className="w-full h-full object-contain select-none"
+                  className="w-full h-full object-contain block select-none"
                 />
               ) : currentOutlineItem ? (
                 <SlideRenderer
@@ -779,17 +902,17 @@ export default function PreviewPage() {
             </div>
           </div>
 
-          {/* Hover-only subtle floating HUD at bottom center */}
+          {/* Pointer / Keyboard / Touch-Reachable Floating HUD */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="fixed bottom-5 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/65 backdrop-blur-md border border-white/15 text-white flex items-center gap-2 text-[13px] opacity-0 group-hover/fs:opacity-100 focus-within:opacity-100 transition-opacity duration-200"
+            className="stage-reveal-control fixed bottom-5 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-ui-bg/85 backdrop-blur-md text-ui-text flex items-center gap-2 text-[13px] shadow-[0_8px_28px_rgba(0,0,0,0.65)]"
           >
             <button
               type="button"
               disabled={selected === 0}
               onClick={() => setSelected((s) => Math.max(0, s - 1))}
               aria-label="上一页"
-              className="p-1 rounded-full hover:bg-white/15 disabled:opacity-30 cursor-pointer"
+              className="p-1 rounded-full hover:bg-ui-control-hover disabled:opacity-30 cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -803,16 +926,16 @@ export default function PreviewPage() {
                 setSelected((s) => Math.min(totalSlides - 1, s + 1))
               }
               aria-label="下一页"
-              className="p-1 rounded-full hover:bg-white/15 disabled:opacity-30 cursor-pointer"
+              className="p-1 rounded-full hover:bg-ui-control-hover disabled:opacity-30 cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-            <span className="w-px h-3.5 bg-white/20 mx-0.5" />
+            <span className="w-px h-3.5 bg-ui-border-subtle mx-0.5" />
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
               title="退出全屏 (Esc / F)"
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-white/15 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-ui-control-hover cursor-pointer"
             >
               <Minimize2 className="w-3.5 h-3.5" />
               <span>退出全屏</span>

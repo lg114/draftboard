@@ -179,6 +179,12 @@
     outline-offset: 2px;
   }
 
+  html {
+    background-color: var(--ui-bg);
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-neutral-7) var(--ui-bg);
+  }
+
   body {
     background-color: var(--ui-bg);
     color: var(--ui-text);
@@ -260,19 +266,108 @@
   box-shadow: none;
 }
 
-.clean-scroll::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+.clean-scroll {
+  --scrollbar-thumb: var(--ui-neutral-7);
+  --scrollbar-track: transparent;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
-.clean-scroll::-webkit-scrollbar-track {
-  background: transparent;
+
+.clean-scroll-stable {
+  scrollbar-gutter: stable;
 }
-.clean-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 99px;
+
+@supports not (scrollbar-color: auto) {
+  html {
+    scrollbar-width: auto;
+  }
+  html::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  html::-webkit-scrollbar-track {
+    background: var(--ui-bg);
+  }
+  html::-webkit-scrollbar-thumb {
+    background: var(--ui-neutral-7);
+    border-radius: 99px;
+  }
+  .clean-scroll {
+    scrollbar-width: auto;
+  }
+  .clean-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .clean-scroll::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+  .clean-scroll::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 99px;
+  }
 }
-.clean-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.24);
+
+/* Home library contact-sheet grid with subgrid row alignment */
+.deck-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  column-gap: 1.75rem;
+  row-gap: 2.25rem;
+}
+
+.deck-contact-item {
+  grid-row: span 2;
+  display: grid;
+  /* Same-cascade fallback: ignored when subgrid is supported. */
+  grid-template-rows: auto 1fr;
+  grid-template-rows: subgrid;
+  row-gap: 0.75rem;
+}
+
+/* Auto-growing textareas with progressive enhancement via field-sizing */
+.ui-autogrow-textarea {
+  field-sizing: content;
+  height: auto;
+  width: 100%;
+  min-block-size: 3.25lh;
+  max-block-size: 9lh;
+}
+
+.ui-autogrow-note {
+  field-sizing: content;
+  height: auto;
+  width: 100%;
+  min-block-size: 7lh;
+  max-block-size: 16lh;
+}
+
+/* Swipeable filmstrip scroller & pointer/keyboard/touch-safe overlay controls */
+.filmstrip-scroller {
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+
+.filmstrip-item {
+  scroll-snap-align: center;
+}
+
+.stage-reveal-control {
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease-ui),
+    transform var(--dur-micro) var(--ease-ui);
+}
+
+.stage-reveal-host:hover .stage-reveal-control,
+.stage-reveal-host:focus-within .stage-reveal-control {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .stage-reveal-control {
+    opacity: 0.92;
+  }
 }
 
 /* In-slide clickable hover outline (content surface, not dark chrome) */

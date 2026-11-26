@@ -149,7 +149,7 @@ export function WorkspaceHeader({
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
-  const sortedOutlines = [...(project?.outlines ?? [])].sort(
+  const sortedOutlines = (project?.outlines ?? []).toSorted(
     (a, b) => b.mtime - a.mtime
   );
   const currentOutlineIndex = sortedOutlines.findIndex(

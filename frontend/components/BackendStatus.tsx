@@ -15,13 +15,10 @@ export function BackendStatus() {
       if (typeof document !== "undefined" && document.hidden) return;
       const start = performance.now();
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
         const res = await fetch("/api/health", {
-          signal: controller.signal,
+          signal: AbortSignal.timeout(3500),
           cache: "no-store",
         });
-        clearTimeout(timeoutId);
         if (!mounted) return;
         if (res.ok) {
           setStatus("online");

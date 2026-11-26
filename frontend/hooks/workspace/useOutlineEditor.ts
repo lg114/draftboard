@@ -94,7 +94,7 @@ export function useOutlineEditor({
   const applySavedOutlineSnapshot = useCallback((saved: Outline) => {
     outlineRef.current = saved;
     setOutline(saved);
-    setSavedOutline(JSON.parse(JSON.stringify(saved)));
+    setSavedOutline(structuredClone(saved));
     setVersion(saved.outline_version);
   }, []);
 
@@ -120,7 +120,7 @@ export function useOutlineEditor({
         );
         outlineRef.current = data;
         setOutline(data);
-        setSavedOutline(JSON.parse(JSON.stringify(data)));
+        setSavedOutline(structuredClone(data));
         setVersion(v);
         setUndoStack([]);
         setRedoStack([]);
@@ -227,7 +227,7 @@ export function useOutlineEditor({
         now - lastC.ts < 700;
 
       if (!shouldCoalesce) {
-        const snap: Outline = JSON.parse(JSON.stringify(prev));
+        const snap: Outline = structuredClone(prev);
         setUndoStack((stack) => [...stack.slice(-39), snap]);
       }
       setRedoStack([]);
@@ -241,7 +241,7 @@ export function useOutlineEditor({
   const handleUndo = useCallback(() => {
     if (isEditingLockedRef.current || undoStack.length === 0 || !outline) return;
     const prevSnap = undoStack[undoStack.length - 1];
-    const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
+    const currentSnap: Outline = structuredClone(outline);
     setUndoStack((stack) => stack.slice(0, -1));
     setRedoStack((stack) => [...stack.slice(-39), currentSnap]);
     lastCoalesceRef.current = null;
@@ -256,7 +256,7 @@ export function useOutlineEditor({
   const handleRedo = useCallback(() => {
     if (isEditingLockedRef.current || redoStack.length === 0 || !outline) return;
     const nextSnap = redoStack[redoStack.length - 1];
-    const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
+    const currentSnap: Outline = structuredClone(outline);
     setRedoStack((stack) => stack.slice(0, -1));
     setUndoStack((stack) => [...stack.slice(-39), currentSnap]);
     lastCoalesceRef.current = null;
@@ -459,7 +459,7 @@ export function useOutlineEditor({
       const newId = `el_${orig.kind}_${Date.now().toString(36)}_${Math.random()
         .toString(36)
         .slice(2, 5)}`;
-      const clone: CanvasElement = JSON.parse(JSON.stringify(orig));
+      const clone: CanvasElement = structuredClone(orig);
       clone.id = newId;
       if (clone.kind === "line") {
         const maxX = Math.min(960, 960 - clone.w);
@@ -777,9 +777,7 @@ export function useOutlineEditor({
       const src = outlineRef.current?.items[index];
       if (!src) return;
       const stamp = Date.now().toString(36);
-      const cloned = JSON.parse(
-        JSON.stringify(src)
-      ) as Outline["items"][number];
+      const cloned: Outline["items"][number] = structuredClone(src);
       cloned.outline_item_id = `slide-${stamp}`;
       if (cloned.custom_elements && cloned.custom_elements.length > 0) {
         cloned.custom_elements = cloned.custom_elements.map((el, i) => ({
@@ -848,9 +846,7 @@ export function useOutlineEditor({
         if (!prev.items[selectedIndex]) return null;
         const items = [...prev.items];
         const cur = items[selectedIndex];
-        const clonedEls: CanvasElement[] = JSON.parse(
-          JSON.stringify(preset.elements)
-        );
+        const clonedEls: CanvasElement[] = structuredClone(preset.elements);
         const textEls = clonedEls.filter((el) => el.kind === "text");
         if (textEls.length > 0 && cur.title.trim()) {
           const largest = textEls.reduce((a, b) =>

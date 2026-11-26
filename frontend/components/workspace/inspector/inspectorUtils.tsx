@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { type CSSProperties, useEffect, useRef } from "react";
 import type { Material, SourceFragment } from "../../../lib/api";
 import { cleanMarkdownExcerpt } from "../layoutUtils";
 
@@ -53,11 +53,24 @@ export function AutoGrowTextarea({
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
+    if (
+      typeof CSS !== "undefined" &&
+      typeof CSS.supports === "function" &&
+      CSS.supports("field-sizing", "content")
+    ) {
+      return;
+    }
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
+
+  const fieldSizingStyle = {
+    fieldSizing: "content",
+    height: "auto",
+    minBlockSize: `${minRows}lh`,
+  } as CSSProperties;
 
   return (
     <textarea
@@ -66,6 +79,7 @@ export function AutoGrowTextarea({
       rows={minRows}
       value={value}
       placeholder={placeholder}
+      style={fieldSizingStyle}
       onChange={(e) => onChange(e.target.value)}
       className={`w-full overflow-hidden resize-none ${className}`}
     />

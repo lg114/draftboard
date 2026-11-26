@@ -211,7 +211,7 @@ function ToolStepsBar({
   const [expanded, setExpanded] = useState(false);
   if (!steps.length) return null;
 
-  const activeStep = [...steps].reverse().find((s) => s.status === "running");
+  const activeStep = steps.findLast((s) => s.status === "running");
   const errorCount = steps.filter((s) => s.status === "error").length;
   const warningCount = steps.filter((s) => s.status === "warning").length;
 

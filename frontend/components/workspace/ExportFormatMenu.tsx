@@ -44,7 +44,7 @@ export function ExportFormatMenu({
         aria-haspopup="menu"
         aria-label={label}
         title={label}
-        className={`px-3 py-1.5 rounded-lg text-[13px] font-medium text-ui-text-secondary hover:text-ui-text border border-ui-border-subtle transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+        className={`h-8 px-2.5 rounded-lg text-[13px] font-medium text-ui-text-secondary hover:text-ui-text transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
           open
             ? "bg-ui-bg-selected text-ui-text"
             : "bg-ui-surface-input hover:bg-ui-control-hover"
