@@ -6,7 +6,6 @@ import { LLMSettingsModal } from "../../../components/LLMSettingsModal";
 import { AgentChatPanel } from "../../../components/workspace/AgentChatPanel";
 import { EmptyStageOnboarding } from "../../../components/workspace/EmptyStageOnboarding";
 import { MaterialsDrawer } from "../../../components/workspace/MaterialsDrawer";
-import { PreflightModal } from "../../../components/workspace/PreflightModal";
 import { ShortcutsModal } from "../../../components/workspace/ShortcutsModal";
 import { SlideInspector } from "../../../components/workspace/SlideInspector";
 import { SlideNavigator } from "../../../components/workspace/SlideNavigator";
@@ -230,7 +229,6 @@ export default function ProjectWorkspacePage() {
         onToggleRight={() => ws.setRightOpen((v) => !v)}
         onToggleChat={ws.handleToggleChat}
         onOpenLLMSettings={handleOpenLLMSettings}
-        onOpenPreflight={() => ws.setShowPreflight(true)}
         onToggleMaterialsDrawer={() => {
           if (hasOutline) {
             ws.setLeftOpen(true);
@@ -371,7 +369,6 @@ export default function ProjectWorkspacePage() {
               onCollapseLeft={() => ws.setLeftOpen(false)}
               onOpenThemeModal={() => setShowThemeModal(true)}
               onOpenLLMSettings={handleOpenLLMSettings}
-              onOpenPreflight={() => ws.setShowPreflight(true)}
               onOpenShortcuts={() => setShowShortcuts(true)}
             />
           )}
@@ -599,17 +596,6 @@ export default function ProjectWorkspacePage() {
         fragment={ws.inspectedFragment}
         materials={ws.materials}
         onClose={() => ws.setInspectedFragment(null)}
-      />
-
-      <PreflightModal
-        open={ws.showPreflight}
-        pid={ws.pid}
-        version={version}
-        themeId={ws.selectedThemeId}
-        autoFit={ws.autoFit}
-        onBeforeCheck={ws.flushOutlineIfReady}
-        onJumpToSlide={ws.setSelectedIndex}
-        onClose={() => ws.setShowPreflight(false)}
       />
 
       <ThemeBrandModal

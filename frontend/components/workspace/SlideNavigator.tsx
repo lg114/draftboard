@@ -10,7 +10,6 @@ import {
   Palette,
   Plus,
   Settings,
-  ShieldCheck,
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
@@ -43,7 +42,6 @@ interface SlideNavigatorProps {
   onCollapseLeft: () => void;
   onOpenThemeModal: () => void;
   onOpenLLMSettings: () => void;
-  onOpenPreflight: () => void;
   onOpenShortcuts: () => void;
 }
 
@@ -71,7 +69,6 @@ export function SlideNavigator({
   onCollapseLeft,
   onOpenThemeModal,
   onOpenLLMSettings,
-  onOpenPreflight,
   onOpenShortcuts,
 }: SlideNavigatorProps) {
   const sw = activeTheme.swatches;
@@ -488,19 +485,6 @@ export function SlideNavigator({
                   {activeModelLabel.split("·").pop()?.trim()}
                 </span>
               ) : null}
-            </button>
-
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setSettingsOpen(false);
-                onOpenPreflight();
-              }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-ui-icon shrink-0" />
-              <span>交付体检</span>
             </button>
 
             <div className="my-1 border-t border-ui-border-subtle" />

@@ -165,7 +165,8 @@ export function MaterialsDrawer({
   );
 
   const showSearchAndFilter =
-    materials.length >= 4 || (docCount > 0 && imgCount > 0 && materials.length >= 2);
+    materials.length >= 4 ||
+    (docCount > 0 && imgCount > 0 && materials.length >= 2);
 
   const filteredMaterials = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -252,6 +253,13 @@ export function MaterialsDrawer({
   if (!embedded && !mounted) return null;
 
   const padX = embedded ? "px-3" : "px-5";
+  // Context-aware tonal contrast: embedded sits on #0D0D0E, slide-over drawer sits on #151516
+  const wellBg = embedded ? "bg-ui-surface" : "bg-ui-bg";
+  const inputBg = embedded ? "bg-ui-surface-input" : "bg-ui-bg";
+  const rowHover = embedded ? "hover:bg-ui-surface" : "hover:bg-ui-control-hover";
+  const actionBtnTone = embedded
+    ? "bg-ui-surface hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text"
+    : "bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text";
 
   const panelBody = (
     <div
@@ -261,7 +269,9 @@ export function MaterialsDrawer({
         setIsDragging(true);
       }}
       onDragLeave={(e) => {
-        if (e.currentTarget === e.target) setIsDragging(false);
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setIsDragging(false);
+        }
       }}
       onDrop={(e) => {
         if (!onDropFiles) return;
@@ -274,7 +284,7 @@ export function MaterialsDrawer({
       className={
         embedded
           ? "flex-1 min-h-0 flex flex-col relative bg-ui-bg"
-          : `fixed top-12 right-0 bottom-0 z-30 w-full sm:w-[440px] xl:w-[480px] bg-ui-surface border-l border-ui-border-subtle shadow-[-12px_0_36px_rgba(0,0,0,0.6)] flex flex-col ${
+          : `fixed top-12 right-0 bottom-0 z-30 w-full sm:w-[440px] xl:w-[468px] bg-ui-surface shadow-[-16px_0_48px_rgba(0,0,0,0.65)] flex flex-col ${
               exiting
                 ? "anim-drawer-right-out pointer-events-none"
                 : "anim-drawer-right-in"
@@ -283,10 +293,10 @@ export function MaterialsDrawer({
     >
       {/* Drag-Drop Overlay */}
       {isDragging && (
-        <div className="absolute inset-2 z-40 rounded-xl border border-dashed border-ui-focus bg-ui-surface/95 flex flex-col items-center justify-center gap-2 pointer-events-none px-3 text-center">
+        <div className="absolute inset-2 z-40 rounded-xl ring-1 ring-ui-focus bg-ui-bg-selected/95 flex flex-col items-center justify-center gap-2 pointer-events-none px-4 text-center">
           <Upload className="w-5 h-5 text-ui-accent-text" />
           <span className="text-[13px] font-medium text-ui-text">
-            松开即可导入到材料库
+            松开即可导入材料
           </span>
         </div>
       )}
@@ -294,13 +304,15 @@ export function MaterialsDrawer({
       {/* Header (omitted on embedded list view since left rail header shows tabs) */}
       {(!embedded || view.kind !== "list") && (
         <div
-          className={`${padX} py-2.5 border-b border-ui-border-subtle flex items-center justify-between gap-2 shrink-0 bg-ui-bg`}
+          className={`${padX} pt-3.5 pb-2.5 flex items-center justify-between gap-2 shrink-0`}
         >
           {view.kind === "list" ? (
             <div className="flex items-baseline gap-2 min-w-0">
-              <h2 className="text-[14px] font-semibold text-ui-text">材料库</h2>
+              <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-ui-text">
+                材料库
+              </h2>
               <span className="text-[12.5px] text-ui-text-muted tabular-nums">
-                {materials.length} 份
+                {materials.length}
               </span>
             </div>
           ) : (
@@ -308,19 +320,20 @@ export function MaterialsDrawer({
               type="button"
               onClick={() => {
                 setConfirmDeleteAsset(null);
+                setUrlError(null);
                 setView({ kind: "list" });
               }}
               className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer min-w-0"
             >
-              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <ArrowLeft className="w-3.5 h-3.5 text-ui-icon shrink-0" />
               <span className="truncate">
                 {view.kind === "paste"
                   ? "粘贴文本笔记"
                   : view.kind === "url"
-                  ? "导入网页材料"
+                  ? "导入公开网页"
                   : view.kind === "regen"
                   ? "重新提炼大纲"
-                  : "返回材料列表"}
+                  : "材料列表"}
               </span>
             </button>
           )}
@@ -331,7 +344,7 @@ export function MaterialsDrawer({
               onClick={onClose}
               title="关闭材料库 (Esc)"
               aria-label="关闭材料库"
-              className="p-1.5 rounded-md text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer shrink-0"
             >
               <X className="w-4 h-4" />
             </button>
@@ -339,38 +352,34 @@ export function MaterialsDrawer({
         </div>
       )}
 
-      {/* ── VIEW 1: Vertical Materials List ─────────────────────────────────── */}
+      {/* ── VIEW 1: Borderless Materials List ───────────────────────────────── */}
       {view.kind === "list" && (
         <>
-          <div
-            className={`${padX} py-2 space-y-2.5 shrink-0 ${
-              embedded ? "" : "border-b border-ui-border-subtle"
-            }`}
-          >
-            <div className={embedded ? "flex flex-wrap gap-1.5" : "grid grid-cols-3 gap-2"}>
+          <div className={`${padX} pt-1 pb-2 space-y-2.5 shrink-0`}>
+            <div className="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
                 onClick={onUploadClick}
-                className="ui-btn-subtle flex-1 h-8 px-2 text-[12.5px] inline-flex items-center justify-center gap-1 whitespace-nowrap"
+                className={`h-8 px-2 rounded-lg text-[12.5px] font-medium inline-flex items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${actionBtnTone}`}
               >
-                <Plus className="w-3.5 h-3.5 shrink-0" />
+                <Plus className="w-3.5 h-3.5 text-ui-icon shrink-0" />
                 <span>上传</span>
               </button>
               <button
                 type="button"
                 onClick={() => setView({ kind: "paste" })}
-                className="ui-btn-subtle flex-1 h-8 px-2 text-[12.5px] inline-flex items-center justify-center gap-1 whitespace-nowrap"
+                className={`h-8 px-2 rounded-lg text-[12.5px] font-medium inline-flex items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${actionBtnTone}`}
               >
-                <ClipboardPaste className="w-3.5 h-3.5 shrink-0" />
+                <ClipboardPaste className="w-3.5 h-3.5 text-ui-icon shrink-0" />
                 <span>粘贴</span>
               </button>
               {onImportUrl && (
                 <button
                   type="button"
                   onClick={() => setView({ kind: "url" })}
-                  className="ui-btn-subtle flex-1 h-8 px-2 text-[12.5px] inline-flex items-center justify-center gap-1 whitespace-nowrap"
+                  className={`h-8 px-2 rounded-lg text-[12.5px] font-medium inline-flex items-center justify-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${actionBtnTone}`}
                 >
-                  <Globe className="w-3.5 h-3.5 shrink-0" />
+                  <Globe className="w-3.5 h-3.5 text-ui-icon shrink-0" />
                   <span>网页</span>
                 </button>
               )}
@@ -381,11 +390,15 @@ export function MaterialsDrawer({
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-ui-icon absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    type="text"
+                    type="search"
+                    aria-label="搜索材料"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索材料…"
-                    className="w-full h-8 pl-8 pr-7 text-[12.5px] ui-field"
+                    placeholder="搜索材料"
+                    className={`ui-field ${inputBg} w-full h-8 pl-8 pr-7 text-[12.5px]`}
                   />
                   {searchQuery && (
                     <button
@@ -431,21 +444,23 @@ export function MaterialsDrawer({
           </div>
 
           <div
-            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-3 space-y-1.5`}
+            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-2 space-y-1`}
           >
             {materials.length === 0 ? (
-              <div className="py-10 px-3 rounded-xl border border-dashed border-ui-border-subtle text-center space-y-1.5">
+              <div
+                className={`py-8 px-4 rounded-xl ${wellBg} text-center space-y-1.5`}
+              >
                 <p className="text-[13px] font-medium text-ui-text">
-                  项目暂无材料
+                  暂无参考材料
                 </p>
-                <p className="text-[12.5px] text-ui-text-muted leading-relaxed">
-                  上传文档、图片，或直接拖拽文件到此区域。
+                <p className="text-[12px] text-ui-text-muted leading-relaxed">
+                  点击上方导入，或直接将文件拖入此区域。
                 </p>
               </div>
             ) : filteredMaterials.length === 0 ? (
               <div className="py-8 text-center space-y-2">
                 <p className="text-[13px] text-ui-text-muted">
-                  没有找到匹配的材料
+                  没有匹配的材料
                 </p>
                 <button
                   type="button"
@@ -471,21 +486,25 @@ export function MaterialsDrawer({
                       setConfirmDeleteAsset(null);
                       setView({ kind: "detail", assetId: m.asset_id });
                     }}
-                    className="w-full text-left p-2.5 rounded-lg bg-ui-surface-input hover:bg-ui-control-hover border border-ui-border-subtle hover:border-ui-border transition-colors flex items-center gap-2.5 group cursor-pointer"
+                    className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors flex items-center gap-2.5 group cursor-pointer ${rowHover}`}
                   >
                     {isImg ? (
-                      <div className="w-10 h-7 rounded bg-ui-bg border border-ui-border-subtle overflow-hidden flex items-center justify-center shrink-0">
+                      <div
+                        className={`w-10 h-7 rounded-md ${wellBg} overflow-clip flex items-center justify-center shrink-0`}
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={`/api/projects/${pid}/assets/${encodeURIComponent(
                             m.asset_id
                           )}`}
                           alt={m.asset_id}
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-cover block"
                         />
                       </div>
                     ) : (
-                      <div className="w-8 h-8 rounded-md bg-ui-bg border border-ui-border-subtle flex items-center justify-center shrink-0">
+                      <div
+                        className={`w-8 h-8 rounded-lg ${wellBg} flex items-center justify-center shrink-0`}
+                      >
                         <FileText className="w-3.5 h-3.5 text-ui-icon" />
                       </div>
                     )}
@@ -497,7 +516,7 @@ export function MaterialsDrawer({
                       >
                         {m.asset_id}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-2 text-[12px] text-ui-text-muted">
+                      <div className="flex flex-wrap items-center gap-x-2.5 text-[11.5px] text-ui-text-muted tabular-nums">
                         <span>
                           {isImg ? "图片" : `${frags.length} 切片`}
                         </span>
@@ -513,7 +532,7 @@ export function MaterialsDrawer({
                       </div>
                     </div>
 
-                    <ChevronRight className="w-3.5 h-3.5 text-ui-icon-quiet group-hover:text-ui-text transition-colors shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 text-ui-icon-quiet opacity-50 group-hover:opacity-100 group-hover:text-ui-text transition-opacity shrink-0" />
                   </button>
                 );
               })
@@ -521,16 +540,12 @@ export function MaterialsDrawer({
           </div>
 
           {materials.length > 0 && (
-            <div
-              className={`${padX} py-2.5 flex items-center justify-between gap-2 shrink-0 ${
-                embedded ? "" : "border-t border-ui-border-subtle"
-              }`}
-            >
+            <div className={`${padX} pt-2 pb-3 shrink-0`}>
               <button
                 type="button"
                 disabled={isGenerating}
                 onClick={() => setView({ kind: "regen" })}
-                className="w-full ui-btn-subtle h-8 px-2.5 text-[12.5px] inline-flex items-center justify-center gap-1.5"
+                className={`w-full h-8.5 px-3 rounded-lg text-[12.5px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${actionBtnTone}`}
               >
                 <Sparkles className="w-3.5 h-3.5 text-ui-accent-text" />
                 <span>{isGenerating ? "提炼中…" : "重新提炼大纲"}</span>
@@ -543,29 +558,34 @@ export function MaterialsDrawer({
       {/* ── VIEW 2: Material Detail & Fragments ─────────────────────────────── */}
       {view.kind === "detail" && activeMaterial && (
         <>
-          <div
-            className={`${padX} py-3 border-b border-ui-border-subtle space-y-2 shrink-0`}
-          >
+          <div className={`${padX} pt-1 pb-3 space-y-2.5 shrink-0`}>
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2 min-w-0">
-                {activeMaterial.asset_type === "image" ? (
-                  <ImageIcon className="w-4 h-4 text-ui-icon shrink-0 mt-0.5" />
-                ) : (
-                  <FileText className="w-4 h-4 text-ui-icon shrink-0 mt-0.5" />
-                )}
+              <div className="flex items-start gap-2.5 min-w-0">
+                <div
+                  className={`w-7 h-7 rounded-lg ${wellBg} flex items-center justify-center shrink-0 mt-0.5`}
+                >
+                  {activeMaterial.asset_type === "image" ? (
+                    <ImageIcon className="w-3.5 h-3.5 text-ui-icon" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 text-ui-icon" />
+                  )}
+                </div>
                 <div className="min-w-0">
                   <div
-                    className="text-[13px] font-semibold text-ui-text break-all"
+                    className="text-[13px] font-semibold text-ui-text break-all leading-snug"
                     title={activeMaterial.asset_id}
                   >
                     {activeMaterial.asset_id}
                   </div>
-                  <div className="text-[12px] text-ui-text-muted mt-0.5">
-                    {activeMaterial.asset_type === "image"
-                      ? "图片素材"
-                      : `共 ${activeFragments.length} 处切片`}
-                    {affectedSlides.length > 0 &&
-                      ` · 第 ${affectedSlides.join("、")} 页`}
+                  <div className="flex flex-wrap items-center gap-x-2.5 text-[12px] text-ui-text-muted mt-0.5 tabular-nums">
+                    <span>
+                      {activeMaterial.asset_type === "image"
+                        ? "图片素材"
+                        : `共 ${activeFragments.length} 处切片`}
+                    </span>
+                    {affectedSlides.length > 0 && (
+                      <span>第 {affectedSlides.join("、")} 页引用</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -574,8 +594,9 @@ export function MaterialsDrawer({
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteAsset(activeMaterial.asset_id)}
-                  className="p-1 rounded text-ui-icon-quiet hover:text-ui-danger hover:bg-ui-danger-bg transition-colors cursor-pointer shrink-0"
+                  className="p-1.5 rounded-lg text-ui-icon-quiet hover:text-ui-danger hover:bg-ui-danger-bg transition-colors cursor-pointer shrink-0"
                   title="删除此材料"
+                  aria-label="删除此材料"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -583,8 +604,8 @@ export function MaterialsDrawer({
             </div>
 
             {confirmDeleteAsset === activeMaterial.asset_id && (
-              <div className="p-2.5 rounded-lg bg-ui-danger-bg border border-ui-danger/30 space-y-2 text-[12.5px]">
-                <div className="text-ui-danger font-medium">
+              <div className="p-3 rounded-xl bg-ui-danger-bg space-y-2.5 text-[12.5px]">
+                <div className="text-ui-danger font-medium leading-snug">
                   {affectedSlides.length > 0
                     ? `第 ${affectedSlides.join("、")} 页正引用此材料，确认删除？`
                     : "确认从项目删除此材料？"}
@@ -593,7 +614,7 @@ export function MaterialsDrawer({
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteAsset(null)}
-                    className="px-2 py-0.5 rounded text-ui-text-secondary hover:text-ui-text cursor-pointer"
+                    className="px-2.5 py-1 rounded-md text-ui-text-secondary hover:text-ui-text cursor-pointer"
                   >
                     取消
                   </button>
@@ -603,7 +624,7 @@ export function MaterialsDrawer({
                     onClick={() =>
                       void handleConfirmDelete(activeMaterial.asset_id)
                     }
-                    className="px-2.5 py-0.5 rounded bg-ui-danger text-ui-bg font-medium hover:brightness-110 cursor-pointer disabled:opacity-40"
+                    className="px-2.5 py-1 rounded-md bg-ui-danger text-ui-bg font-medium hover:brightness-110 cursor-pointer disabled:opacity-40"
                   >
                     {deletingAsset ? "删除中…" : "确认删除"}
                   </button>
@@ -613,23 +634,25 @@ export function MaterialsDrawer({
           </div>
 
           <div
-            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-3 space-y-2.5`}
+            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} pb-4 space-y-2.5`}
           >
             {activeMaterial.asset_type === "image" ? (
               <div className="space-y-3">
-                <div className="aspect-[16/10] w-full rounded-lg bg-ui-surface border border-ui-border-subtle overflow-hidden flex items-center justify-center p-1.5">
+                <div
+                  className={`aspect-[16/10] w-full rounded-xl ${wellBg} overflow-clip flex items-center justify-center p-2`}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`/api/projects/${pid}/assets/${encodeURIComponent(
                       activeMaterial.asset_id
                     )}`}
                     alt={activeMaterial.asset_id}
-                    className="max-w-full max-h-full object-contain"
+                    className="max-w-full max-h-full object-contain block"
                   />
                 </div>
 
                 {currentSlide && (
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-2">
                     {onApplyImageToSlide && (
                       <button
                         type="button"
@@ -639,7 +662,7 @@ export function MaterialsDrawer({
                             activeFragments[0]?.source_id
                           )
                         }
-                        className="w-full h-8 ui-btn-primary text-[12.5px]"
+                        className="w-full h-8.5 ui-btn-primary text-[12.5px]"
                       >
                         设为第 {currentSlideIndex + 1} 页配图
                       </button>
@@ -650,12 +673,12 @@ export function MaterialsDrawer({
                         onClick={() =>
                           onToggleSourceId(activeFragments[0].source_id)
                         }
-                        className="w-full h-8 ui-btn-subtle text-[12.5px]"
+                        className={`w-full h-8.5 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer ${actionBtnTone}`}
                       >
                         {currentSlide.source_ids.includes(
                           activeFragments[0].source_id
                         )
-                          ? `✓ 已关联第 ${currentSlideIndex + 1} 页`
+                          ? `已关联第 ${currentSlideIndex + 1} 页`
                           : `关联为第 ${currentSlideIndex + 1} 页出处`}
                       </button>
                     )}
@@ -663,7 +686,7 @@ export function MaterialsDrawer({
                 )}
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {activeFragments.map((frag) => {
                   const excerpt = extractFragmentText(frag, materials);
                   const bound =
@@ -671,14 +694,14 @@ export function MaterialsDrawer({
                   return (
                     <div
                       key={frag.source_id}
-                      className="p-2.5 rounded-lg bg-ui-surface-input border border-ui-border-subtle space-y-2"
+                      className={`p-3 rounded-xl ${wellBg} space-y-2`}
                     >
                       <div className="flex items-center justify-between gap-2 text-[12px]">
                         <span className="font-medium text-ui-text">
                           {formatFragmentLocation(frag.location)}
                         </span>
                         {bound && (
-                          <span className="inline-flex items-center gap-1 text-ui-success">
+                          <span className="inline-flex items-center gap-1 text-ui-success font-medium">
                             <Check className="w-3 h-3" />
                             <span>已关联</span>
                           </span>
@@ -690,14 +713,16 @@ export function MaterialsDrawer({
                       </p>
 
                       {currentSlide && (
-                        <div className="flex flex-wrap items-center gap-3 pt-1.5 border-t border-ui-border-subtle text-[12px]">
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-[12px]">
                           {onToggleSourceId && (
                             <button
                               type="button"
                               onClick={() => onToggleSourceId(frag.source_id)}
                               className="text-ui-accent-text hover:underline font-medium cursor-pointer"
                             >
-                              {bound ? "解除关联" : `关联到第 ${currentSlideIndex + 1} 页`}
+                              {bound
+                                ? "解除关联"
+                                : `关联到第 ${currentSlideIndex + 1} 页`}
                             </button>
                           )}
                           {onInsertExcerptToSlide && excerpt && (
@@ -706,7 +731,7 @@ export function MaterialsDrawer({
                               onClick={() =>
                                 onInsertExcerptToSlide(frag.source_id, excerpt)
                               }
-                              className="text-ui-text-secondary hover:text-ui-text font-medium cursor-pointer"
+                              className="text-ui-text-muted hover:text-ui-text font-medium transition-colors cursor-pointer"
                             >
                               填入{getExcerptTargetLabel(currentLayout)}
                             </button>
@@ -729,57 +754,61 @@ export function MaterialsDrawer({
           className="flex-1 min-h-0 flex flex-col"
         >
           <div
-            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-3 space-y-3`}
+            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-2 space-y-3.5`}
           >
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label
                 htmlFor="drawer-note-title"
-                className="block text-[12.5px] font-medium text-ui-text-muted"
+                className="block text-[12.5px] font-medium text-ui-text-secondary"
               >
                 材料名称（选填）
               </label>
               <input
                 id="drawer-note-title"
+                name="title"
                 type="text"
+                enterKeyHint="next"
                 value={noteTitle}
                 onChange={(e) => setNoteTitle(e.target.value)}
                 placeholder="例如：架构评审纪要"
-                className="w-full h-9 px-3 text-[13px] ui-field"
+                className={`ui-field ${inputBg} w-full h-9 px-3 text-[13px]`}
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label
                 htmlFor="drawer-note-content"
-                className="block text-[12.5px] font-medium text-ui-text-muted"
+                className="block text-[12.5px] font-medium text-ui-text-secondary"
               >
-                正文内容（支持 Markdown）
+                正文内容
               </label>
               <textarea
                 id="drawer-note-content"
-                rows={10}
+                name="content"
+                required
+                rows={9}
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
-                placeholder="粘贴会议纪要、技术文档或核心数据段落…"
-                className="w-full px-3 py-2 text-[13px] ui-field leading-relaxed resize-y"
+                placeholder="粘贴会议纪要、技术方案或核心数据段落…"
+                className={`ui-field ${inputBg} ui-autogrow-note px-3 py-2 text-[13px] leading-relaxed resize-y`}
                 autoFocus
               />
             </div>
           </div>
 
           <div
-            className={`${padX} py-2.5 border-t border-ui-border-subtle flex items-center justify-end gap-2 shrink-0`}
+            className={`${padX} py-3 flex items-center justify-end gap-2 shrink-0`}
           >
             <button
               type="button"
               onClick={() => setView({ kind: "list" })}
-              className="px-3 h-8 rounded-md text-[12.5px] text-ui-text-muted hover:text-ui-text cursor-pointer"
+              className="px-3 h-8 rounded-lg text-[12.5px] text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
             >
               取消
             </button>
             <button
               type="submit"
-              disabled={savingNote || !noteContent.trim()}
+              disabled={savingNote}
               className="px-3.5 h-8 ui-btn-primary text-[12.5px]"
             >
               {savingNote ? "保存中…" : "保存材料"}
@@ -819,10 +848,14 @@ export function MaterialsDrawer({
           className="flex-1 min-h-0 flex flex-col"
         >
           <div
-            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-3 space-y-3`}
+            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-2 space-y-3.5`}
           >
             {urlError && (
-              <div className="p-2.5 rounded-lg bg-ui-danger-bg border border-ui-danger/30 space-y-2 text-[12.5px] text-ui-danger">
+              <div
+                id="drawer-url-error"
+                role="alert"
+                className="p-3 rounded-xl bg-ui-danger-bg space-y-2 text-[12.5px] text-ui-danger"
+              >
                 <p className="leading-relaxed">{urlError}</p>
                 <button
                   type="button"
@@ -833,39 +866,58 @@ export function MaterialsDrawer({
                 </button>
               </div>
             )}
-            <div className="space-y-1">
-              <label className="block text-[12.5px] font-medium text-ui-text-muted">
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="drawer-url-input"
+                className="block text-[12.5px] font-medium text-ui-text-secondary"
+              >
                 网页链接
               </label>
               <input
+                id="drawer-url-input"
+                name="url"
                 type="url"
                 required
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                enterKeyHint="done"
+                aria-invalid={urlError ? "true" : undefined}
+                aria-describedby={urlError ? "drawer-url-error" : undefined}
                 value={urlValue}
                 onChange={(e) => {
                   setUrlValue(e.target.value);
                   if (urlError) setUrlError(null);
                 }}
                 placeholder="https://example.com/article"
-                className="w-full h-9 px-3 text-[13px] ui-field font-mono"
+                className={`ui-field ${inputBg} w-full h-9 px-3 text-[13px] font-mono`}
                 autoFocus
               />
             </div>
-            <div className="space-y-1">
-              <label className="block text-[12.5px] font-medium text-ui-text-muted">
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="drawer-url-title"
+                className="block text-[12.5px] font-medium text-ui-text-secondary"
+              >
                 材料名称（选填）
               </label>
               <input
+                id="drawer-url-title"
+                name="title"
                 type="text"
+                enterKeyHint="done"
                 value={urlTitle}
                 onChange={(e) => setUrlTitle(e.target.value)}
                 placeholder="留空自动使用网页标题"
-                className="w-full h-9 px-3 text-[13px] ui-field"
+                className={`ui-field ${inputBg} w-full h-9 px-3 text-[13px]`}
               />
             </div>
           </div>
 
           <div
-            className={`${padX} py-2.5 border-t border-ui-border-subtle flex items-center justify-end gap-2 shrink-0`}
+            className={`${padX} py-3 flex items-center justify-end gap-2 shrink-0`}
           >
             <button
               type="button"
@@ -873,13 +925,13 @@ export function MaterialsDrawer({
                 setUrlError(null);
                 setView({ kind: "list" });
               }}
-              className="px-3 h-8 rounded-md text-[12.5px] text-ui-text-muted hover:text-ui-text cursor-pointer"
+              className="px-3 h-8 rounded-lg text-[12.5px] text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
             >
               取消
             </button>
             <button
               type="submit"
-              disabled={fetchingUrl || !urlValue.trim()}
+              disabled={fetchingUrl}
               className="px-3.5 h-8 ui-btn-primary text-[12.5px]"
             >
               {fetchingUrl ? "抓取中…" : "抓取导入"}
@@ -899,43 +951,44 @@ export function MaterialsDrawer({
           className="flex-1 min-h-0 flex flex-col"
         >
           <div
-            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-3 space-y-3`}
+            className={`flex-1 min-h-0 overflow-y-auto clean-scroll ${padX} py-2 space-y-3.5`}
           >
-            <div className="p-3 rounded-lg bg-ui-surface border border-ui-border-subtle space-y-1">
+            <div className={`p-3 rounded-xl ${wellBg} space-y-1`}>
               <div className="text-[13px] font-medium text-ui-text">
                 基于 {materials.length} 份材料生成新版大纲
               </div>
-              <p className="text-[12.5px] text-ui-text-muted leading-relaxed">
-                将派生新版本，当前版本仍保留在顶栏历史版本中。
+              <p className="text-[12px] text-ui-text-muted leading-relaxed">
+                将派生新版本，当前版本仍保留在历史版本中。
               </p>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label
                 htmlFor="drawer-regen-prompt"
-                className="block text-[12.5px] font-medium text-ui-text-muted"
+                className="block text-[12.5px] font-medium text-ui-text-secondary"
               >
                 补充要求（选填）
               </label>
               <textarea
                 id="drawer-regen-prompt"
+                name="regen_prompt"
                 rows={4}
                 value={regenPrompt}
                 onChange={(e) => setRegenPrompt(e.target.value)}
                 placeholder="例如：控制在 6 页以内，重点突出性能对比"
-                className="w-full px-3 py-2 text-[13px] ui-field leading-relaxed resize-y"
+                className={`ui-field ${inputBg} ui-autogrow-textarea px-3 py-2 text-[13px] leading-relaxed resize-y`}
                 autoFocus
               />
             </div>
           </div>
 
           <div
-            className={`${padX} py-2.5 border-t border-ui-border-subtle flex items-center justify-end gap-2 shrink-0`}
+            className={`${padX} py-3 flex items-center justify-end gap-2 shrink-0`}
           >
             <button
               type="button"
               onClick={() => setView({ kind: "list" })}
-              className="px-3 h-8 rounded-md text-[12.5px] text-ui-text-muted hover:text-ui-text cursor-pointer"
+              className="px-3 h-8 rounded-lg text-[12.5px] text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
             >
               取消
             </button>
@@ -960,7 +1013,7 @@ export function MaterialsDrawer({
     <>
       <div
         onClick={onClose}
-        className={`fixed inset-x-0 top-12 bottom-0 z-29 bg-black/55 ${
+        className={`fixed inset-x-0 top-12 bottom-0 z-29 bg-black/60 ${
           exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
         }`}
       />

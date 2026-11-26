@@ -55,8 +55,8 @@ interface SlideInspectorProps {
   onSaveCustomLayout?: (name: string) => Promise<void>;
   onApplySavedLayout?: (preset: SavedLayoutPreset) => void;
   onDeleteSavedLayout?: (layoutId: string) => Promise<void>;
-  onToggleSourceId: (sourceId: string) => void;
-  onApplyImageToSlide: (imageAssetId: string, sourceId?: string) => void;
+  onToggleSourceId?: (sourceId: string) => void;
+  onApplyImageToSlide?: (imageAssetId: string, sourceId?: string) => void;
   onSplitTwoColumn: () => void;
   onUploadClick: () => void;
   embedded?: boolean;
@@ -85,8 +85,6 @@ export function SlideInspector({
   onSaveCustomLayout,
   onApplySavedLayout,
   onDeleteSavedLayout,
-  onToggleSourceId,
-  onApplyImageToSlide,
   onSplitTwoColumn,
   onUploadClick,
   embedded = false,
@@ -104,22 +102,6 @@ export function SlideInspector({
 
   const primaryInputBase =
     "ui-field text-[13.5px] px-3 py-2 leading-relaxed";
-
-  function fillFromExcerpt(
-    targetField: "summary" | "column_right",
-    text: string
-  ) {
-    const cleaned = text.trim();
-    if (!cleaned) return;
-    const current =
-      targetField === "column_right"
-        ? (item.column_right || "").trim()
-        : item.summary.trim();
-    const isDefaultPlaceholder =
-      current === "输入本页的核心陈述内容…" || current === "";
-    const nextValue = isDefaultPlaceholder ? cleaned : `${current}\n${cleaned}`;
-    onUpdateField(targetField, nextValue);
-  }
 
   const innerContent = (
     <>
@@ -201,7 +183,7 @@ export function SlideInspector({
                       }
                       className={`px-2 py-1.5 rounded-lg text-[12.5px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                         active
-                          ? "bg-ui-bg-selected ring-1 ring-ui-accent text-ui-text font-medium"
+                          ? "bg-ui-bg-selected text-ui-text font-medium"
                           : "bg-ui-surface-input text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover"
                       }`}
                     >
@@ -217,7 +199,7 @@ export function SlideInspector({
 
         {/* In-place Slide QA Issues */}
         {slideIssues.length > 0 && (
-          <div className="p-3 rounded-xl bg-ui-danger-bg border border-ui-danger/30 space-y-2">
+          <div className="p-3 rounded-xl bg-ui-danger-bg space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-[13px] font-semibold text-ui-danger">
                 本页排版校验未通过
@@ -244,22 +226,7 @@ export function SlideInspector({
           </div>
         )}
 
-        {/* TIER 1: Source Provenance & Evidence Bar */}
-        <ProvenanceSection
-          pid={pid}
-          item={item}
-          layout={layout}
-          isCustomCanvas={isCustomCanvas}
-          materials={materials}
-          sourceFragments={sourceFragments}
-          imageAssetIds={imageAssetIds}
-          onToggleSourceId={onToggleSourceId}
-          onApplyImageToSlide={onApplyImageToSlide}
-          onInspectFragment={onInspectFragment}
-          onFillFromExcerpt={fillFromExcerpt}
-        />
-
-        {/* TIER 2: Slide Content Editors */}
+        {/* Slide Content Editors */}
         {isCustomCanvas ? (
           <CustomCanvasInspector
             item={item}
@@ -323,7 +290,7 @@ export function SlideInspector({
           </section>
         )}
 
-        {/* TIER 3: Collapsible Speaker Notes */}
+        {/* Collapsible Speaker Notes */}
         <section className="space-y-2">
           <button
             type="button"
@@ -359,6 +326,14 @@ export function SlideInspector({
             </div>
           </Collapse>
         </section>
+
+        {/* Quiet Read-Only Source Citation Footnote (only shown when AI cited sources) */}
+        <ProvenanceSection
+          item={item}
+          sourceFragments={sourceFragments}
+          imageAssetIds={imageAssetIds}
+          onInspectFragment={onInspectFragment}
+        />
         </fieldset>
       </div>
     </>

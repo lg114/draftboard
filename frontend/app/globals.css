@@ -370,6 +370,34 @@
   }
 }
 
+/* Native <dialog> modal scroll containment & backdrop (layered so Tailwind max-h utilities win) */
+@layer components {
+  dialog.ui-modal-dialog {
+    margin: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+  }
+
+  dialog.ui-modal-dialog[open] {
+    display: flex;
+  }
+
+  dialog.ui-modal-dialog:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog.ui-modal-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.68);
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+}
+
 /* In-slide clickable hover outline (content surface, not dark chrome) */
 .clickable-slot {
   border-radius: 6px;

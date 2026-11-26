@@ -16,7 +16,6 @@ import {
   Redo2,
   RefreshCw,
   Settings,
-  ShieldCheck,
   Sparkles,
   Undo2,
 } from "lucide-react";
@@ -57,7 +56,6 @@ interface WorkspaceHeaderProps {
   onToggleRight: () => void;
   onToggleChat: () => void;
   onOpenLLMSettings: () => void;
-  onOpenPreflight?: () => void;
   onToggleMaterialsDrawer: () => void;
   onSelectVersion: (v: string) => void;
   onSaveOutline: () => void;
@@ -92,7 +90,6 @@ export function WorkspaceHeader({
   onToggleRight,
   onToggleChat,
   onOpenLLMSettings,
-  onOpenPreflight,
   onToggleMaterialsDrawer,
   onSelectVersion,
   onSaveOutline,
@@ -553,28 +550,8 @@ export function WorkspaceHeader({
                     )}
                   </div>
 
-                  {/* Secondary formats & preflight */}
+                  {/* Secondary export formats */}
                   <div className="space-y-0.5">
-                    {onOpenPreflight && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setIsExportOpen(false);
-                          onOpenPreflight();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
-                      >
-                        <ShieldCheck className="w-4 h-4 text-ui-icon shrink-0" />
-                        <div className="min-w-0">
-                          <div className="font-medium">交付体检</div>
-                          <div className="text-[12px] text-ui-text-muted">
-                            检查排版安全、事实溯源与备注
-                          </div>
-                        </div>
-                      </button>
-                    )}
-
                     {currentStage === "ppt_ready" && needsReexport && (
                       <a
                         role="menuitem"

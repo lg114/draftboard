@@ -24,7 +24,6 @@ import {
   LLMProviderPreset,
   LLMSettingsResponse,
 } from "../lib/api";
-import { usePresence } from "../lib/usePresence";
 import { ProviderIcon } from "./ProviderIcon";
 
 interface LLMSettingsModalProps {
@@ -46,9 +45,6 @@ interface SidebarEntry {
   active: boolean;
   activeModel: string;
 }
-
-const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function dedupeModels(list: string[]): string[] {
   const seen = new Set<string>();
@@ -82,8 +78,7 @@ export function LLMSettingsModal({
   onClose,
   onSettingsUpdated,
 }: LLMSettingsModalProps) {
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
 
   const [selectedKey, setSelectedKey] = useState<string>("preset:gemini");
   const [customName, setCustomName] = useState("");
@@ -155,7 +150,6 @@ export function LLMSettingsModal({
         activeModel,
       });
 
-      // Preserve any extra legacy profiles of the same provider so nothing is lost
       for (const extra of matchingProfiles.slice(1)) {
         consumedProfileIds.add(extra.id);
         entries.push({
@@ -174,7 +168,6 @@ export function LLMSettingsModal({
       }
     }
 
-    // Custom gateway from .env (if OPENAI_BASE_URL is an unknown custom host)
     if (envDetected && envDetected.provider === "custom") {
       entries.push({
         key: "env:custom",
@@ -189,7 +182,6 @@ export function LLMSettingsModal({
       });
     }
 
-    // Saved custom profiles
     const customPreset = presets.find((p) => p.id === "custom") || null;
     for (const prof of profiles) {
       if (consumedProfileIds.has(prof.id)) continue;
@@ -327,7 +319,54 @@ export function LLMSettingsModal({
     setConfirmDelete(false);
   }
 
-  // Initialize active entry only when modal opens
+  // Sync native <dialog> modal state with `open` prop
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open) {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [open]);
+
+  // Light-dismiss fallback for browsers without <dialog closedby="any">
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog || "closedBy" in HTMLDialogElement.prototype) return;
+
+    const isOutside = (e: PointerEvent) => {
+      const r = dialog.getBoundingClientRect();
+      return (
+        e.clientX < r.left ||
+        e.clientX > r.right ||
+        e.clientY < r.top ||
+        e.clientY > r.bottom
+      );
+    };
+
+    let pressedOutside = false;
+    const onPointerDown = (e: PointerEvent) => {
+      pressedOutside = isOutside(e);
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (pressedOutside && isOutside(e)) {
+        dialog.close();
+      }
+    };
+
+    dialog.addEventListener("pointerdown", onPointerDown);
+    dialog.addEventListener("pointerup", onPointerUp);
+    return () => {
+      dialog.removeEventListener("pointerdown", onPointerDown);
+      dialog.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [open]);
+
+  // Initialize active entry when modal opens
   useEffect(() => {
     if (!open || !settings) return;
     const activeEntry =
@@ -340,7 +379,7 @@ export function LLMSettingsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, Boolean(settings)]);
 
-  // Keep modelPool & selectedModel synced when settings update in-place (e.g. clicking "设为当前使用")
+  // Keep modelPool & selectedModel synced when settings update in-place
   useEffect(() => {
     if (!open || !settings || selectedKey === "new-custom") return;
     const updated = sidebarEntries.find((e) => e.key === selectedKey);
@@ -367,71 +406,12 @@ export function LLMSettingsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
-  // Focus trap + Esc close + restore focus on close
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-
-    const focusTimer = window.setTimeout(() => {
-      const container = modalRef.current;
-      if (!container) return;
-      const first = container.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      (first || container).focus();
-    }, 0);
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key === "Tab") {
-        const container = modalRef.current;
-        if (!container) return;
-        const focusables = Array.from(
-          container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-        ).filter((el) => el.offsetParent !== null);
-        if (focusables.length === 0) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        if (e.shiftKey) {
-          if (
-            document.activeElement === first ||
-            !container.contains(document.activeElement)
-          ) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (
-            document.activeElement === last ||
-            !container.contains(document.activeElement)
-          ) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      window.removeEventListener("keydown", onKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [open, onClose]);
-
   const filteredFetchedModels = useMemo(() => {
     if (!fetchedModels) return [];
     const q = fetchedSearch.trim().toLowerCase();
     if (!q) return fetchedModels;
     return fetchedModels.filter((m) => m.toLowerCase().includes(q));
   }, [fetchedModels, fetchedSearch]);
-
-  const { mounted, exiting } = usePresence(open, 140);
-
-  if (!mounted) return null;
 
   const prof = currentEntry.profile;
   const preset = currentEntry.preset;
@@ -473,7 +453,8 @@ export function LLMSettingsModal({
         "/api/settings/llm/test",
         jsonOptions("POST", {
           profile_id: prof?.id || null,
-          use_env: useEnv || (currentEntry.envBacked && !prof && !apiKey.trim()),
+          use_env:
+            useEnv || (currentEntry.envBacked && !prof && !apiKey.trim()),
           provider: currentEntry.provider,
           base_url: baseUrl.trim(),
           api_key: apiKey.trim() || null,
@@ -526,7 +507,6 @@ export function LLMSettingsModal({
     setModelPool(nextPool);
     setSelectedModel(cleanM);
 
-    // If unconfigured or user typed unsaved credentials, just select locally until Save
     if (!currentEntry.configured || hasUnsavedCreds) {
       return;
     }
@@ -642,7 +622,6 @@ export function LLMSettingsModal({
       );
       setApiKey("");
       onSettingsUpdated(next);
-      // If saving a brand-new custom profile, select the newly created profile entry
       if (selectedKey === "new-custom" && next.active_profile_id) {
         setSelectedKey(`profile:${next.active_profile_id}`);
       }
@@ -685,66 +664,112 @@ export function LLMSettingsModal({
         (preset && !preset.requires_api_key && baseUrl.trim()))
   );
 
+  const openNewCustom = () =>
+    hydrateFormFromEntry({
+      key: "new-custom",
+      provider: "custom",
+      title: "自定义兼容接口",
+      preset: presets.find((p) => p.id === "custom") || null,
+      profile: null,
+      envBacked: false,
+      configured: false,
+      active: false,
+      activeModel: "",
+    });
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-label="模型设置"
+    <dialog
+      ref={dialogRef}
+      closedby="any"
+      aria-labelledby="llm-settings-title"
+      onClose={() => {
+        if (dialogRef.current) {
+          dialogRef.current.returnValue = "";
+        }
+        if (open) onClose();
+      }}
+      className="ui-modal-dialog w-[min(860px,calc(100dvw-2rem))] h-[min(640px,88dvh)] rounded-2xl bg-ui-surface ring-1 ring-ui-border-subtle shadow-[0_24px_72px_rgba(0,0,0,0.72)] overflow-clip anim-modal-in"
     >
-      {/* Dark backdrop */}
-      <div
-        className={`fixed inset-0 bg-black/65 ${
-          exiting ? "anim-scrim-out pointer-events-none" : "anim-scrim-in"
-        }`}
-        onClick={onClose}
-      />
+      {open && (
+        <div className="w-full h-full flex flex-col md:flex-row overflow-hidden">
+          {/* Left Rail: Quiet Borderless Dark Provider Navigation */}
+          <aside className="w-full md:w-[238px] shrink-0 bg-ui-bg flex flex-col min-h-0">
+            <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2 shrink-0">
+              <div className="min-w-0">
+                <h1
+                  id="llm-settings-title"
+                  className="text-[15px] font-semibold tracking-[-0.015em] text-ui-text"
+                >
+                  模型设置
+                </h1>
+                <p className="text-[12px] text-ui-text-muted mt-0.5">
+                  密钥仅保存在本机
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭模型设置"
+                title="关闭 (Esc)"
+                className="md:hidden p-1.5 rounded-lg text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-      {/* Modal Shell */}
-      <div
-        ref={modalRef}
-        tabIndex={-1}
-        className={`relative z-10 w-full max-w-[820px] h-[min(640px,86vh)] rounded-xl bg-ui-surface border border-ui-border-subtle shadow-[0_24px_64px_rgba(0,0,0,0.65)] flex flex-col overflow-hidden outline-none ${
-          exiting ? "anim-modal-out pointer-events-none" : "anim-modal-in"
-        }`}
-      >
-        {/* Top Modal Header */}
-        <div className="px-6 py-4 border-b border-ui-border-subtle bg-ui-bg flex items-center justify-between gap-3 shrink-0">
-          <div>
-            <h2 className="text-[15.5px] font-semibold text-ui-text tracking-[-0.015em]">
-              模型与服务商设置
-            </h2>
-            <p className="text-[12.5px] text-ui-text-muted mt-0.5">
-              密钥仅保存在本机后端配置文件中，一家服务商配置一次即可随时秒切多个模型。
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="关闭模型设置"
-            title="关闭 (Esc)"
-            className="p-1.5 rounded-lg text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+            {/* Mobile: Compact Horizontal Provider Strip */}
+            <nav
+              aria-label="模型服务商列表"
+              className="md:hidden flex items-center gap-1.5 px-4 pb-3 overflow-x-auto clean-scroll shrink-0"
+            >
+              {[...configuredEntries, ...unconfiguredEntries].map((entry) => {
+                const selected = currentEntry.key === entry.key;
+                return (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    aria-current={selected ? "true" : undefined}
+                    onClick={() => hydrateFormFromEntry(entry)}
+                    className={`h-8 px-2.5 rounded-lg text-[12.5px] inline-flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+                      selected
+                        ? "bg-ui-bg-selected text-ui-text font-medium"
+                        : "bg-ui-surface text-ui-text-secondary hover:text-ui-text"
+                    }`}
+                  >
+                    <ProviderIcon
+                      provider={entry.provider}
+                      size="sm"
+                      muted={!selected && !entry.configured}
+                    />
+                    <span className="whitespace-nowrap">{entry.title}</span>
+                    {entry.active && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-ui-success shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={openNewCustom}
+                className={`h-8 px-2.5 rounded-lg text-[12.5px] inline-flex items-center gap-1 shrink-0 transition-colors cursor-pointer ${
+                  selectedKey === "new-custom"
+                    ? "bg-ui-bg-selected text-ui-text font-medium"
+                    : "bg-ui-surface text-ui-text-muted hover:text-ui-text"
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>自定义</span>
+              </button>
+            </nav>
 
-        {/* Contextual Pre-Flight Guard Banner */}
-        {reasonBanner && (
-          <div className="px-6 py-2.5 bg-ui-warning-bg border-b border-ui-warning/25 text-[13px] text-ui-warning font-medium flex items-center gap-2 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-ui-warning shrink-0" />
-            <span>{reasonBanner}</span>
-          </div>
-        )}
-
-        {/* Main Split Body */}
-        <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
-          {/* Left Rail: Provider-First Navigation */}
-          <div className="w-full md:w-[248px] shrink-0 bg-ui-bg border-b md:border-b-0 md:border-r border-ui-border-subtle flex flex-col min-h-0 relative">
-            <div className="p-3 pb-7 space-y-4 flex-1 md:overflow-y-auto clean-scroll">
+            {/* Desktop: Vertical Tonal Provider Rail */}
+            <nav
+              aria-label="模型服务商列表"
+              className="hidden md:flex flex-col flex-1 min-h-0 px-2.5 pb-4 overflow-y-auto clean-scroll space-y-4"
+            >
               {configuredEntries.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="px-2 text-[12px] font-semibold text-ui-text-muted">
+                <div className="space-y-0.5">
+                  <div className="px-2.5 pb-1 text-[11.5px] font-medium text-ui-text-muted">
                     已配置
                   </div>
                   {configuredEntries.map((entry) => {
@@ -753,32 +778,33 @@ export function LLMSettingsModal({
                       <button
                         key={entry.key}
                         type="button"
+                        aria-current={selected ? "true" : undefined}
                         onClick={() => hydrateFormFromEntry(entry)}
-                        className={`w-full text-left px-2.5 py-2 rounded-lg border transition-all cursor-pointer flex items-center gap-2.5 ${
+                        className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-2.5 ${
                           selected
-                            ? "bg-ui-bg-selected border-ui-accent"
-                            : "bg-ui-surface-input hover:bg-ui-control-hover border-ui-border-subtle"
+                            ? "bg-ui-bg-selected text-ui-text"
+                            : "hover:bg-ui-bg-hover text-ui-text-secondary hover:text-ui-text"
                         }`}
                       >
                         <ProviderIcon provider={entry.provider} size="md" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-[13px] font-semibold text-ui-text truncate">
+                            <span className="text-[13px] font-medium text-ui-text truncate">
                               {entry.title}
                             </span>
                             {entry.active ? (
-                              <span className="inline-flex items-center gap-1 text-[12px] font-medium text-ui-success shrink-0">
-                                <span className="w-1.5 h-1.5 rounded-full bg-ui-success" />
-                                <span>使用中</span>
-                              </span>
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-ui-success shrink-0"
+                                title="当前使用中"
+                              />
                             ) : (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-ui-border shrink-0"
+                                className="w-1.5 h-1.5 rounded-full bg-ui-text-disabled shrink-0"
                                 title="已就绪"
                               />
                             )}
                           </div>
-                          <div className="text-[12px] text-ui-text-muted font-mono truncate">
+                          <div className="text-[11.5px] text-ui-text-muted font-mono truncate mt-0.5">
                             {entry.activeModel}
                           </div>
                         </div>
@@ -788,9 +814,9 @@ export function LLMSettingsModal({
                 </div>
               )}
 
-              <div className="space-y-1">
-                <div className="px-2 text-[12px] font-semibold text-ui-text-muted">
-                  {configuredEntries.length > 0 ? "添加服务商" : "选择服务商"}
+              <div className="space-y-0.5">
+                <div className="px-2.5 pb-1 text-[11.5px] font-medium text-ui-text-muted">
+                  {configuredEntries.length > 0 ? "其他服务商" : "选择服务商"}
                 </div>
                 {unconfiguredEntries.map((entry) => {
                   const selected = currentEntry.key === entry.key;
@@ -798,11 +824,12 @@ export function LLMSettingsModal({
                     <button
                       key={entry.key}
                       type="button"
+                      aria-current={selected ? "true" : undefined}
                       onClick={() => hydrateFormFromEntry(entry)}
-                      className={`w-full text-left px-2.5 py-2 rounded-lg border transition-all cursor-pointer flex items-center gap-2.5 ${
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-2.5 ${
                         selected
-                          ? "bg-ui-bg-selected border-ui-accent text-ui-text font-semibold"
-                          : "border-transparent hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text font-medium"
+                          ? "bg-ui-bg-selected text-ui-text font-medium"
+                          : "hover:bg-ui-bg-hover text-ui-text-secondary hover:text-ui-text"
                       }`}
                     >
                       <ProviderIcon
@@ -819,60 +846,52 @@ export function LLMSettingsModal({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    hydrateFormFromEntry({
-                      key: "new-custom",
-                      provider: "custom",
-                      title: "自定义兼容接口",
-                      preset: presets.find((p) => p.id === "custom") || null,
-                      profile: null,
-                      envBacked: false,
-                      configured: false,
-                      active: false,
-                      activeModel: "",
-                    })
+                  aria-current={
+                    selectedKey === "new-custom" ? "true" : undefined
                   }
-                  className={`w-full text-left px-2.5 py-2 rounded-lg border transition-all cursor-pointer flex items-center gap-2.5 mt-1 ${
+                  onClick={openNewCustom}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-2.5 mt-1 ${
                     selectedKey === "new-custom"
-                      ? "bg-ui-bg-selected border-ui-accent text-ui-text font-semibold"
-                      : "border-dashed border-ui-border-subtle hover:border-ui-border hover:bg-ui-control-hover text-ui-text-muted hover:text-ui-text font-medium"
+                      ? "bg-ui-bg-selected text-ui-text font-medium"
+                      : "hover:bg-ui-bg-hover text-ui-text-muted hover:text-ui-text"
                   }`}
                 >
-                  <span className="w-7 h-7 rounded-lg bg-ui-surface-input border border-ui-border-subtle inline-flex items-center justify-center shrink-0">
+                  <span className="w-7 h-7 rounded-lg bg-ui-surface inline-flex items-center justify-center shrink-0 text-ui-icon">
                     <Plus className="w-3.5 h-3.5" />
                   </span>
-                  <span className="text-[13px] truncate">
-                    添加自定义兼容接口
-                  </span>
+                  <span className="text-[13px] truncate">自定义兼容接口</span>
                 </button>
               </div>
-            </div>
-            <div
-              aria-hidden
-              className="hidden md:block pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-ui-bg to-transparent"
-            />
-          </div>
+            </nav>
+          </aside>
 
-          {/* Right Pane: Provider Inspector + Model Pool */}
+          {/* Right Pane: Borderless Provider Inspector + Model Pool */}
           <form
             onSubmit={(e) => void handleSaveCredentials(e)}
-            className="flex-1 min-w-0 flex flex-col md:overflow-hidden"
+            className="flex-1 min-w-0 min-h-0 bg-ui-surface flex flex-col overflow-hidden"
           >
-            <div className="flex-1 min-h-0 relative flex flex-col">
-            <div className="p-6 pb-8 space-y-5 flex-1 md:overflow-y-auto clean-scroll">
+            {reasonBanner && (
+              <div className="px-6 py-2.5 bg-ui-warning-bg text-[12.5px] text-ui-warning font-medium flex items-center gap-2 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-ui-warning shrink-0" />
+                <span>{reasonBanner}</span>
+              </div>
+            )}
+
+            {/* Inspector Scroll Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto clean-scroll px-5 sm:px-6 pt-5 pb-6 space-y-5">
               {/* Provider Header */}
-              <div className="flex items-start justify-between gap-3 pb-4 border-b border-ui-border-subtle">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
                   <ProviderIcon provider={currentEntry.provider} size="lg" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-[15.5px] font-semibold text-ui-text">
+                      <h2 className="text-[16px] font-semibold tracking-[-0.015em] text-ui-text">
                         {currentEntry.title}
-                      </h3>
+                      </h2>
                       {currentEntry.active ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-success-bg border border-ui-success/30 text-[12px] font-medium text-ui-success">
-                          <Check className="w-3 h-3" />
-                          <span>当前使用中</span>
+                        <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ui-success">
+                          <span className="w-1.5 h-1.5 rounded-full bg-ui-success" />
+                          <span>使用中</span>
                         </span>
                       ) : currentEntry.configured && !hasUnsavedCreds ? (
                         <button
@@ -882,69 +901,82 @@ export function LLMSettingsModal({
                               selectedModel || modelPool[0] || ""
                             )
                           }
-                          className="px-2.5 py-0.5 rounded-md ui-btn-outline text-[12.5px]"
+                          className="h-6.5 px-2.5 rounded-md bg-ui-bg hover:bg-ui-control-hover text-[12px] font-medium text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer"
                         >
-                          设为当前使用
+                          设为当前
                         </button>
                       ) : null}
                       {currentEntry.envBacked && !prof && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-surface-input border border-ui-border-subtle text-[12px] text-ui-text-muted">
-                          <Sparkles className="w-3 h-3" />
-                          <span>已读取本机环境变量</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-bg text-[11.5px] text-ui-text-muted">
+                          <Sparkles className="w-3 h-3 text-ui-icon" />
+                          <span>环境变量</span>
                         </span>
                       )}
                     </div>
-                    <p className="text-[12.5px] text-ui-text-muted mt-1">
+                    <p className="text-[12.5px] text-ui-text-muted mt-1 leading-relaxed">
                       {currentEntry.provider === "ollama"
                         ? "连接本机运行的 Ollama 服务，免 API Key 离线调用开源模型。"
                         : currentEntry.provider === "lmstudio"
                         ? "连接本机运行的 LM Studio 本地服务，免 API Key 离线调用开源模型。"
                         : currentEntry.provider === "volcengine"
-                        ? "配置一次火山方舟 API Key，可使用官方模型 ID 或在下方添加推理接入点（ep-...）。"
+                        ? "配置火山方舟 API Key，可使用官方模型 ID 或推理接入点（ep-...）。"
                         : currentEntry.provider === "custom"
-                        ? "接入任意兼容 OpenAI Chat Completions 协议的网关、OneAPI 或企业中转服务。"
-                        : `配置一次 API Key，即可在下方自由添加和秒切 ${currentEntry.title} 旗下模型。`}
+                        ? "接入兼容 OpenAI Chat Completions 协议的自建网关或中转服务。"
+                        : `配置一次 API Key，即可自由管理并切换 ${currentEntry.title} 旗下模型。`}
                     </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  disabled={testing}
-                  onClick={() => void handleTestConnection()}
-                  className="h-8 px-3 ui-btn-outline text-[12.5px] inline-flex items-center gap-1.5 shrink-0"
-                >
-                  {testing ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Wifi className="w-3.5 h-3.5" />
-                  )}
-                  <span>{testing ? "检测中…" : "测试连接"}</span>
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    disabled={testing}
+                    onClick={() => void handleTestConnection()}
+                    className="h-8 px-3 rounded-lg bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {testing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wifi className="w-3.5 h-3.5 text-ui-icon" />
+                    )}
+                    <span>{testing ? "检测中…" : "测试连接"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="关闭模型设置"
+                    title="关闭 (Esc)"
+                    className="hidden md:inline-flex p-1.5 rounded-lg text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Inline Test Connection Banner */}
               {testResult && (
                 <div
-                  className={`px-3.5 py-2.5 rounded-lg text-[13px] flex items-center justify-between gap-2 border ${
+                  role="status"
+                  className={`px-3.5 py-2.5 rounded-xl text-[13px] flex items-center justify-between gap-2 ${
                     testResult.ok
-                      ? "bg-ui-success-bg border-ui-success/30 text-ui-success font-medium"
-                      : "bg-ui-danger-bg border-ui-danger/30 text-ui-danger"
+                      ? "bg-ui-success-bg text-ui-success font-medium"
+                      : "bg-ui-danger-bg text-ui-danger"
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {testResult.ok && <Check className="w-4 h-4 shrink-0" />}
                     <span className="break-words">
                       {testResult.ok
-                        ? `连接畅通 · 模型 ${testResult.model || selectedModel} 响应耗时 ${
-                            testResult.latency_ms ?? 0
-                          } ms`
+                        ? `连接正常，模型 ${
+                            testResult.model || selectedModel
+                          } 响应耗时 ${testResult.latency_ms ?? 0} ms`
                         : testResult.error || "连接测试未通过"}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setTestResult(null)}
+                    aria-label="关闭提示"
                     className="text-ui-icon hover:text-ui-text cursor-pointer shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -953,43 +985,46 @@ export function LLMSettingsModal({
               )}
 
               {error && (
-                <div className="px-3.5 py-2.5 rounded-lg bg-ui-danger-bg border border-ui-danger/30 text-[13px] text-ui-danger">
+                <div
+                  role="alert"
+                  className="px-3.5 py-2.5 rounded-xl bg-ui-danger-bg text-[13px] text-ui-danger"
+                >
                   {error}
                 </div>
               )}
 
-              {/* Custom Display Name */}
-              {currentEntry.provider === "custom" && (
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="llm-custom-name"
-                    className="block text-[13px] font-medium text-ui-text-secondary"
-                  >
-                    服务名称
-                  </label>
-                  <input
-                    id="llm-custom-name"
-                    type="text"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="例如：公司内网网关 / OpenAI 中转"
-                    className="w-full h-9 px-3 text-[13.5px] ui-field"
-                  />
-                </div>
-              )}
+              {/* Credentials Section */}
+              <div className="space-y-3.5">
+                {currentEntry.provider === "custom" && (
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="llm-custom-name"
+                      className="block text-[12.5px] font-medium text-ui-text-secondary"
+                    >
+                      服务名称
+                    </label>
+                    <input
+                      id="llm-custom-name"
+                      name="custom_name"
+                      type="text"
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      placeholder="例如：公司内网网关 / OpenAI 中转"
+                      className="ui-field bg-ui-bg w-full h-9.5 px-3 text-[13.5px]"
+                    />
+                  </div>
+                )}
 
-              {/* Credentials Block */}
-              <div className="space-y-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <label
                       htmlFor="llm-api-key"
-                      className="text-[13px] font-medium text-ui-text-secondary"
+                      className="text-[12.5px] font-medium text-ui-text-secondary"
                     >
                       API Key
                       {preset && !preset.requires_api_key && (
-                        <span className="font-normal text-ui-text-muted ml-1.5">
-                          （可选填）
+                        <span className="font-normal text-ui-text-muted ml-1">
+                          （选填）
                         </span>
                       )}
                     </label>
@@ -998,7 +1033,7 @@ export function LLMSettingsModal({
                         href={preset.api_key_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[12.5px] font-medium text-ui-accent-text hover:underline transition-colors"
+                        className="inline-flex items-center gap-1 text-[12px] font-medium text-ui-accent-text hover:underline"
                       >
                         <span>获取 API Key</span>
                         <ExternalLink className="w-3 h-3" />
@@ -1009,7 +1044,12 @@ export function LLMSettingsModal({
                   <div className="relative">
                     <input
                       id="llm-api-key"
+                      name="api_key"
                       type={showKey ? "text" : "password"}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={apiKey}
                       onChange={(e) => {
                         setApiKey(e.target.value);
@@ -1017,21 +1057,22 @@ export function LLMSettingsModal({
                       }}
                       placeholder={
                         prof?.has_api_key
-                          ? `已保存密钥 (${prof.api_key_masked})，输入新值可替换`
+                          ? `已保存 (${prof.api_key_masked})，输入新值可替换`
                           : currentEntry.envBacked && envDetected?.has_api_key
-                          ? `默认读取环境变量 (${envDetected.api_key_masked})，输入新值可覆盖`
+                          ? `已读取环境变量 (${envDetected.api_key_masked})，输入新值可覆盖`
                           : preset?.requires_api_key
-                          ? `粘贴 ${currentEntry.title} 的 API Key…`
+                          ? `粘贴 ${currentEntry.title} 的 API Key`
                           : "本地或免密网关可留空"
                       }
-                      className="w-full h-9 pl-3 pr-10 text-[13px] font-mono ui-field"
+                      className="ui-field bg-ui-bg w-full h-9.5 pl-3 pr-10 text-[13px] font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowKey((v) => !v)}
+                      aria-pressed={showKey}
                       aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
                       title={showKey ? "隐藏 API Key" : "显示 API Key"}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-ui-icon hover:text-ui-text cursor-pointer"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded text-ui-icon hover:text-ui-text cursor-pointer"
                     >
                       {showKey ? (
                         <EyeOff className="w-4 h-4" />
@@ -1049,7 +1090,7 @@ export function LLMSettingsModal({
                     <div className="flex items-center justify-between gap-2">
                       <label
                         htmlFor="llm-base-url"
-                        className="text-[13px] font-medium text-ui-text-secondary"
+                        className="text-[12.5px] font-medium text-ui-text-secondary"
                       >
                         接口地址
                       </label>
@@ -1062,7 +1103,7 @@ export function LLMSettingsModal({
                               setEditingProxyUrl(false);
                               setTestResult(null);
                             }}
-                            className="text-[12.5px] text-ui-accent-text hover:underline cursor-pointer"
+                            className="text-[12px] text-ui-accent-text hover:underline cursor-pointer"
                           >
                             恢复官方默认
                           </button>
@@ -1070,7 +1111,11 @@ export function LLMSettingsModal({
                     </div>
                     <input
                       id="llm-base-url"
-                      type="text"
+                      name="base_url"
+                      type="url"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={baseUrl}
                       onChange={(e) => {
                         setBaseUrl(e.target.value);
@@ -1079,24 +1124,26 @@ export function LLMSettingsModal({
                       placeholder={
                         defaultPresetUrl || "https://api.example.com/v1"
                       }
-                      className="w-full h-9 px-3 text-[13px] font-mono ui-field"
+                      className="ui-field bg-ui-bg w-full h-9.5 px-3 text-[13px] font-mono"
                     />
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-ui-bg border border-ui-border-subtle text-[12.5px]">
+                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-ui-bg text-[12.5px]">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-ui-text-muted shrink-0">接口地址</span>
+                      <span className="text-ui-text-muted shrink-0">
+                        接口地址
+                      </span>
                       <span
                         className="font-mono text-ui-text-secondary truncate"
                         title={baseUrl || defaultPresetUrl}
                       >
-                        官方默认（{extractHost(baseUrl || defaultPresetUrl)}）
+                        {extractHost(baseUrl || defaultPresetUrl)}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setEditingProxyUrl(true)}
-                      className="text-ui-accent-text font-medium hover:underline cursor-pointer shrink-0"
+                      className="text-ui-accent-text text-[12px] font-medium hover:underline cursor-pointer shrink-0"
                     >
                       自定义代理
                     </button>
@@ -1104,22 +1151,22 @@ export function LLMSettingsModal({
                 )}
               </div>
 
-              {/* Models Pool Block */}
+              {/* Models Pool Section */}
               <div className="space-y-2.5 pt-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-ui-text-secondary">
+                  <span className="text-[12.5px] font-medium text-ui-text-secondary">
                     可用模型
                   </span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
                       disabled={fetchingModels}
                       onClick={() => void handleFetchRemoteModels()}
-                      title="实时调用服务商 /models 接口获取当前账号支持的模型"
-                      className="ui-btn-subtle inline-flex items-center gap-1 px-2.5 py-1 text-[12.5px]"
+                      title="调用服务商 /models 接口拉取模型列表"
+                      className="h-7 px-2.5 rounded-md text-[12px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw
-                        className={`w-3.5 h-3.5 ${
+                        className={`w-3.5 h-3.5 text-ui-icon ${
                           fetchingModels ? "animate-spin" : ""
                         }`}
                       />
@@ -1128,18 +1175,22 @@ export function LLMSettingsModal({
                     <button
                       type="button"
                       onClick={() => setAddingModelOpen((v) => !v)}
-                      className="ui-btn-subtle inline-flex items-center gap-1 px-2.5 py-1 text-[12.5px]"
+                      className="h-7 px-2.5 rounded-md text-[12px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover inline-flex items-center gap-1 transition-colors cursor-pointer"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-3.5 h-3.5 text-ui-icon" />
                       <span>手动添加</span>
                     </button>
                   </div>
                 </div>
 
                 {addingModelOpen && (
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-ui-bg border border-ui-border-subtle">
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-ui-bg">
                     <input
                       type="text"
+                      aria-label="输入模型 ID"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={newModelInput}
                       onChange={(e) => setNewModelInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -1154,8 +1205,8 @@ export function LLMSettingsModal({
                           handleAddModelToPool(newModelInput);
                         }
                       }}
-                      placeholder="输入精确的模型 ID（如 gemini-2.5-pro、deepseek-reasoner）…"
-                      className="flex-1 min-w-0 h-8 px-2.5 text-[13px] font-mono ui-field"
+                      placeholder="输入精确的模型 ID，例如 gemini-2.5-pro"
+                      className="ui-field bg-ui-surface flex-1 min-w-0 h-8 px-2.5 text-[12.5px] font-mono"
                       autoFocus
                     />
                     <button
@@ -1170,28 +1221,32 @@ export function LLMSettingsModal({
                 )}
 
                 {fetchedModels && (
-                  <div className="p-3 rounded-lg bg-ui-bg border border-ui-border-subtle space-y-2.5">
+                  <div className="p-3 rounded-xl bg-ui-bg space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12.5px] font-medium text-ui-text">
-                        已从接口发现 {fetchedModels.length} 个模型（点击加入列表）
+                      <span className="text-[12px] font-medium text-ui-text-secondary">
+                        发现 {fetchedModels.length} 个模型，点击加入列表
                       </span>
                       <button
                         type="button"
                         onClick={() => setFetchedModels(null)}
-                        className="text-[12.5px] text-ui-text-muted hover:text-ui-text cursor-pointer"
+                        className="text-[12px] text-ui-text-muted hover:text-ui-text cursor-pointer"
                       >
                         收起
                       </button>
                     </div>
                     {fetchedModels.length > 6 && (
                       <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-ui-icon absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <Search className="w-3.5 h-3.5 text-ui-icon absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
-                          type="text"
+                          type="search"
+                          aria-label="筛选远程模型"
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
                           value={fetchedSearch}
                           onChange={(e) => setFetchedSearch(e.target.value)}
-                          placeholder="搜索模型名称…"
-                          className="w-full h-8 pl-8 pr-3 text-[12.5px] font-mono ui-field"
+                          placeholder="筛选模型名称"
+                          className="ui-field bg-ui-surface w-full h-8 pl-8 pr-3 text-[12.5px] font-mono"
                         />
                       </div>
                     )}
@@ -1205,16 +1260,16 @@ export function LLMSettingsModal({
                             onClick={() => {
                               if (!inPool) handleAddModelToPool(mid);
                             }}
-                            className={`px-2 py-1 rounded-md text-[12.5px] font-mono border transition-colors cursor-pointer inline-flex items-center gap-1 ${
+                            className={`px-2 py-1 rounded-md text-[12px] font-mono transition-colors cursor-pointer inline-flex items-center gap-1 ${
                               inPool
-                                ? "bg-ui-bg-selected border-ui-accent text-ui-text font-medium"
-                                : "bg-ui-surface-input hover:bg-ui-control-hover border-ui-border-subtle text-ui-text-secondary hover:text-ui-text"
+                                ? "bg-ui-bg-selected text-ui-text font-medium"
+                                : "bg-ui-surface hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text"
                             }`}
                           >
                             {inPool ? (
                               <Check className="w-3 h-3 text-ui-success" />
                             ) : (
-                              <Plus className="w-3 h-3" />
+                              <Plus className="w-3 h-3 text-ui-icon" />
                             )}
                             <span>{mid}</span>
                           </button>
@@ -1225,7 +1280,7 @@ export function LLMSettingsModal({
                 )}
 
                 {modelPool.length > 0 ? (
-                  <div className="rounded-lg border border-ui-border-subtle bg-ui-bg divide-y divide-ui-border-subtle overflow-hidden">
+                  <div className="rounded-xl bg-ui-bg p-1.5 space-y-0.5">
                     {modelPool.map((m) => {
                       const isGlobalActive =
                         currentEntry.active &&
@@ -1236,38 +1291,40 @@ export function LLMSettingsModal({
                       return (
                         <div
                           key={m}
-                          className="px-3.5 py-2.5 flex items-center justify-between gap-3 hover:bg-ui-bg-hover transition-colors"
+                          className={`px-3 py-2 rounded-lg flex items-center justify-between gap-3 transition-colors ${
+                            isGlobalActive
+                              ? "bg-ui-surface"
+                              : "hover:bg-ui-surface/70"
+                          }`}
                         >
                           <span className="font-mono text-[13px] text-ui-text truncate">
                             {m}
                           </span>
 
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-1.5 shrink-0">
                             {isGlobalActive ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-ui-success-bg text-[12px] font-medium text-ui-success">
-                                <Check className="w-3 h-3" />
-                                <span>当前使用</span>
+                              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ui-success px-1.5">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>使用中</span>
                               </span>
                             ) : currentEntry.configured && !hasUnsavedCreds ? (
                               <button
                                 type="button"
                                 disabled={switchingModel === m}
                                 onClick={() => void handleInstantSwitchModel(m)}
-                                className="ui-btn-subtle px-2.5 py-1 text-[12.5px]"
+                                className="h-7 px-2.5 rounded-md bg-ui-surface hover:bg-ui-control-hover text-[12px] font-medium text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer disabled:opacity-50"
                               >
-                                {switchingModel === m
-                                  ? "切换中…"
-                                  : "设为当前使用"}
+                                {switchingModel === m ? "切换中…" : "设为当前"}
                               </button>
                             ) : isPendingDefault ? (
-                              <span className="px-2 py-0.5 rounded bg-ui-bg-selected text-[12px] font-medium text-ui-text">
+                              <span className="px-2 py-0.5 rounded-md bg-ui-bg-selected text-[12px] font-medium text-ui-text">
                                 默认启用
                               </span>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => setSelectedModel(m)}
-                                className="px-2.5 py-1 rounded-md hover:bg-ui-control-hover text-[12.5px] text-ui-text-muted hover:text-ui-text cursor-pointer"
+                                className="h-7 px-2.5 rounded-md hover:bg-ui-control-hover text-[12px] text-ui-text-muted hover:text-ui-text transition-colors cursor-pointer"
                               >
                                 选为默认
                               </button>
@@ -1277,8 +1334,9 @@ export function LLMSettingsModal({
                               <button
                                 type="button"
                                 onClick={() => handleRemoveModelFromPool(m)}
-                                title="从列表移除此模型"
-                                className="p-1 rounded text-ui-icon-quiet hover:text-ui-danger transition-colors cursor-pointer"
+                                title="从列表移除"
+                                aria-label={`移除模型 ${m}`}
+                                className="p-1 rounded-md text-ui-icon-quiet hover:text-ui-danger hover:bg-ui-danger-bg transition-colors cursor-pointer"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -1289,36 +1347,31 @@ export function LLMSettingsModal({
                     })}
                   </div>
                 ) : (
-                  <div className="p-4 rounded-lg border border-dashed border-ui-border-subtle text-[13px] text-ui-text-muted text-center">
-                    点击上方「从接口获取」自动拉取可用模型，或点击「手动添加」输入模型 ID。
+                  <div className="p-5 rounded-xl bg-ui-bg text-[12.5px] text-ui-text-muted text-center">
+                    点击「从接口获取」自动拉取可用模型，或「手动添加」输入模型 ID。
                   </div>
                 )}
               </div>
             </div>
-            <div
-              aria-hidden
-              className="hidden md:block pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-ui-surface to-transparent"
-            />
-            </div>
 
-            {/* Sticky Bottom Footer */}
-            <div className="px-6 py-3.5 border-t border-ui-border-subtle bg-ui-bg flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-2">
+            {/* Quiet Bottom Action Bar */}
+            <div className="px-5 sm:px-6 py-3.5 bg-ui-surface flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
                 {prof ? (
                   confirmDelete ? (
-                    <div className="flex items-center gap-2 text-[13px]">
+                    <div className="flex items-center gap-2 text-[12.5px]">
                       <button
                         type="button"
                         disabled={saving}
                         onClick={() => void handleDeleteProfile()}
-                        className="px-3 py-1 rounded-md bg-ui-danger text-ui-bg font-medium hover:brightness-110 cursor-pointer"
+                        className="h-7.5 px-3 rounded-lg bg-ui-danger text-ui-bg font-medium hover:brightness-110 cursor-pointer"
                       >
                         {currentEntry.envBacked ? "确认恢复默认" : "确认删除"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDelete(false)}
-                        className="text-ui-text-muted hover:text-ui-text cursor-pointer"
+                        className="h-7.5 px-2.5 rounded-lg text-ui-text-muted hover:text-ui-text hover:bg-ui-control-hover cursor-pointer"
                       >
                         取消
                       </button>
@@ -1327,33 +1380,33 @@ export function LLMSettingsModal({
                     <button
                       type="button"
                       onClick={() => setConfirmDelete(true)}
-                      className="inline-flex items-center gap-1 text-[12.5px] text-ui-text-muted hover:text-ui-danger transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-[12.5px] text-ui-text-muted hover:text-ui-danger transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>
                         {currentEntry.envBacked
-                          ? "清除覆盖（恢复环境变量）"
-                          : "删除此服务商配置"}
+                          ? "清除覆盖"
+                          : "删除此配置"}
                       </span>
                     </button>
                   )
                 ) : (
-                  <span className="text-[12.5px] text-ui-text-muted">
+                  <span className="text-[12px] text-ui-text-muted truncate">
                     {currentEntry.configured && !hasUnsavedCreds
-                      ? "点选上方任意模型即可立即切换生效"
+                      ? "点选任意模型可立即切换"
                       : preset && !preset.requires_api_key
-                      ? "确认接口地址与模型后保存即可启用"
+                      ? "确认接口地址后保存即可启用"
                       : "填写 API Key 后保存即可启用"}
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {!currentEntry.configured || hasUnsavedCreds ? (
                   <button
                     type="submit"
                     disabled={saving || !canSubmitSave}
-                    className="h-9 px-4 ui-btn-primary text-[13px]"
+                    className="h-8.5 px-4 ui-btn-primary text-[13px]"
                   >
                     {saving
                       ? "保存中…"
@@ -1365,7 +1418,7 @@ export function LLMSettingsModal({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="h-9 px-4 ui-btn-outline text-[13px]"
+                    className="h-8.5 px-4 rounded-lg bg-ui-bg hover:bg-ui-control-hover text-[13px] font-medium text-ui-text transition-colors cursor-pointer"
                   >
                     完成
                   </button>
@@ -1374,7 +1427,7 @@ export function LLMSettingsModal({
             </div>
           </form>
         </div>
-      </div>
-    </div>
+      )}
+    </dialog>
   );
 }

@@ -119,7 +119,6 @@ export function useProjectWorkspace() {
   );
   const [showLLMModal, setShowLLMModal] = useState(false);
   const [llmModalReason, setLlmModalReason] = useState<string | null>(null);
-  const [showPreflight, setShowPreflight] = useState(false);
   const [inspectedFragment, setInspectedFragment] =
     useState<SourceFragment | null>(null);
   const [confirmClearChat, setConfirmClearChat] = useState(false);
@@ -762,8 +761,6 @@ export function useProjectWorkspace() {
     setShowLLMModal,
     llmModalReason,
     setLlmModalReason,
-    showPreflight,
-    setShowPreflight,
     inspectedFragment,
     setInspectedFragment,
     confirmClearChat,
