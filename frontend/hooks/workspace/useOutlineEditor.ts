@@ -40,6 +40,7 @@ interface UseOutlineEditorParams {
   selectedIndex: number;
   setSelectedIndex: Dispatch<SetStateAction<number>>;
   isGenerating: boolean;
+  isEditingLocked?: boolean;
   setProject: Dispatch<SetStateAction<Project | null>>;
   setRawError: (err: string | null) => void;
   flashToast: FlashToastFn;
@@ -51,6 +52,7 @@ export function useOutlineEditor({
   selectedIndex,
   setSelectedIndex,
   isGenerating,
+  isEditingLocked = false,
   setProject,
   setRawError,
   flashToast,
@@ -58,6 +60,8 @@ export function useOutlineEditor({
   const [outline, setOutline] = useState<Outline | null>(null);
   const outlineRef = useRef<Outline | null>(null);
   outlineRef.current = outline;
+  const isEditingLockedRef = useRef(isEditingLocked);
+  isEditingLockedRef.current = isEditingLocked;
 
   const [savedOutline, setSavedOutline] = useState<Outline | null>(null);
   const [version, setVersion] = useState("");
@@ -174,11 +178,12 @@ export function useOutlineEditor({
     ]
   );
 
-  // 1.2s debounced auto-save when edits are valid (PRD F-01)
+  // 1.2s debounced auto-save when edits are valid (PRD F-01); paused while AI is streaming
   useEffect(() => {
     if (
       !isStale ||
       isGenerating ||
+      isEditingLocked ||
       isSaving ||
       !isOutlineReadyForAutoSave(outline)
     ) {
@@ -188,7 +193,7 @@ export function useOutlineEditor({
       void saveOutline(true);
     }, 1200);
     return () => clearTimeout(timer);
-  }, [outline, isStale, isGenerating, isSaving, saveOutline]);
+  }, [outline, isStale, isGenerating, isEditingLocked, isSaving, saveOutline]);
 
   // Warn before closing/reloading the browser tab when local edits haven't flushed yet
   useEffect(() => {
@@ -206,6 +211,7 @@ export function useOutlineEditor({
       updater: (prev: Outline) => Outline | null,
       opts?: { coalesceKey?: string }
     ) => {
+      if (isEditingLockedRef.current) return;
       const prev = outlineRef.current;
       if (!prev) return;
       const next = updater(prev);
@@ -233,7 +239,7 @@ export function useOutlineEditor({
   );
 
   const handleUndo = useCallback(() => {
-    if (undoStack.length === 0 || !outline) return;
+    if (isEditingLockedRef.current || undoStack.length === 0 || !outline) return;
     const prevSnap = undoStack[undoStack.length - 1];
     const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
     setUndoStack((stack) => stack.slice(0, -1));
@@ -248,7 +254,7 @@ export function useOutlineEditor({
   handleUndoRef.current = handleUndo;
 
   const handleRedo = useCallback(() => {
-    if (redoStack.length === 0 || !outline) return;
+    if (isEditingLockedRef.current || redoStack.length === 0 || !outline) return;
     const nextSnap = redoStack[redoStack.length - 1];
     const currentSnap: Outline = JSON.parse(JSON.stringify(outline));
     setRedoStack((stack) => stack.slice(0, -1));

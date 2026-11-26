@@ -493,7 +493,15 @@ def _measure_custom_slide(
             text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
             content = (el.text or "").strip()
             base_size = int(el.font_size or 18)
-            base_line = int(round(el.line_height or (base_size * 1.35)))
+            raw_lh = el.line_height
+            if raw_lh is None or raw_lh <= 0:
+                computed_lh = base_size * 1.35
+            elif raw_lh <= 4.0:
+                # Treat CSS-style multipliers (e.g. 1.2, 1.5) as multiples of font_size
+                computed_lh = base_size * raw_lh
+            else:
+                computed_lh = raw_lh
+            base_line = max(int(round(base_size * 1.15)), int(round(computed_lh)))
             if not content:
                 resolved[(slide.slide_id, f"custom:{el.id}")] = (base_size, base_line, 0)
                 continue

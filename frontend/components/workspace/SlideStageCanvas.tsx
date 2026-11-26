@@ -38,6 +38,8 @@ interface SlideStageCanvasProps {
   materials?: Material[];
   brand?: BrandKit | null;
   diffPreviewActive?: boolean;
+  isAgentBusy?: boolean;
+  onStopAgent?: () => void;
   onExitDiffPreview?: () => void;
   onRevertFromDiff?: () => void;
   onSelectIndex: (idx: number) => void;
@@ -77,6 +79,8 @@ export function SlideStageCanvas({
   materials = [],
   brand = null,
   diffPreviewActive = false,
+  isAgentBusy = false,
+  onStopAgent,
   onExitDiffPreview,
   onRevertFromDiff,
   onSelectIndex,
@@ -119,7 +123,7 @@ export function SlideStageCanvas({
   useEffect(() => {
     setSelectedElId(null);
     setAddPopoverOpen(false);
-  }, [selectedIndex, version]);
+  }, [selectedIndex, version, isAgentBusy]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -313,7 +317,7 @@ export function SlideStageCanvas({
   }, [selectedEl, onSelectedCustomElementChange]);
 
   useEffect(() => {
-    if (!selectedEl || diffPreviewActive) return;
+    if (!selectedEl || diffPreviewActive || isAgentBusy) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       if (e.key === "Escape") {
@@ -397,6 +401,7 @@ export function SlideStageCanvas({
   }, [
     selectedEl,
     diffPreviewActive,
+    isAgentBusy,
     onDeleteCustomElement,
     onDuplicateCustomElement,
     onUpdateCustomElement,
@@ -518,6 +523,26 @@ export function SlideStageCanvas({
           </div>
         )}
 
+        {/* AI Streaming Soft-Lock Banner */}
+        {isAgentBusy && !diffPreviewActive && (
+          <div className="px-4 py-2 bg-ui-info-bg flex flex-wrap items-center justify-between gap-2 text-[13px] shrink-0 anim-msg-in">
+            <span className="inline-flex items-center gap-2 text-ui-text-secondary">
+              <span className="w-2 h-2 rounded-full bg-ui-accent animate-pulse shrink-0" />
+              <span>AI 助手正在处理，编辑已暂锁（仍可切页浏览与缩放）</span>
+            </span>
+            {onStopAgent && (
+              <button
+                type="button"
+                onClick={onStopAgent}
+                className="ui-btn-subtle px-2.5 py-1 text-[12.5px] inline-flex items-center gap-1.5 shrink-0"
+              >
+                <Square className="w-2.5 h-2.5 fill-current" />
+                <span>停止</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Stage Top Meta Row: 第 N 页 · 标题  |  16:9  − 100% + */}
         <div className="h-10 px-4 flex items-center justify-between gap-4 text-[13px] shrink-0 select-none">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -559,7 +584,10 @@ export function SlideStageCanvas({
           </div>
 
           <div className="flex items-center gap-3 shrink-0 text-ui-text-muted">
-            {isCustomCanvas && !diffPreviewActive && onAddCustomElement && (
+            {isCustomCanvas &&
+              !diffPreviewActive &&
+              !isAgentBusy &&
+              onAddCustomElement && (
               <div ref={addWrapRef} className="relative">
                 <button
                   type="button"
@@ -758,16 +786,23 @@ export function SlideStageCanvas({
             >
               {showRenderedImage && preview?.pages[selectedIndex] ? (
                 <div
-                  onClick={() =>
+                  onClick={() => {
+                    if (isAgentBusy) return;
                     onFocusField(
                       firstCustomTextId
                         ? `custom-el-${firstCustomTextId}`
                         : "input-title"
-                    )
-                  }
+                    );
+                  }}
                   style={{ backgroundColor: slideBg }}
-                  className="absolute inset-0 flex items-center justify-center cursor-text"
-                  title="点击右侧属性编辑内容（当前展示已导出的渲染图）"
+                  className={`absolute inset-0 flex items-center justify-center ${
+                    isAgentBusy ? "cursor-default" : "cursor-text"
+                  }`}
+                  title={
+                    isAgentBusy
+                      ? "AI 助手处理中，暂锁编辑"
+                      : "点击右侧属性编辑内容（当前展示已导出的渲染图）"
+                  }
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -784,14 +819,18 @@ export function SlideStageCanvas({
                     elements={item.custom_elements}
                     theme={activeTheme}
                     scale={scale}
-                    interactive={!diffPreviewActive}
-                    selectedElementId={diffPreviewActive ? null : selectedElId}
-                    onSelectElement={setSelectedElId}
-                    onSelectTextElement={(elId) =>
-                      onFocusField(`custom-el-${elId}`)
+                    interactive={!diffPreviewActive && !isAgentBusy}
+                    selectedElementId={
+                      diffPreviewActive || isAgentBusy ? null : selectedElId
                     }
+                    onSelectElement={setSelectedElId}
+                    onSelectTextElement={(elId) => {
+                      if (!isAgentBusy) onFocusField(`custom-el-${elId}`);
+                    }}
                     onUpdateElement={
-                      diffPreviewActive ? undefined : onUpdateCustomElement
+                      diffPreviewActive || isAgentBusy
+                        ? undefined
+                        : onUpdateCustomElement
                     }
                   />
                   {brand && (
@@ -813,7 +852,10 @@ export function SlideStageCanvas({
                   selectedIndex={selectedIndex}
                   total={total}
                   brand={brand}
-                  onFocusField={onFocusField}
+                  interactive={!diffPreviewActive && !isAgentBusy}
+                  onFocusField={
+                    diffPreviewActive || isAgentBusy ? undefined : onFocusField
+                  }
                 />
               ) : null}
             </div>
@@ -824,7 +866,7 @@ export function SlideStageCanvas({
         })()}
 
         {/* Contextual Floating Bar ONLY when a free-canvas element is selected */}
-        {selectedEl && onUpdateCustomElement && (
+        {selectedEl && !isAgentBusy && onUpdateCustomElement && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-24px)]">
             <SelectedElementBar
               selectedEl={selectedEl}

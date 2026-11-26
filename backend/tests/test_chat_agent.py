@@ -533,3 +533,304 @@ def test_custom_palette_derivation_and_agent_tool(client):
     assert proj2["brand"]["bg_hex"] is None
     assert proj2["brand"]["accent_hex"] is None
     assert proj2["brand"]["footer_text"] == "内部机密 · 2026"
+
+
+def test_design_custom_slide_rescues_card_text_and_missing_title(client):
+    """design_custom_slide auto-rescues text mistakenly placed on card and restores missing top title."""
+    import asyncio
+    from draftboard.models import CanvasElement
+
+    pid = _seed_project(client, pid="studio-card-rescue-1")
+    state = chat_agent.StudioTurnState(project_id=pid, active_theme_id="keynote_dark")
+    tools = {t.name: t for t in chat_agent.build_studio_tools(state)}
+
+    # Seed a 2-slide deck (cover + content)
+    asyncio.run(
+        _invoke(
+            tools["create_deck_outline"],
+            {
+                "slides": [
+                    SlideDraftInput(
+                        title="封面标题",
+                        summary="副标题",
+                        layout="cover",
+                        source_ids=[],
+                        evidence_status="unsupported",
+                    ).model_dump(),
+                    SlideDraftInput(
+                        title="核心特性与架构设计",
+                        summary="三支柱说明",
+                        layout="content",
+                        source_ids=[],
+                        evidence_status="unsupported",
+                    ).model_dump(),
+                ]
+            },
+        )
+    )
+
+    # Simulate model putting text directly on bottom_card and forgetting top heading (all y >= 140)
+    out = asyncio.run(
+        _invoke(
+            tools["design_custom_slide"],
+            {
+                "slide_number": 2,
+                "title": "核心特性与架构设计",
+                "elements": [
+                    CanvasElement(id="c1", kind="card", x=56, y=140, w=260, h=100).model_dump(),
+                    CanvasElement(id="t1", kind="text", x=76, y=160, w=220, h=40, text="支柱一").model_dump(),
+                    CanvasElement(id="c2", kind="card", x=350, y=140, w=260, h=100).model_dump(),
+                    CanvasElement(
+                        id="bottom_card",
+                        kind="card",
+                        x=56,
+                        y=268,
+                        w=848,
+                        h=64,
+                        text="核心架构基于双轨排版策略。",
+                        font_size=14,
+                        color="theme:muted",
+                        align="center",
+                    ).model_dump(),
+                ],
+            },
+        )
+    )
+    parsed = json.loads(out)
+    assert parsed["ok"] is True
+
+    outlines = client.get(f"/api/projects/{pid}").json()["outlines"]
+    latest_ver = sorted(outlines, key=lambda o: o["mtime"], reverse=True)[0]["outline_version"]
+    slide2 = client.get(f"/api/projects/{pid}/outlines/{latest_ver}").json()["items"][1]
+    els = slide2["custom_elements"]
+
+    # bottom_card itself no longer holds dead text; a foreground text element was paired on top
+    bottom_card = next(e for e in els if e["id"] == "bottom_card")
+    assert not bottom_card.get("text")
+    rescued = next(e for e in els if e["id"] == "bottom_card-text")
+    assert rescued["kind"] == "text"
+    assert rescued["text"] == "核心架构基于双轨排版策略。"
+    assert rescued["align"] == "center"
+
+    # Missing top title was automatically restored at y=36
+    heading = next(e for e in els if e["id"] == "slide-title")
+    assert heading["kind"] == "text"
+    assert heading["text"] == "核心特性与架构设计"
+    assert heading["y"] == 36.0
+
+    # CSS multiplier line_height (e.g. 1.2) is normalized to real pt (>= 1.15x font_size)
+    out_lh = asyncio.run(
+        _invoke(
+            tools["design_custom_slide"],
+            {
+                "slide_number": 2,
+                "title": "行高归一化测试",
+                "elements": [
+                    CanvasElement(
+                        id="h",
+                        kind="text",
+                        x=48,
+                        y=36,
+                        w=864,
+                        h=52,
+                        text="核心特性与架构设计",
+                        font_size=28,
+                        line_height=1.2,
+                    ).model_dump(),
+                    CanvasElement(
+                        id="b",
+                        kind="text",
+                        x=48,
+                        y=120,
+                        w=864,
+                        h=160,
+                        text="正文行高应自动换算为真实磅值，而不是 1px。",
+                        font_size=16,
+                        line_height=1.5,
+                    ).model_dump(),
+                ],
+            },
+        )
+    )
+    assert json.loads(out_lh)["ok"] is True
+    outlines2 = client.get(f"/api/projects/{pid}").json()["outlines"]
+    latest_ver2 = sorted(outlines2, key=lambda o: o["mtime"], reverse=True)[0]["outline_version"]
+    els2 = client.get(f"/api/projects/{pid}/outlines/{latest_ver2}").json()["items"][1]["custom_elements"]
+    assert next(e for e in els2 if e["id"] == "h")["line_height"] == 34.0
+    assert next(e for e in els2 if e["id"] == "b")["line_height"] == 24.0
+
+
+def test_design_custom_slide_three_hard_guardrails(client):
+    """Verify Z-order sorting, short-card auto-wrap, auto_fit font sync, and low-contrast rejection."""
+    import asyncio
+    from draftboard.models import CanvasElement
+
+    pid = _seed_project(client, pid="studio-guardrails-1")
+    state = chat_agent.StudioTurnState(
+        project_id=pid, active_theme_id="keynote_dark", auto_fit=True
+    )
+    tools = {t.name: t for t in chat_agent.build_studio_tools(state)}
+
+    asyncio.run(
+        _invoke(
+            tools["create_deck_outline"],
+            {
+                "slides": [
+                    SlideDraftInput(
+                        title="封面",
+                        summary="副标题",
+                        layout="cover",
+                        source_ids=[],
+                        evidence_status="unsupported",
+                    ).model_dump(),
+                    SlideDraftInput(
+                        title="护栏验证页",
+                        summary="三列内容",
+                        layout="content",
+                        source_ids=[],
+                        evidence_status="unsupported",
+                    ).model_dump(),
+                ]
+            },
+        )
+    )
+
+    # 1. Low-contrast hardcoded dark text on dark slide is rejected with [LOW_CONTRAST]
+    bad_contrast = asyncio.run(
+        _invoke(
+            tools["design_custom_slide"],
+            {
+                "slide_number": 2,
+                "title": "护栏验证页",
+                "elements": [
+                    CanvasElement(
+                        id="bad_txt",
+                        kind="text",
+                        x=48,
+                        y=40,
+                        w=500,
+                        h=50,
+                        text="几乎看不见的深灰文字",
+                        font_size=24,
+                        color="#202024",
+                    ).model_dump()
+                ],
+            },
+        )
+    )
+    assert "ERROR:" in bad_contrast
+    assert "[LOW_CONTRAST]" in bad_contrast
+
+    # 2. Z-order (text placed BEFORE card), short row cards with floating descriptions below,
+    #    and auto_fit font-size write-back all resolve deterministically.
+    out = asyncio.run(
+        _invoke(
+            tools["design_custom_slide"],
+            {
+                "slide_number": 2,
+                "title": "护栏验证页",
+                "elements": [
+                    # Deliberately put text BEFORE cards to test Z-order sorting
+                    CanvasElement(
+                        id="title",
+                        kind="text",
+                        x=48,
+                        y=36,
+                        w=864,
+                        h=48,
+                        text="护栏验证页",
+                        font_size=28,
+                        bold=True,
+                        color="theme:title",
+                    ).model_dump(),
+                    CanvasElement(
+                        id="t1",
+                        kind="text",
+                        x=64,
+                        y=154,
+                        w=230,
+                        h=36,
+                        text="01. 第一列",
+                        font_size=20,
+                        bold=True,
+                        color="theme:title",
+                    ).model_dump(),
+                    CanvasElement(
+                        id="d1",
+                        kind="text",
+                        x=64,
+                        y=232,
+                        w=230,
+                        h=140,
+                        text="这是悬空在矮卡片下方的第一列详细说明文案。",
+                        font_size=15,
+                        color="theme:body",
+                    ).model_dump(),
+                    CanvasElement(
+                        id="t2",
+                        kind="text",
+                        x=364,
+                        y=154,
+                        w=230,
+                        h=36,
+                        text="02. 第二列",
+                        font_size=20,
+                        bold=True,
+                        color="theme:title",
+                    ).model_dump(),
+                    CanvasElement(
+                        id="d2",
+                        kind="text",
+                        x=364,
+                        y=232,
+                        w=230,
+                        h=160,
+                        text="这是悬空在矮卡片下方的第二列详细说明文案，略微长一点以验证统一底边对齐。",
+                        font_size=15,
+                        color="theme:body",
+                    ).model_dump(),
+                    # Tight box that requires auto_fit to shrink 20pt -> smaller safe size
+                    CanvasElement(
+                        id="tight_note",
+                        kind="text",
+                        x=664,
+                        y=232,
+                        w=230,
+                        h=88,
+                        text="这是一段偏长的说明文字，需要自动缩字才能刚好安全地放进高度有限的文本框里面。",
+                        font_size=20,
+                        color="theme:body",
+                    ).model_dump(),
+                    # Cards listed AFTER text on purpose + short height h=72
+                    CanvasElement(
+                        id="card1", kind="card", x=48, y=140, w=264, h=72, fill="theme:surface"
+                    ).model_dump(),
+                    CanvasElement(
+                        id="card2", kind="card", x=348, y=140, w=264, h=72, fill="theme:surface"
+                    ).model_dump(),
+                    CanvasElement(
+                        id="accent1", kind="card", x=48, y=140, w=264, h=6, fill="theme:accent"
+                    ).model_dump(),
+                ],
+            },
+        )
+    )
+    assert json.loads(out)["ok"] is True
+
+    outlines = client.get(f"/api/projects/{pid}").json()["outlines"]
+    latest_ver = sorted(outlines, key=lambda o: o["mtime"], reverse=True)[0]["outline_version"]
+    els = client.get(f"/api/projects/{pid}/outlines/{latest_ver}").json()["items"][1]["custom_elements"]
+    ids = [e["id"] for e in els]
+
+    # Z-order: regular cards before thin accent bar before text elements
+    assert ids.index("card1") < ids.index("accent1") < ids.index("t1")
+    assert ids.index("card2") < ids.index("t2")
+
+    # Short cards auto-expanded symmetrically to wrap d1/d2 (bottom 232+160+18 = 410 -> h = 270)
+    c1 = next(e for e in els if e["id"] == "card1")
+    c2 = next(e for e in els if e["id"] == "card2")
+    assert c1["h"] == c2["h"] == 270.0
+
+    # auto_fit safe font_size persisted onto tight_note (< 20pt)
+    tight = next(e for e in els if e["id"] == "tight_note")
+    assert tight["font_size"] < 20

@@ -66,6 +66,7 @@ export function useProjectWorkspace() {
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isChatStreaming, setIsChatStreaming] = useState(false);
   const [rawError, setRawError] = useState<string | null>(null);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
 
@@ -200,6 +201,7 @@ export function useProjectWorkspace() {
     selectedIndex,
     setSelectedIndex,
     isGenerating,
+    isEditingLocked: isChatStreaming,
     setProject,
     setRawError,
     flashToast,
@@ -313,6 +315,8 @@ export function useProjectWorkspace() {
     onAutoFitChanged: setAutoFit,
     onRequireLLMConfig: handleRequireLLMConfig,
     onTransitionToStudioChat: handleTransitionToStudioChat,
+    isChatStreaming,
+    setIsChatStreaming,
     setRawError,
     flashToast,
   });

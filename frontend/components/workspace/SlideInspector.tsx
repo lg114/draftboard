@@ -60,6 +60,8 @@ interface SlideInspectorProps {
   onSplitTwoColumn: () => void;
   onUploadClick: () => void;
   embedded?: boolean;
+  readOnly?: boolean;
+  onStopAgent?: () => void;
 }
 
 export function SlideInspector({
@@ -88,6 +90,8 @@ export function SlideInspector({
   onSplitTwoColumn,
   onUploadClick,
   embedded = false,
+  readOnly = false,
+  onStopAgent,
 }: SlideInspectorProps) {
   const [notesOpen, setNotesOpen] = useState(true);
 
@@ -133,6 +137,28 @@ export function SlideInspector({
       )}
 
       <div className="p-4 space-y-5 flex-1">
+        {readOnly && (
+          <div className="px-3 py-2 rounded-lg bg-ui-info-bg flex items-center justify-between gap-2 text-[12.5px]">
+            <span className="inline-flex items-center gap-2 text-ui-text-secondary min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-ui-accent animate-pulse shrink-0" />
+              <span className="truncate">AI 处理中，属性编辑已暂锁</span>
+            </span>
+            {onStopAgent && (
+              <button
+                type="button"
+                onClick={onStopAgent}
+                className="text-ui-accent-text hover:underline shrink-0 cursor-pointer"
+              >
+                停止
+              </button>
+            )}
+          </div>
+        )}
+
+        <fieldset
+          disabled={readOnly}
+          className="space-y-5 min-w-0 disabled:opacity-60 transition-opacity"
+        >
         {/* Compact Layout & Theme Controls (moved cleanly from removed bottom dock) */}
         {(onSelectLayout || onOpenThemeModal) && (
           <section className="space-y-2.5">
@@ -333,6 +359,7 @@ export function SlideInspector({
             </div>
           </Collapse>
         </section>
+        </fieldset>
       </div>
     </>
   );

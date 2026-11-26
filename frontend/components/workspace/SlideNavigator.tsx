@@ -32,6 +32,7 @@ interface SlideNavigatorProps {
   materialsPanel?: ReactNode;
   llmConfigured?: boolean;
   activeModelLabel?: string;
+  readOnly?: boolean;
   onSelectIndex: (idx: number) => void;
   onMoveItem: (idx: number, delta: number) => void;
   onReorderItem?: (fromIdx: number, toIdx: number) => void;
@@ -59,6 +60,7 @@ export function SlideNavigator({
   materialsPanel,
   llmConfigured = true,
   activeModelLabel = "",
+  readOnly = false,
   onSelectIndex,
   onMoveItem,
   onReorderItem,
@@ -172,10 +174,11 @@ export function SlideNavigator({
           {leftTab === "pages" ? (
             <button
               type="button"
+              disabled={readOnly}
               onClick={onAddItem}
               aria-label="新建幻灯片"
-              title="新建幻灯片"
-              className="p-1 rounded-md text-ui-icon-quiet hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer"
+              title={readOnly ? "AI 处理中，暂锁新增页面" : "新建幻灯片"}
+              className="p-1 rounded-md text-ui-icon-quiet hover:text-ui-text hover:bg-ui-bg-hover disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -233,14 +236,15 @@ export function SlideNavigator({
             return (
               <div
                 key={item.outline_item_id}
-                draggable={total > 1 && Boolean(onReorderItem)}
+                draggable={!readOnly && total > 1 && Boolean(onReorderItem)}
                 onDragStart={(e) => {
+                  if (readOnly) return;
                   setDragIdx(idx);
                   e.dataTransfer.effectAllowed = "move";
                   e.dataTransfer.setData("text/plain", String(idx));
                 }}
                 onDragOver={(e) => {
-                  if (dragIdx === null || dragIdx === idx) return;
+                  if (readOnly || dragIdx === null || dragIdx === idx) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -252,20 +256,28 @@ export function SlideNavigator({
                       : { index: idx, position: pos }
                   );
                 }}
-                onDrop={(e) => handleDrop(e, idx)}
+                onDrop={(e) => {
+                  if (readOnly) return;
+                  handleDrop(e, idx);
+                }}
                 onDragEnd={() => {
                   setDragIdx(null);
                   setDropTarget(null);
                 }}
                 onClick={() => onSelectIndex(idx)}
-                onContextMenu={(e) => openContextMenu(e, idx)}
+                onContextMenu={(e) => {
+                  if (readOnly) return;
+                  openContextMenu(e, idx);
+                }}
                 title={
-                  total > 1
+                  readOnly
+                    ? "点击切换预览页面（AI 处理中暂锁排序与增删）"
+                    : total > 1
                     ? "点击切换页面，拖拽调整页序，或右键打开菜单"
                     : "右键打开菜单"
                 }
                 className={`w-full group relative space-y-1.5 transition-opacity ${
-                  total > 1 && onReorderItem
+                  !readOnly && total > 1 && onReorderItem
                     ? "cursor-grab active:cursor-grabbing"
                     : "cursor-pointer"
                 } ${isDragging ? "opacity-40" : "opacity-100"}`}
@@ -305,10 +317,11 @@ export function SlideNavigator({
                   </div>
 
                   {/* Bottom-right translucent dark micro controls */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center gap-0.5 bg-ui-bg/90 backdrop-blur-sm rounded-md p-0.5 border border-ui-border-subtle shadow-md"
-                  >
+                  {!readOnly && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center gap-0.5 bg-ui-bg/90 backdrop-blur-sm rounded-md p-0.5 border border-ui-border-subtle shadow-md"
+                    >
                     <button
                       type="button"
                       disabled={idx === 0}
@@ -355,6 +368,7 @@ export function SlideNavigator({
                       </>
                     )}
                   </div>
+                  )}
                 </div>
 
                 {/* Page number & title below thumbnail (matching mockup) */}
@@ -397,8 +411,9 @@ export function SlideNavigator({
 
           <button
             type="button"
+            disabled={readOnly}
             onClick={onAddItem}
-            className="w-full py-2 rounded-lg text-[13px] text-ui-text-muted hover:text-ui-text hover:bg-ui-bg-hover transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5"
+            className="w-full py-2 rounded-lg text-[13px] text-ui-text-muted hover:text-ui-text hover:bg-ui-bg-hover disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>新建页面</span>

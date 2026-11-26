@@ -42,6 +42,7 @@ from draftboard.pptx_export import (
     _measure_and_resolve,
     _measure_custom_slide,
     _resolve_image_path,
+    resolve_canvas_hex,
 )
 from draftboard.storage import STORAGE_ROOT, ProjectStorage, load_json
 from draftboard.tasks import (
@@ -52,6 +53,7 @@ from draftboard.themes import get_theme, is_valid_theme, list_themes, resolve_th
 from draftboard.tools import normalize_outline_item_text
 from draftboard.user_library import (
     BrandKit,
+    _relative_luminance,
     apply_brand_to_theme,
     clear_brand_palette_overrides,
     has_any_brand_fields,
@@ -86,6 +88,7 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
    - 自由画布设计规范：
      * 画布固定 `960×540` pt，常规留白建议 `48` pt（安全内容区 `x=48..912, y=36..504`）；
      * **绘制顺序（Z-order）**：先放背景色块和 `card`，再放 `line`、`image`、`table`、`chart`，最后放前景 `text`；
+     * **显式绘制页面标题与卡片文字**：`design_custom_slide` 的 `title` 参数仅用于左侧目录名称，**不会自动绘制在画布顶部**，内容页必须在顶部放置主标题 `text` 元素（如 `x=48, y=36, w=864, h=44, font_size=28, bold=True, color="theme:title"`）；`card` 仅作圆角背景块，所有文字必须使用独立的 `text` 元素叠放在 `card` 之上；画卡片布局（如三列卡片）时，整张 `card` 高度应完整包住内部标题与正文（如 `y=132, h=336`），不要只画很矮的色条让正文悬空在卡片外或让下半屏大片留白；`line_height` 建议省略（自动使用 `1.35×` 字号）或填写大于字号的绝对 pt 值；
      * **优先使用主题语义色**（`theme:bg`、`theme:cover_bg`、`theme:surface`、`theme:title`、`theme:cover_title`、`theme:body`、`theme:cover_body`、`theme:accent`、`theme:muted`、`theme:divider`），确保切换全局主题时自动换肤；表格和图表默认自动继承当前主题配色，仅在用户点名特定颜色时使用 `#RRGGBB`；
      * 表格与图表数据**必须 100% 源自项目素材真实数字**，严禁编造或补齐不存在的数据；图表需保证每组 `chart_series.values` 长度与 `chart_categories` 严格一致；表格每行高度至少留足 `24–36` pt；
      * 严禁让任意 `text` / `table` / `chart` 框互相重叠或超出 `960×540` 边界；若工具返回 `[OVERFLOW]` / `[OVERLAP]` / `[OUT_OF_BOUNDS]` / `[INVALID_TABLE]` / `[INVALID_CHART]`，立刻调整坐标、行高或数据后重试直至通过。
@@ -100,7 +103,9 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
    - 提及具体页面时请使用「第 N 页」格式（例如「第 2 页」），前端会自动渲染为可点击的跳转标签。
    - **绝不向用户暴露任何内部技术标识**：回复正文中一律使用自然的产品中文名称（例如说「苹果白」「深空钛黑」「松柏森绿」「美术馆暖石」「自由画布」「自定义配色」「卡片」「分割线」「对比表格」「柱状图」「双栏版式」），严禁出现内部工具函数名（如 `design_custom_slide`、`get_deck_state`、`set_deck_theme`、`set_custom_palette`、`check_deck_layout`、`export_deck_now`）、主题英文 ID（如 `keynote_light`、`keynote_dark`、`nordic_pine`、`gallery_sand`）、元素/版式英文枚举名（如 `card`、`line`、`chart`、`table`、`two_column`、`text_image`）以及 `project_id` / `outline_item_id`（这些英文标识仅在调用工具参数时使用）。
    - Draftboard 预设主题固定为 4 套：**苹果白**（纯净画布）、**深空钛黑**（暗黑发布会）、**松柏森绿**（深松封面 + 象牙正文）、**美术馆暖石**（亚麻纸感 + 陶土点缀）。
-   - **如果用户 4 套预设都不喜欢，或提出任意专属风格/色系**（如「金融蓝金」「日系抹茶米白」「暗黑紫霓虹」「柔和莫兰迪」「医疗青白」等），**直接调用 `set_custom_palette` 为整套文稿定制全局配色**（指定封面底色、正文底色和主强调色即可，系统会自动按对比度推导出安全的标题色、正文色、卡片面色与图表色板，全套页面实时生效），不必把每页都改写为自由画布；若仅需单页突破全局风格，再用自由画布单独设计该页。
+   - **区分「整套主题配色」与「单页自由排版」**：
+     * 只要对话围绕**主题、配色、整体风格**展开（包括用户说「4 套都不喜欢」「还有其他风格吗」「帮我换个风格」「帮我做一个」等），**默认目标是修改整套文稿的全局配色**——直接调用 `set_custom_palette` 为全稿定制和谐的封面底色、正文底色和主强调色（系统自动按对比度推导出安全的标题色、正文色、卡片面色与图表色板，全稿实时生效），**切勿只修改当前选中的 1 页来敷衍整套风格需求**。
+     * 只有在用户**明确指明针对某一页的版式布局**（例如「把第 2 页做成三卡片」「只重排当前页」）时，才调用 `design_custom_slide` 重绘该单页。
 """
 
 
@@ -964,7 +969,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         source_ids: Optional[list[str]] = None,
         evidence_status: Optional[EvidenceLiteral] = None,
     ) -> str:
-        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 6 种原生可编辑元素：card（圆角矩形卡片）、line（线条）、image（已上传图片）、text（文本框）、table（原生可编辑表格：headers + rows）、chart（原生可编辑数据图表：chart_type=bar/hbar/line/donut + chart_categories + chart_series）。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、表格/图表校验、文本溢出与元素碰撞检测。"""
+        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 6 种原生可编辑元素：card（圆角矩形卡片，仅作背景块，文字请另建 text 元素叠放）、line（线条）、image（已上传图片）、text（文本框）、table（原生可编辑表格：headers + rows）、chart（原生可编辑数据图表：chart_type=bar/hbar/line/donut + chart_categories + chart_series）。注意：title 参数仅更新目录名称、不会自动画在画布上，内容页请在画布顶部（如 y=36）显式放置标题 text 元素。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、表格/图表校验、文本溢出与元素碰撞检测。"""
         ver = state.current_outline_version()
         outline = _load_outline(state.project_id, ver)
         if not outline or not outline.items:
@@ -974,17 +979,23 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         if not elements:
             return "ERROR: elements 不能为空，请至少提供 1 个画布元素。"
 
-        # Ensure unique IDs & unescape text
+        # Ensure unique IDs, unescape text, and rescue accidental card.text into foreground text
         seen_ids: set[str] = set()
         cleaned_elements: list[CanvasElement] = []
         assets_dir = _project_dir(state.project_id) / "assets"
         uploaded_images = _list_uploaded_images(state.project_id)
 
+        def _unique_id(base: str) -> str:
+            cand = base
+            n = 2
+            while cand in seen_ids:
+                cand = f"{base}-{n}"
+                n += 1
+            seen_ids.add(cand)
+            return cand
+
         for idx_el, raw_el in enumerate(elements, start=1):
-            eid = (raw_el.id or f"el-{idx_el}").strip()
-            if eid in seen_ids:
-                eid = f"{eid}-{idx_el}"
-            seen_ids.add(eid)
+            eid = _unique_id((raw_el.id or f"el-{idx_el}").strip())
 
             if raw_el.kind == "image":
                 img_ref = (raw_el.image_asset_id or "").strip()
@@ -998,15 +1009,154 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                 )
             elif raw_el.kind == "text":
                 clean_txt = (raw_el.text or "").replace("\\r\\n", "\n").replace("\\n", "\n")
+                fs = int(raw_el.font_size or 18)
+                norm_lh = raw_el.line_height
+                if norm_lh is not None:
+                    if norm_lh <= 0:
+                        norm_lh = None
+                    elif norm_lh <= 4.0:
+                        norm_lh = float(max(round(fs * 1.15), round(fs * norm_lh)))
+                    else:
+                        norm_lh = float(max(round(fs * 1.15), round(norm_lh)))
                 cleaned_elements.append(
-                    raw_el.model_copy(update={"id": eid, "text": clean_txt})
+                    raw_el.model_copy(
+                        update={"id": eid, "text": clean_txt, "line_height": norm_lh}
+                    )
                 )
+            elif raw_el.kind == "card":
+                card_txt = (raw_el.text or "").replace("\\r\\n", "\n").replace("\\n", "\n").strip()
+                cleaned_elements.append(raw_el.model_copy(update={"id": eid, "text": None}))
+                if card_txt:
+                    pad_x = min(20.0, max(8.0, raw_el.w * 0.08))
+                    pad_y = min(14.0, max(6.0, raw_el.h * 0.16))
+                    txt_w = max(40.0, raw_el.w - pad_x * 2)
+                    txt_h = max(24.0, raw_el.h - pad_y * 2)
+                    cleaned_elements.append(
+                        CanvasElement(
+                            id=_unique_id(f"{eid}-text"),
+                            kind="text",
+                            x=round(raw_el.x + pad_x, 1),
+                            y=round(raw_el.y + pad_y, 1),
+                            w=round(txt_w, 1),
+                            h=round(txt_h, 1),
+                            text=card_txt,
+                            font_size=raw_el.font_size or 15,
+                            bold=bool(raw_el.bold) if raw_el.bold is not None else False,
+                            color=raw_el.color or "theme:body",
+                            align=raw_el.align or "left",
+                            line_height=raw_el.line_height,
+                        )
+                    )
             else:
                 cleaned_elements.append(raw_el.model_copy(update={"id": eid}))
 
         # Run real deterministic bounds + overflow + text-overlap measurement BEFORE saving
         idx = slide_number - 1
         cur = outline.items[idx]
+
+        # Guard against multi-card content slides where the model forgot to draw the top page title
+        heading_text = (title or cur.title or "").strip()
+        if (
+            heading_text
+            and cur.layout not in (SlideLayout.COVER, SlideLayout.CLOSING)
+            and len(cleaned_elements) >= 4
+        ):
+            min_y = min(el.y for el in cleaned_elements)
+            has_top_heading = any(
+                el.kind == "text"
+                and (el.y < 100 or heading_text in (el.text or ""))
+                for el in cleaned_elements
+            )
+            if min_y >= 115 and not has_top_heading:
+                cleaned_elements.append(
+                    CanvasElement(
+                        id=_unique_id("slide-title"),
+                        kind="text",
+                        x=48.0,
+                        y=36.0,
+                        w=864.0,
+                        h=48.0,
+                        text=heading_text,
+                        font_size=28,
+                        bold=True,
+                        color="theme:title",
+                        align="left",
+                    )
+                )
+        # Guardrail 1: Enforce deterministic Z-order so cards never occlude foreground text
+        # (regular cards -> thin accent strips -> lines/images -> tables/charts -> text)
+        def _layer_rank(el: CanvasElement) -> int:
+            if el.kind == "card":
+                return 1 if (el.h <= 12 or el.w <= 12) else 0
+            if el.kind in ("line", "image"):
+                return 2
+            if el.kind in ("table", "chart"):
+                return 3
+            return 4
+
+        cleaned_elements.sort(key=_layer_rank)
+
+        # Guardrail 2: Auto-expand short row cards when orphaned body paragraphs sit directly
+        # below each card in the same column (prevents half-wrapped Bento cards)
+        regular_cards = [
+            (i, el)
+            for i, el in enumerate(cleaned_elements)
+            if el.kind == "card" and el.w >= 140 and 24 <= el.h <= 105
+        ]
+        if len(regular_cards) >= 2:
+            rows_by_y: dict[int, list[tuple[int, CanvasElement]]] = {}
+            for pair in regular_cards:
+                bucket = round(pair[1].y / 8) * 8
+                rows_by_y.setdefault(bucket, []).append(pair)
+            all_regular_cards = [
+                el for el in cleaned_elements if el.kind == "card" and el.w >= 40 and el.h > 12
+            ]
+            for row_cards in rows_by_y.values():
+                if len(row_cards) < 2:
+                    continue
+                matched_bottoms: list[tuple[int, float]] = []
+                for card_idx, card in row_cards:
+                    card_bottom = card.y + card.h
+                    orphans = []
+                    for txt in cleaned_elements:
+                        if txt.kind != "text" or not (txt.text or "").strip():
+                            continue
+                        gap = txt.y - card_bottom
+                        if not (0 <= gap <= 36):
+                            continue
+                        if txt.x < card.x - 6 or (txt.x + txt.w) > (card.x + card.w + 6):
+                            continue
+                        # Skip if text is already enclosed by another card
+                        tcx = txt.x + txt.w / 2.0
+                        tcy = txt.y + txt.h / 2.0
+                        inside_other = any(
+                            oc is not card
+                            and oc.x <= tcx <= oc.x + oc.w
+                            and oc.y <= tcy <= oc.y + oc.h
+                            for oc in all_regular_cards
+                        )
+                        if not inside_other:
+                            orphans.append(txt)
+                    if orphans:
+                        target_bottom = min(508.0, max(t.y + t.h for t in orphans) + 18.0)
+                        # Ensure expansion doesn't collide with another card below
+                        collides_below = any(
+                            oc is not card
+                            and oc.y >= card_bottom - 2
+                            and oc.y < target_bottom
+                            and not (oc.x + oc.w <= card.x + 2 or oc.x >= card.x + card.w - 2)
+                            for oc in all_regular_cards
+                        )
+                        if not collides_below and target_bottom > card_bottom + 8:
+                            matched_bottoms.append((card_idx, target_bottom))
+                if len(matched_bottoms) >= 2:
+                    uniform_bottom = max(b for _, b in matched_bottoms)
+                    for card_idx, _ in matched_bottoms:
+                        card = cleaned_elements[card_idx]
+                        cleaned_elements[card_idx] = card.model_copy(
+                            update={"h": round(uniform_bottom - card.y, 1)}
+                        )
+
         probe_slide = Slide(
             slide_id=f"slide-{slide_number:03d}",
             layout=cur.layout or SlideLayout.CONTENT,
@@ -1021,14 +1171,76 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
             custom_elements=cleaned_elements,
         )
         measure_errors: list[str] = []
+        resolved_styles: dict[tuple[str, str], tuple[int, int, int]] = {}
         _measure_custom_slide(
-            probe_slide, load_fonts(), state.auto_fit, {}, measure_errors
+            probe_slide, load_fonts(), state.auto_fit, resolved_styles, measure_errors
         )
+
+        # Guardrail 3: Contrast check for text against its underlying card or slide background
+        meta = _load_meta(state.project_id)
+        raw_brand = meta.get("brand") if isinstance(meta.get("brand"), dict) else None
+        active_theme = apply_brand_to_theme(get_theme(state.active_theme_id), raw_brand)
+        slide_bg_hex = (
+            resolve_canvas_hex(background, active_theme, active_theme.bg_hex)
+            or active_theme.bg_hex
+        )
+        opaque_cards: list[tuple[CanvasElement, str]] = []
+        for el in cleaned_elements:
+            if el.kind == "card" and el.h > 12 and el.w > 12:
+                fill_hex = resolve_canvas_hex(el.fill, active_theme, active_theme.surface_hex)
+                if fill_hex:
+                    opaque_cards.append((el, fill_hex))
+
+        for el in cleaned_elements:
+            if el.kind != "text" or not (el.text or "").strip():
+                continue
+            cx = el.x + el.w / 2.0
+            cy = el.y + el.h / 2.0
+            backdrop_hex = slide_bg_hex
+            for card_el, fill_hex in opaque_cards:
+                if (
+                    card_el.x <= cx <= card_el.x + card_el.w
+                    and card_el.y <= cy <= card_el.y + card_el.h
+                ):
+                    backdrop_hex = fill_hex
+            fg_hex = (
+                resolve_canvas_hex(el.color, active_theme, active_theme.body_hex)
+                or active_theme.body_hex
+            )
+            l1 = _relative_luminance(fg_hex)
+            l2 = _relative_luminance(backdrop_hex)
+            ratio = (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+            is_semantic = (el.color or "").strip().lower().startswith("theme:")
+            min_ratio = 2.4 if is_semantic else 3.0
+            if ratio < min_ratio:
+                measure_errors.append(
+                    f"Slide '{probe_slide.slide_id}', element '{el.id}': "
+                    f"[LOW_CONTRAST] Text color {fg_hex} on background {backdrop_hex} "
+                    f"has contrast {ratio:.2f}:1 (need >= {min_ratio:.1f}:1); "
+                    "use theme:title / theme:body or a higher-contrast hex color."
+                )
+
         if measure_errors:
             return (
-                "ERROR: 自由画布排版未通过自检，请调整坐标、框高或字号后重试：\n"
+                "ERROR: 自由画布排版未通过自检，请调整坐标、框高、字号或文字配色后重试：\n"
                 + "\n".join(measure_errors)
             )
+
+        # Persist auto_fit-resolved safe font_size & line_height so preview == PPTX export
+        synced_elements: list[CanvasElement] = []
+        for el in cleaned_elements:
+            if el.kind == "text":
+                resolved = resolved_styles.get((probe_slide.slide_id, f"custom:{el.id}"))
+                if resolved is not None:
+                    safe_sz, safe_ln, _ = resolved
+                    synced_elements.append(
+                        el.model_copy(
+                            update={"font_size": int(safe_sz), "line_height": float(safe_ln)}
+                        )
+                    )
+                    continue
+            synced_elements.append(el)
+        cleaned_elements = synced_elements
 
         mat_out = _raw(tools_module.read_materials)(project_id=state.project_id)
         known_sids = {f.source_id for f in mat_out.source_fragments}

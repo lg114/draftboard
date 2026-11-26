@@ -222,8 +222,8 @@ export default function ProjectWorkspacePage() {
         }
         leftOpen={ws.leftOpen}
         rightOpen={ws.rightOpen}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
+        canUndo={undoStack.length > 0 && !chat.isChatStreaming}
+        canRedo={redoStack.length > 0 && !chat.isChatStreaming}
         onUndo={outlineEditor.handleUndo}
         onRedo={outlineEditor.handleRedo}
         onToggleLeft={() => ws.setLeftOpen((v) => !v)}
@@ -239,8 +239,14 @@ export default function ProjectWorkspacePage() {
             ws.setShowMaterialsDrawer((v) => !v);
           }
         }}
-        onSelectVersion={(v) => void outlineEditor.showOutline(v)}
-        onSaveOutline={() => void outlineEditor.saveOutline(false)}
+        onSelectVersion={(v) => {
+          if (chat.isChatStreaming) return;
+          void outlineEditor.showOutline(v);
+        }}
+        onSaveOutline={() => {
+          if (chat.isChatStreaming) return;
+          void outlineEditor.saveOutline(false);
+        }}
         onFlushBeforeLeave={async () => {
           await ws.flushOutlineIfReady();
         }}
@@ -354,6 +360,7 @@ export default function ProjectWorkspacePage() {
                   ? `${ws.llmSettings.active_summary.name} · ${ws.llmSettings.active_summary.model}`
                   : ""
               }
+              readOnly={chat.isChatStreaming}
               onSelectIndex={ws.setSelectedIndex}
               onMoveItem={outlineEditor.moveItem}
               onReorderItem={outlineEditor.reorderItem}
@@ -393,6 +400,8 @@ export default function ProjectWorkspacePage() {
             materials={ws.materials}
             brand={ws.project?.brand ?? null}
             diffPreviewActive={Boolean(outlineEditor.diffPreviewOutline)}
+            isAgentBusy={chat.isChatStreaming}
+            onStopAgent={chat.stopChatStreaming}
             onExitDiffPreview={() => void outlineEditor.toggleDiffPreview(null)}
             onRevertFromDiff={() => {
               if (outlineEditor.diffPreviewVersion) {
@@ -490,6 +499,8 @@ export default function ProjectWorkspacePage() {
                   onSelectLayout={outlineEditor.handleSelectLayout}
                   onOpenThemeModal={() => setShowThemeModal(true)}
                   embedded={true}
+                  readOnly={chat.isChatStreaming}
+                  onStopAgent={chat.stopChatStreaming}
                   onUpdateField={(field, val) =>
                     outlineEditor.patchItem(ws.selectedIndex, { [field]: val })
                   }

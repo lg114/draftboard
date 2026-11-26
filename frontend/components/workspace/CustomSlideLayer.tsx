@@ -1130,7 +1130,17 @@ export function CustomSlideLayer({
 
         // Text element (matches CUSTOM_PAD_X_PT=4, CUSTOM_PAD_Y_PT=2 in pptx_export.py)
         const fontSize = Math.round(el.font_size ?? 18);
-        const lineHeight = Math.round(el.line_height ?? fontSize * 1.35);
+        const rawLh = el.line_height;
+        const computedLh =
+          rawLh == null || rawLh <= 0
+            ? fontSize * 1.35
+            : rawLh <= 4
+            ? fontSize * rawLh
+            : rawLh;
+        const lineHeight = Math.max(
+          Math.round(fontSize * 1.15),
+          Math.round(computedLh)
+        );
         const color = resolveCanvasColor(el.color, sw, sw.body) || sw.body;
 
         return (

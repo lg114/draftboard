@@ -76,7 +76,8 @@ class CanvasElement(BaseModel):
         None, description="Horizontal alignment for text"
     )
     line_height: Optional[float] = Field(
-        None, description="Optional line spacing in pt"
+        None,
+        description="Optional line spacing in pt (e.g. 24 for 18pt text; omit for default 1.35x; values <= 4 are treated as multipliers)",
     )
 
     # Card fields (kind='card')

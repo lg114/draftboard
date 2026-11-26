@@ -29,6 +29,8 @@ interface UseStudioChatParams {
   onAutoFitChanged: (autoFit: boolean) => void;
   onRequireLLMConfig: (reason: string) => void;
   onTransitionToStudioChat: () => void;
+  isChatStreaming?: boolean;
+  setIsChatStreaming?: (v: boolean) => void;
   setRawError: (err: string | null) => void;
   flashToast: FlashToastFn;
 }
@@ -50,11 +52,15 @@ export function useStudioChat({
   onAutoFitChanged,
   onRequireLLMConfig,
   onTransitionToStudioChat,
+  isChatStreaming: externalStreaming,
+  setIsChatStreaming: setExternalStreaming,
   setRawError,
   flashToast,
 }: UseStudioChatParams) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isChatStreaming, setIsChatStreaming] = useState(false);
+  const [internalStreaming, setInternalStreaming] = useState(false);
+  const isChatStreaming = externalStreaming ?? internalStreaming;
+  const setIsChatStreaming = setExternalStreaming ?? setInternalStreaming;
   const chatAbortRef = useRef<AbortController | null>(null);
 
   const loadChatHistory = useCallback(async (projectId: string) => {

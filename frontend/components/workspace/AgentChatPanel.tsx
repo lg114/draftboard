@@ -716,9 +716,8 @@ export function AgentChatPanel({
 
             if (msg.role === "user") {
               return (
-                <div key={msg.id} className="space-y-1 anim-msg-in">
-                  <div className="text-[12px] text-ui-text-muted">你</div>
-                  <div className="text-[13.5px] text-ui-text leading-relaxed whitespace-pre-wrap break-words">
+                <div key={msg.id} className="flex justify-end anim-msg-in">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ui-bg-selected px-3.5 py-2 text-[13.5px] text-ui-text leading-relaxed whitespace-pre-wrap break-words">
                     {msg.content}
                   </div>
                 </div>
@@ -731,8 +730,7 @@ export function AgentChatPanel({
                 : null;
 
             return (
-              <div key={msg.id} className="space-y-2 anim-msg-in">
-                <div className="text-[12px] text-ui-text-muted">助手</div>
+              <div key={msg.id} className="space-y-2.5 anim-msg-in">
 
                 {msg.tool_steps && msg.tool_steps.length > 0 && (
                   <ToolStepsBar
