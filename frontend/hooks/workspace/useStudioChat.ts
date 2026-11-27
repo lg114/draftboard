@@ -104,7 +104,7 @@ export function useStudioChat({
       }
       if (changes.exported) {
         await loadPreview(targetPid);
-        flashToast("Agent 已完成 PPTX 与 PDF 编译，可直接下载或放映");
+        flashToast("Agent 已完成 PPTX 与 PDF 编译，可直接下载或预览");
       }
     },
     [

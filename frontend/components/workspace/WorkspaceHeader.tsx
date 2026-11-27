@@ -443,7 +443,7 @@ export function WorkspaceHeader({
                 void handleGuardedNavigate(e, `/p/${pid}/preview`)
               }
               className="px-2.5 py-1 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors whitespace-nowrap"
-              title="全屏放映与演讲者视图"
+              title="成稿预览与全屏速览"
             >
               预览
             </Link>

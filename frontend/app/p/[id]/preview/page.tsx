@@ -7,17 +7,11 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Download,
   ImageDown,
   Maximize2,
   Minimize2,
-  Monitor,
-  Pause,
-  Play,
-  Presentation,
   RefreshCw,
-  RotateCcw,
 } from "lucide-react";
 import {
   api,
@@ -34,17 +28,6 @@ import { ExportFormatMenu } from "../../../../components/workspace/ExportFormatM
 import { needsContrastHairline } from "../../../../components/workspace/layoutUtils";
 import { SlideRenderer } from "../../../../components/workspace/stage/StandardSlideView";
 import { computeActiveTheme } from "../../../../hooks/workspace/outlineHelpers";
-
-function formatTimer(sec: number): string {
-  const neg = sec < 0;
-  const abs = Math.abs(Math.floor(sec));
-  const m = Math.floor(abs / 60);
-  const s = abs % 60;
-  return `${neg ? "-" : ""}${String(m).padStart(2, "0")}:${String(s).padStart(
-    2,
-    "0"
-  )}`;
-}
 
 function resolveSlideBg(
   item: OutlineItem | null | undefined,
@@ -77,14 +60,7 @@ export default function PreviewPage() {
   const [notice, setNotice] = useState("");
   const [rendering, setRendering] = useState(false);
   const [historicalExport, setHistoricalExport] = useState(false);
-
-  // Presenter View & Fullscreen state
-  const [presenterMode, setPresenterMode] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [noteFontSize, setNoteFontSize] = useState(16);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [targetMinutes, setTargetMinutes] = useState<number>(10);
 
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -165,19 +141,13 @@ export default function PreviewPage() {
   }, [totalSlides]);
 
   useEffect(() => {
-    if (presenterMode || isFullscreen) return;
+    if (isFullscreen) return;
     thumbRefs.current[selected]?.scrollIntoView({
       behavior: "smooth",
       inline: "center",
       block: "nearest",
     });
-  }, [selected, presenterMode, isFullscreen]);
-
-  useEffect(() => {
-    if (!timerRunning) return;
-    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [timerRunning]);
+  }, [selected, isFullscreen]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -237,22 +207,6 @@ export default function PreviewPage() {
         void toggleFullscreen();
         return;
       }
-      if (
-        e.key.toLowerCase() === "p" &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.altKey &&
-        totalSlides > 0
-      ) {
-        if (isFullscreen) {
-          if (document.fullscreenElement) {
-            void document.exitFullscreen().catch(() => {});
-          }
-          setIsFullscreen(false);
-        }
-        setPresenterMode((v) => !v);
-        return;
-      }
       if (!totalSlides) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault();
@@ -300,9 +254,7 @@ export default function PreviewPage() {
   }, [themes, project]);
 
   const currentPageSrc = preview?.pages?.[selected] || "";
-  const nextPageSrc = preview?.pages?.[selected + 1] || "";
   const currentOutlineItem = outline?.items?.[selected] || null;
-  const nextOutlineItem = outline?.items?.[selected + 1] || null;
   const currentPageDownloadUrl = currentPageSrc
     ? `${currentPageSrc}${currentPageSrc.includes("?") ? "&" : "?"}download=1`
     : "";
@@ -312,14 +264,6 @@ export default function PreviewPage() {
     "#0D0D0E",
     28
   );
-  const nextNeedsRim = needsContrastHairline(
-    resolveSlideBg(nextOutlineItem, selected + 1, activeTheme),
-    "#151516",
-    28
-  );
-
-  const remainingSec = targetMinutes * 60 - elapsedSec;
-  const isOvertime = remainingSec < 0;
 
   return (
     <div className="h-dvh flex flex-col bg-ui-bg text-ui-text overflow-hidden">
@@ -342,52 +286,12 @@ export default function PreviewPage() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Borderless Mode Switcher */}
-          {totalSlides > 0 && (
-            <div
-              role="group"
-              aria-label="预览模式"
-              className="inline-flex items-center bg-ui-surface p-0.5 rounded-lg gap-0.5"
-            >
-              <button
-                type="button"
-                aria-pressed={!presenterMode}
-                title="放映视图"
-                aria-label="放映视图"
-                onClick={() => setPresenterMode(false)}
-                className={`h-7 px-2 sm:px-2.5 rounded-md text-[12.5px] inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                  !presenterMode
-                    ? "bg-ui-bg-selected text-ui-text font-medium"
-                    : "text-ui-text-muted hover:text-ui-text"
-                }`}
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">放映</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={presenterMode}
-                onClick={() => setPresenterMode(true)}
-                title="切换演讲者视图 (P)"
-                aria-label="演讲者视图"
-                className={`h-7 px-2 sm:px-2.5 rounded-md text-[12.5px] inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                  presenterMode
-                    ? "bg-ui-bg-selected text-ui-text font-medium"
-                    : "text-ui-text-muted hover:text-ui-text"
-                }`}
-              >
-                <Presentation className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">演讲者</span>
-              </button>
-            </div>
-          )}
-
           {totalSlides > 0 && (
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
-              title="全屏放映 (F)"
-              aria-label="全屏放映"
+              title="全屏预览 (F)"
+              aria-label="全屏预览"
               className="h-8 px-2 sm:px-2.5 rounded-md text-[13px] font-medium text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ui-press"
             >
               <Maximize2 className="w-3.5 h-3.5 text-ui-icon" />
@@ -450,250 +354,14 @@ export default function PreviewPage() {
 
       {historicalExport && (
         <div className="bg-ui-warning-bg px-5 py-1.5 text-center text-[12.5px] text-ui-warning shrink-0">
-          当前放映的是上次导出的成稿，与工作台最新修改尚不一致。
+          当前预览的是上次导出的成稿，与工作台最新修改尚不一致。
         </div>
       )}
 
       <main className="flex-1 min-h-0 flex flex-col overflow-y-auto lg:overflow-hidden clean-scroll px-4 sm:px-6 pb-5 pt-2">
         {totalSlides > 0 ? (
-          presenterMode ? (
-            /* ── Dual-Zone Presenter Desk ── */
-            <div
-              key="view-presenter"
-              className="w-full max-w-[1400px] mx-auto flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.58fr)_minmax(340px,1fr)] gap-5 lg:gap-6 items-stretch anim-msg-in"
-            >
-              {/* Left Zone: Current Slide Stage + Quiet Controls */}
-              <div className="flex flex-col justify-center gap-4 min-h-0">
-                <div
-                  className={`aspect-[16/9] w-[min(100%,calc((100dvh-160px)*16/9))] mx-auto rounded-lg bg-ui-surface overflow-clip relative ${
-                    currentNeedsRim ? "ring-1 ring-ui-n7" : ""
-                  }`}
-                >
-                  <div
-                    key={`pres-${selected}`}
-                    className="absolute inset-0 anim-slide-settle"
-                  >
-                    {currentPageSrc ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={currentPageSrc}
-                        alt={`第 ${selected + 1} 页`}
-                        className="w-full h-full object-contain block select-none"
-                      />
-                    ) : currentOutlineItem ? (
-                      <SlideRenderer
-                        pid={pid}
-                        item={currentOutlineItem}
-                        index={selected}
-                        total={totalSlides}
-                        theme={activeTheme}
-                        brand={project?.brand}
-                      />
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="w-[min(100%,calc((100dvh-160px)*16/9))] mx-auto flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={selected === 0}
-                      onClick={() => setSelected((s) => Math.max(0, s - 1))}
-                      className="ui-btn-subtle h-9 px-3.5 text-[13px] inline-flex items-center gap-1 disabled:opacity-35"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      <span>上一页</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={selected >= totalSlides - 1}
-                      onClick={() =>
-                        setSelected((s) => Math.min(totalSlides - 1, s + 1))
-                      }
-                      className="ui-btn-primary h-9 px-4 text-[13px] inline-flex items-center gap-1 disabled:opacity-35"
-                    >
-                      <span>下一页</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="text-[13px] text-ui-text-secondary tabular-nums">
-                    第 {selected + 1} / {totalSlides} 页
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Zone: Unified Borderless Presenter Console */}
-              <aside className="rounded-2xl bg-ui-surface p-5 flex flex-col gap-5 min-h-0 lg:overflow-hidden">
-                {/* Pacing Timer */}
-                <div className="space-y-3 shrink-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ui-text-secondary">
-                      <Clock className="w-3.5 h-3.5 text-ui-icon" />
-                      <span>演讲计时</span>
-                    </span>
-                    <div className="inline-flex items-center bg-ui-bg p-0.5 rounded-lg gap-0.5">
-                      {[5, 10, 15].map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setTargetMinutes(m)}
-                          className={`px-2 py-0.5 rounded-md text-[12px] transition-colors cursor-pointer tabular-nums ${
-                            targetMinutes === m
-                              ? "bg-ui-bg-selected text-ui-text font-medium"
-                              : "text-ui-text-muted hover:text-ui-text"
-                          }`}
-                        >
-                          {m}分
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <div className="text-[30px] font-semibold tabular-nums tracking-[-0.03em] text-ui-text leading-none">
-                        {formatTimer(elapsedSec)}
-                      </div>
-                      <div
-                        className={`text-[12.5px] mt-1.5 tabular-nums ${
-                          isOvertime
-                            ? "text-ui-danger font-medium"
-                            : "text-ui-text-muted"
-                        }`}
-                      >
-                        {isOvertime
-                          ? `已超时 ${formatTimer(Math.abs(remainingSec))}`
-                          : `距离目标剩余 ${formatTimer(remainingSec)}`}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setTimerRunning((v) => !v)}
-                        className="ui-btn-subtle h-8.5 px-3 text-[13px] inline-flex items-center gap-1.5 bg-ui-bg hover:bg-ui-control-hover"
-                      >
-                        {timerRunning ? (
-                          <>
-                            <Pause className="w-3.5 h-3.5" />
-                            <span>暂停</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>开始</span>
-                          </>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTimerRunning(false);
-                          setElapsedSec(0);
-                        }}
-                        title="重置计时器"
-                        aria-label="重置计时器"
-                        className="ui-btn-subtle h-8.5 w-8.5 inline-flex items-center justify-center bg-ui-bg hover:bg-ui-control-hover"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Up Next Preview */}
-                <div className="space-y-2 shrink-0">
-                  <div className="flex items-center justify-between gap-3 text-[12.5px]">
-                    <span className="font-medium text-ui-text-secondary shrink-0">
-                      下一页
-                    </span>
-                    {nextOutlineItem && (
-                      <span className="text-ui-text-muted truncate tabular-nums">
-                        第 {selected + 2} 页 {nextOutlineItem.title}
-                      </span>
-                    )}
-                  </div>
-                  {selected + 1 < totalSlides ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelected((s) => Math.min(totalSlides - 1, s + 1))
-                      }
-                      aria-label={`跳至第 ${selected + 2} 页`}
-                      className={`block aspect-[16/9] w-full rounded-lg overflow-clip bg-ui-bg relative cursor-pointer transition-shadow hover:ring-1 hover:ring-ui-border/55 ${
-                        nextNeedsRim ? "ring-1 ring-ui-n7" : ""
-                      }`}
-                    >
-                      {nextPageSrc ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={nextPageSrc}
-                          alt={`第 ${selected + 2} 页`}
-                          className="w-full h-full object-contain block"
-                        />
-                      ) : nextOutlineItem ? (
-                        <SlideRenderer
-                          pid={pid}
-                          item={nextOutlineItem}
-                          index={selected + 1}
-                          total={totalSlides}
-                          theme={activeTheme}
-                          brand={project?.brand}
-                        />
-                      ) : null}
-                    </button>
-                  ) : (
-                    <div className="py-5 rounded-xl bg-ui-bg text-center text-[12.5px] text-ui-text-muted">
-                      当前已是最后一页
-                    </div>
-                  )}
-                </div>
-
-                {/* Speaker Notes Reader */}
-                <div className="flex-1 flex flex-col min-h-[160px] gap-2.5">
-                  <div className="flex items-center justify-between gap-2 shrink-0">
-                    <span className="text-[12.5px] font-medium text-ui-text-secondary">
-                      演讲者备注
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setNoteFontSize((s) => Math.max(13, s - 2))
-                        }
-                        aria-label="减小备注字号"
-                        className="h-7 px-2 rounded-md bg-ui-bg hover:bg-ui-control-hover text-[12px] text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer"
-                      >
-                        A-
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setNoteFontSize((s) => Math.min(24, s + 2))
-                        }
-                        aria-label="增大备注字号"
-                        className="h-7 px-2 rounded-md bg-ui-bg hover:bg-ui-control-hover text-[12px] text-ui-text-secondary hover:text-ui-text transition-colors cursor-pointer"
-                      >
-                        A+
-                      </button>
-                    </div>
-                  </div>
-                  <div
-                    className="flex-1 overflow-y-auto clean-scroll rounded-xl bg-ui-bg p-3.5 leading-[1.7] text-ui-text whitespace-pre-wrap"
-                    style={{ fontSize: noteFontSize }}
-                  >
-                    {currentOutlineItem?.speaker_notes?.trim()
-                      ? currentOutlineItem.speaker_notes
-                      : "本页暂未填写演讲者备注，可在工作台右侧补充或让 AI 助手生成口播稿。"}
-                  </div>
-                </div>
-              </aside>
-            </div>
-          ) : (
-            /* ── Cinema Screening View ── */
-            <div
-              key="view-cinema"
-              className="w-full flex-1 min-h-0 flex flex-col items-center justify-center gap-4 anim-msg-in"
-            >
+          /* ── Deck Review Stage ── */
+          <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center gap-4 anim-msg-in">
               {/* Maximized Viewport-Fit 16:9 Stage */}
               <div className="w-[min(100%,calc((100dvh-204px)*16/9),1180px)] relative stage-reveal-host">
                 <div
@@ -825,11 +493,9 @@ export default function PreviewPage() {
                     方向键或空格翻页
                   </span>
                   <span className="hidden sm:inline">F 全屏</span>
-                  <span className="hidden sm:inline">P 演讲者视图</span>
                 </div>
               </div>
             </div>
-          )
         ) : (
           <div className="my-auto mx-auto bg-ui-surface rounded-2xl p-9 sm:p-11 max-w-md w-full text-center space-y-5">
             <div className="space-y-2">

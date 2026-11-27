@@ -135,7 +135,7 @@ export function useGenerationTask({
         flashToast(
           task.kind === "outline"
             ? "大纲提炼完成"
-            : "PPTX 已编译完成，可随时下载或全屏放映"
+            : "PPTX 已编译完成，可随时下载或预览"
         );
       } else {
         setStatus(task.step || "正在处理…");

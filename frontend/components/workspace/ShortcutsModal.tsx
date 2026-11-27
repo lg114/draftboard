@@ -42,11 +42,10 @@ const SHORTCUT_GROUPS: {
     ],
   },
   {
-    title: "放映与演讲者视图",
+    title: "成稿预览",
     items: [
       { keys: ["←", "→", "空格"], desc: "切换上一页或下一页" },
-      { keys: ["F"], desc: "进入或退出全屏放映" },
-      { keys: ["P"], desc: "切换放映或演讲者视图" },
+      { keys: ["F"], desc: "进入或退出全屏预览" },
     ],
   },
 ];
