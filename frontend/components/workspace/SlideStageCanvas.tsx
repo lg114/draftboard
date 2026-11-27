@@ -9,6 +9,7 @@ import {
   Plus,
   Square,
   Type,
+  Upload,
   Workflow,
 } from "lucide-react";
 import type {
@@ -77,10 +78,16 @@ interface SlideStageCanvasProps {
   onDeleteCustomElement?: (elementId: string) => void;
   onBatchDeleteCustomElements?: (elementIds: string[]) => void;
   onAddCustomElement?: (element: CanvasElement) => void;
+  onAddCustomElements?: (elements: CanvasElement[], toastText?: string) => void;
   onDuplicateCustomElement?: (elementId: string) => string | null;
   onBatchDuplicateCustomElements?: (elementIds: string[]) => string[];
   onReorderCustomElement?: (elementId: string, dir: "front" | "back") => void;
-  onSelectedCustomElementChange?: (elementId: string | null) => void;
+  onSelectedCustomElementsChange?: (elementIds: string[]) => void;
+  onDropFilesOnCanvas?: (
+    files: FileList | File[],
+    dropPos?: { x: number; y: number }
+  ) => Promise<string[]>;
+  onNotify?: (text: string) => void;
 }
 
 const MIN_ZOOM = 50;
@@ -120,10 +127,13 @@ export function SlideStageCanvas({
   onDeleteCustomElement,
   onBatchDeleteCustomElements,
   onAddCustomElement,
+  onAddCustomElements,
   onDuplicateCustomElement,
   onBatchDuplicateCustomElements,
   onReorderCustomElement,
-  onSelectedCustomElementChange,
+  onSelectedCustomElementsChange,
+  onDropFilesOnCanvas,
+  onNotify,
 }: SlideStageCanvasProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const slideFrameRef = useRef<HTMLDivElement | null>(null);
@@ -131,6 +141,7 @@ export function SlideStageCanvas({
   const [zoomPct, setZoomPct] = useState(100);
   const [spacePressed, setSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [isStageDragging, setIsStageDragging] = useState(false);
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
   const [selectedElIds, setSelectedElIds] = useState<string[]>([]);
   const [editingCustomTextId, setEditingCustomTextId] = useState<string | null>(
@@ -139,6 +150,11 @@ export function SlideStageCanvas({
   const [forceLiveStandard, setForceLiveStandard] = useState(false);
   const [pendingStandardField, setPendingStandardField] =
     useState<StandardEditableField | null>(null);
+  const clipboardRef = useRef<{
+    lastSlideIndex: number;
+    pasteCount: number;
+    elements: CanvasElement[];
+  } | null>(null);
 
   const pendingZoomAnchorRef = useRef<{
     u: number;
@@ -413,8 +429,110 @@ export function SlideStageCanvas({
   };
 
   useEffect(() => {
-    onSelectedCustomElementChange?.(selectedEl ? selectedEl.id : null);
-  }, [selectedEl, onSelectedCustomElementChange]);
+    onSelectedCustomElementsChange?.(selectedElIds);
+  }, [selectedElIds, onSelectedCustomElementsChange]);
+
+  // Cross-slide element clipboard: Ctrl/Cmd+C copies selected free-canvas elements;
+  // Ctrl/Cmd+V (paste event when OS clipboard has no image) pastes across any slide.
+  useEffect(() => {
+    if (diffPreviewActive || isAgentBusy) return;
+    const isEditable = (el: HTMLElement | null) =>
+      Boolean(
+        el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.tagName === "SELECT" ||
+            el.isContentEditable)
+      );
+
+    const onCopyKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "c") return;
+      if (isEditable(e.target as HTMLElement | null)) return;
+      if (!isCustomCanvas || selectedEls.length === 0) return;
+      if (window.getSelection()?.toString()) return;
+
+      e.preventDefault();
+      clipboardRef.current = {
+        lastSlideIndex: selectedIndex,
+        pasteCount: 0,
+        elements: structuredClone(selectedEls),
+      };
+      onNotify?.(
+        selectedEls.length > 1
+          ? `已复制 ${selectedEls.length} 个元素，可切换页面后按 Ctrl+V 粘贴`
+          : "已复制选中元素，可切换页面后按 Ctrl+V 粘贴"
+      );
+    };
+
+    const onPasteElements = (e: ClipboardEvent) => {
+      if (!onAddCustomElements) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (isEditable(active)) return;
+
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].kind === "file" && items[i].type.startsWith("image/")) {
+            return;
+          }
+        }
+      }
+
+      const clip = clipboardRef.current;
+      if (!clip || clip.elements.length === 0) return;
+
+      e.preventDefault();
+      const sameSlide = clip.lastSlideIndex === selectedIndex;
+      const nextCount = sameSlide ? clip.pasteCount + 1 : 0;
+      clip.lastSlideIndex = selectedIndex;
+      clip.pasteCount = nextCount;
+
+      const desiredShift = nextCount * 18;
+      let maxDx = desiredShift;
+      let maxDy = desiredShift;
+      for (const el of clip.elements) {
+        if (el.kind === "line") {
+          const maxX = Math.min(960, 960 - el.w);
+          const maxY = Math.min(540, 540 - el.h);
+          maxDx = Math.min(maxDx, maxX - el.x);
+          maxDy = Math.min(maxDy, maxY - el.y);
+        } else {
+          maxDx = Math.min(maxDx, 960 - el.w - el.x);
+          maxDy = Math.min(maxDy, 540 - el.h - el.y);
+        }
+      }
+      const shiftX = Math.max(0, Math.round(maxDx));
+      const shiftY = Math.max(0, Math.round(maxDy));
+      const stamp = Date.now().toString(36);
+      const clones: CanvasElement[] = clip.elements.map((orig, i) => {
+        const clone: CanvasElement = structuredClone(orig);
+        clone.id = `el_${orig.kind}_${stamp}_${i}_${Math.random()
+          .toString(36)
+          .slice(2, 5)}`;
+        clone.x = Math.round(clone.x + shiftX);
+        clone.y = Math.round(clone.y + shiftY);
+        return clone;
+      });
+      onAddCustomElements(clones);
+      setSelectedElIds(clones.map((c) => c.id));
+    };
+
+    window.addEventListener("keydown", onCopyKey);
+    window.addEventListener("paste", onPasteElements);
+    return () => {
+      window.removeEventListener("keydown", onCopyKey);
+      window.removeEventListener("paste", onPasteElements);
+    };
+  }, [
+    diffPreviewActive,
+    isAgentBusy,
+    isCustomCanvas,
+    selectedEls,
+    selectedIndex,
+    onAddCustomElements,
+    onNotify,
+  ]);
 
   const handleAlignSelected = useCallback(
     (mode: AlignMode) => {
@@ -725,7 +843,61 @@ export function SlideStageCanvas({
   return (
     <main className="flex-1 bg-ui-bg px-1 pb-3 pt-0.5 flex flex-col min-w-0 min-h-0 overflow-hidden">
       {/* Gently raised dark stage surface (--ui-surface, no outer frame border) */}
-      <div className="flex-1 min-h-0 bg-ui-surface rounded-xl flex flex-col overflow-hidden relative">
+      <div
+        onDragOver={(e) => {
+          if (diffPreviewActive || isAgentBusy || !onDropFilesOnCanvas) return;
+          if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+          e.preventDefault();
+          setIsStageDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setIsStageDragging(false);
+          }
+        }}
+        onDrop={(e) => {
+          if (diffPreviewActive || isAgentBusy || !onDropFilesOnCanvas) return;
+          if (!e.dataTransfer.files?.length) return;
+          e.preventDefault();
+          setIsStageDragging(false);
+          let dropPos: { x: number; y: number } | undefined;
+          const frame = slideFrameRef.current;
+          if (frame) {
+            const rect = frame.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              dropPos = {
+                x: Math.max(
+                  0,
+                  Math.min(960, ((e.clientX - rect.left) / rect.width) * 960)
+                ),
+                y: Math.max(
+                  0,
+                  Math.min(540, ((e.clientY - rect.top) / rect.height) * 540)
+                ),
+              };
+            }
+          }
+          void onDropFilesOnCanvas(e.dataTransfer.files, dropPos).then(
+            (createdIds) => {
+              if (createdIds.length > 0) setSelectedElIds(createdIds);
+            }
+          );
+        }}
+        className="flex-1 min-h-0 bg-ui-surface rounded-xl flex flex-col overflow-hidden relative"
+      >
+        {isStageDragging && (
+          <div className="absolute inset-3 z-40 rounded-xl border border-dashed border-ui-focus bg-ui-bg/88 backdrop-blur-xs flex flex-col items-center justify-center gap-2 pointer-events-none">
+            <Upload className="w-6 h-6 text-ui-accent-text" />
+            <span className="text-[14px] font-medium text-ui-text">
+              {isCustomCanvas
+                ? "松开即可将图片插入当前自由画布"
+                : "松开即可将图片应用到当前幻灯片"}
+            </span>
+            <span className="text-[12.5px] text-ui-text-muted">
+              支持 PNG / JPG 图片；文档类文件会自动加入材料库
+            </span>
+          </div>
+        )}
         {/* Before/After Visual Diff Banner */}
         {diffPreviewActive && (
           <div className="px-4 py-2 bg-ui-warning-bg border-b border-ui-warning/25 flex flex-wrap items-center justify-between gap-2 text-[13px] shrink-0 anim-msg-in">
@@ -1119,6 +1291,9 @@ export function SlideStageCanvas({
                       diffPreviewActive || isAgentBusy
                         ? undefined
                         : onBatchUpdateCustomElements
+                    }
+                    onFocusField={
+                      diffPreviewActive || isAgentBusy ? undefined : onFocusField
                     }
                   />
                   {brand && (

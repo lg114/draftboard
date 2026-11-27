@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import draftboard.chat_agent as chat_agent
 from draftboard.routes.common import require_project
@@ -17,6 +17,7 @@ router = APIRouter()
 class ChatMessageRequest(BaseModel):
     message: str
     selected_slide_index: int = 0
+    selected_element_ids: list[str] = Field(default_factory=list)
     theme_id: str = "keynote_light"
     auto_fit: bool = True
     replace_last_error: bool = False
@@ -50,6 +51,7 @@ async def post_chat_message(project_id: str, req: ChatMessageRequest):
             project_id,
             cleaned,
             selected_slide_index=req.selected_slide_index,
+            selected_element_ids=req.selected_element_ids,
             theme_id=req.theme_id,
             auto_fit=req.auto_fit,
             replace_last_error=req.replace_last_error,

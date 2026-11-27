@@ -18,6 +18,7 @@ interface UseStudioChatParams {
   outline: Outline | null;
   isStale: boolean;
   selectedIndex: number;
+  selectedElementIds: string[];
   selectedThemeId: string;
   autoFit: boolean;
   llmSettings: LLMSettingsResponse | null;
@@ -41,6 +42,7 @@ export function useStudioChat({
   outline,
   isStale,
   selectedIndex,
+  selectedElementIds,
   selectedThemeId,
   autoFit,
   llmSettings,
@@ -163,6 +165,7 @@ export function useStudioChat({
           body: JSON.stringify({
             message: clean,
             selected_slide_index: selectedIndex,
+            selected_element_ids: selectedElementIds,
             theme_id: selectedThemeId,
             auto_fit: autoFit,
             replace_last_error: Boolean(opts?.replaceLastError),
@@ -335,6 +338,7 @@ export function useStudioChat({
       outline,
       saveOutline,
       selectedIndex,
+      selectedElementIds,
       selectedThemeId,
       autoFit,
       ensureProjectId,

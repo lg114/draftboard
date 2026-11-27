@@ -123,6 +123,7 @@ export default function ProjectWorkspacePage() {
       pid={ws.pid}
       outline={hasActiveOutline ? outline : null}
       selectedIndex={hasActiveOutline ? ws.selectedIndex : 0}
+      selectedElementIds={hasActiveOutline ? ws.selectedCustomElementIds : []}
       materials={ws.materials}
       materialsCount={ws.materials.length}
       themes={ws.themes}
@@ -439,6 +440,9 @@ export default function ProjectWorkspacePage() {
             onAddCustomElement={(el) =>
               outlineEditor.addCustomElement(ws.selectedIndex, el)
             }
+            onAddCustomElements={(els, toastText) =>
+              outlineEditor.addCustomElements(ws.selectedIndex, els, toastText)
+            }
             onDuplicateCustomElement={(elId) =>
               outlineEditor.duplicateCustomElement(ws.selectedIndex, elId)
             }
@@ -448,7 +452,9 @@ export default function ProjectWorkspacePage() {
             onReorderCustomElement={(elId, dir) =>
               outlineEditor.reorderCustomElement(ws.selectedIndex, elId, dir)
             }
-            onSelectedCustomElementChange={ws.handleSelectedCustomElementChange}
+            onSelectedCustomElementsChange={ws.handleSelectedCustomElementsChange}
+            onDropFilesOnCanvas={ws.handleDropOrPasteFilesOnStage}
+            onNotify={(msg) => ws.flashToast(msg)}
           />
 
           {ws.rightOpen && (

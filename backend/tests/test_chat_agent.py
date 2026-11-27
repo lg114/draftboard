@@ -834,3 +834,64 @@ def test_design_custom_slide_three_hard_guardrails(client):
     # auto_fit safe font_size persisted onto tight_note (< 20pt)
     tight = next(e for e in els if e["id"] == "tight_note")
     assert tight["font_size"] < 20
+
+
+def test_selected_element_ids_context_and_deck_state(client: TestClient, monkeypatch):
+    import asyncio
+
+    demo = client.post("/api/projects/demo")
+    assert demo.status_code == 200
+    pid = demo.json()["project_id"]
+
+    proj = client.get(f"/api/projects/{pid}").json()
+    ver = proj["outlines"][0]["outline_version"]
+    outline = client.get(f"/api/projects/{pid}/outlines/{ver}").json()
+    slide3_els = outline["items"][2]["custom_elements"]
+    chart_el = next(e for e in slide3_els if e["kind"] == "chart")
+
+    state = chat_agent.StudioTurnState(
+        project_id=pid,
+        selected_slide_index=2,
+        selected_element_ids=[chart_el["id"]],
+        before_outline_version=ver,
+    )
+    turn_input = chat_agent._build_turn_input(pid, "把这个图表改成折线图", [], state)
+    assert f"id={chart_el['id']}" in turn_input[-1]["content"]
+    assert "当前画布已选中元素" in turn_input[-1]["content"]
+
+    tools = {t.name: t for t in chat_agent.build_studio_tools(state)}
+    deck_json = json.loads(asyncio.run(_invoke(tools["get_deck_state"], {})))
+    assert deck_json["selected_element_ids"] == [chart_el["id"]]
+    s3_els = deck_json["slides"][2]["custom_elements"]
+    selected_matches = [e for e in s3_els if e.get("is_selected")]
+    assert len(selected_matches) == 1
+    assert selected_matches[0]["id"] == chart_el["id"]
+
+    captured_ids: list[str] = []
+
+    class _FakeStream:
+        def __init__(self, agent):
+            self.agent = agent
+
+        async def stream_events(self):
+            yield SimpleNamespace(
+                type="raw_response_event",
+                data=SimpleNamespace(type="response.output_text.delta", delta="收到。"),
+            )
+
+    def _fake_run(agent, turn_msgs, **kwargs):
+        captured_ids.append(turn_msgs[-1]["content"])
+        return _FakeStream(agent)
+
+    monkeypatch.setattr(chat_agent.Runner, "run_streamed", staticmethod(_fake_run))
+
+    res = client.post(
+        f"/api/projects/{pid}/chat",
+        json={
+            "message": "把这个图表换一下样式",
+            "selected_slide_index": 2,
+            "selected_element_ids": [chart_el["id"]],
+        },
+    )
+    assert res.status_code == 200
+    assert captured_ids and f"id={chart_el['id']}" in captured_ids[0]

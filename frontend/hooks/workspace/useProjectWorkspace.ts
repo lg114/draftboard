@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   BrandKit,
+  CanvasElement,
   FALLBACK_THEMES,
   jsonOptions,
   LLMSettingsResponse,
@@ -128,14 +129,19 @@ export function useProjectWorkspace() {
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingOutlinePromptRef = useRef<{ prompt?: string } | null>(null);
-  const selectedCustomElIdRef = useRef<string | null>(null);
+  const [selectedCustomElementIds, setSelectedCustomElementIds] = useState<
+    string[]
+  >([]);
+  const selectedCustomElIdsRef = useRef<string[]>([]);
 
-  const handleSelectedCustomElementChange = useCallback(
-    (elId: string | null) => {
-      selectedCustomElIdRef.current = elId;
-    },
-    []
-  );
+  const handleSelectedCustomElementsChange = useCallback((elIds: string[]) => {
+    selectedCustomElIdsRef.current = elIds;
+    setSelectedCustomElementIds((prev) =>
+      prev.length === elIds.length && prev.every((id, i) => id === elIds[i])
+        ? prev
+        : elIds
+    );
+  }, []);
 
   useEffect(() => {
     api<{ themes: ThemeOption[] }>("/api/themes")
@@ -303,6 +309,7 @@ export function useProjectWorkspace() {
     outline: outlineEditor.outline,
     isStale: outlineEditor.isStale,
     selectedIndex,
+    selectedElementIds: selectedCustomElementIds,
     selectedThemeId,
     autoFit,
     llmSettings,
@@ -614,6 +621,160 @@ export function useProjectWorkspace() {
     return undefined;
   }, [outlineEditor.isStale, outlineEditor.outline, outlineEditor.saveOutline]);
 
+  const handleDropOrPasteFilesOnStage = useCallback(
+    async (
+      files: FileList | File[],
+      dropPos?: { x: number; y: number }
+    ): Promise<string[]> => {
+      const list = Array.from(files);
+      if (list.length === 0) return [];
+
+      const isSupportedImage = (f: File) =>
+        f.type.startsWith("image/") || /\.(png|jpe?g)$/i.test(f.name);
+      const imageFiles = list.filter(isSupportedImage);
+      const otherFiles = list.filter((f) => !isSupportedImage(f));
+
+      if (otherFiles.length > 0) {
+        await uploadFiles(otherFiles);
+      }
+      if (imageFiles.length === 0) return [];
+
+      const curOutline = outlineEditor.outline;
+      const curItem = curOutline?.items[selectedIndex];
+      if (!curItem || isChatStreaming) {
+        await uploadFiles(imageFiles);
+        return [];
+      }
+
+      const measureImage = (file: File) =>
+        new Promise<{ w: number; h: number }>((resolve) => {
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            const w = img.naturalWidth || 360;
+            const h = img.naturalHeight || 240;
+            URL.revokeObjectURL(url);
+            resolve({ w, h });
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve({ w: 360, h: 240 });
+          };
+          img.src = url;
+        });
+
+      setRawError(null);
+      generation.setStatus("正在上传并插入图片…");
+      try {
+        const targetPid = await ensureProjectId();
+        const uploaded: { assetId: string; w: number; h: number }[] = [];
+
+        for (const rawFile of imageFiles) {
+          const hasValidExt = /\.(png|jpe?g)$/i.test(rawFile.name);
+          const ext = rawFile.type.includes("jpeg") ? "jpg" : "png";
+          const uploadFile = hasValidExt
+            ? rawFile
+            : new File(
+                [rawFile],
+                `${(rawFile.name || "pasted_image").replace(/\.[^.]+$/, "")}.${ext}`,
+                { type: ext === "jpg" ? "image/jpeg" : "image/png" }
+              );
+          const dims = await measureImage(uploadFile);
+          const fd = new FormData();
+          fd.append("file", uploadFile);
+          const res = await fetch(`/api/projects/${targetPid}/materials`, {
+            method: "POST",
+            body: fd,
+          });
+          if (!res.ok) {
+            let detail = res.statusText;
+            try {
+              detail = (await res.json()).detail || detail;
+            } catch {}
+            throw new Error(`${uploadFile.name}: ${detail}`);
+          }
+          const data = (await res.json()) as { asset_id: string };
+          uploaded.push({ assetId: data.asset_id, ...dims });
+        }
+
+        // Refresh materials list without overwriting unsaved local outline edits
+        try {
+          const mats = await api<MaterialsResponse>(
+            `/api/projects/${targetPid}/materials`
+          );
+          setMaterials(mats.materials || []);
+          setSourceFragments(mats.source_fragments || []);
+        } catch {}
+
+        const isCustomSlide = Boolean(
+          curItem.custom_elements && curItem.custom_elements.length > 0
+        );
+        if (isCustomSlide) {
+          const created: CanvasElement[] = uploaded.map((u, idx) => {
+            const maxW = 380;
+            const maxH = 260;
+            const ratio = Math.min(maxW / u.w, maxH / u.h, 1);
+            const boxW = Math.max(96, Math.round(u.w * ratio));
+            const boxH = Math.max(72, Math.round(u.h * ratio));
+            const cx = (dropPos?.x ?? 480) + idx * 20;
+            const cy = (dropPos?.y ?? 270) + idx * 20;
+            const x = Math.max(
+              16,
+              Math.min(960 - boxW - 16, Math.round(cx - boxW / 2))
+            );
+            const y = Math.max(
+              16,
+              Math.min(540 - boxH - 16, Math.round(cy - boxH / 2))
+            );
+            return {
+              id: `el_image_${Date.now().toString(36)}_${idx}_${Math.random()
+                .toString(36)
+                .slice(2, 5)}`,
+              kind: "image",
+              x,
+              y,
+              w: boxW,
+              h: boxH,
+              image_asset_id: u.assetId,
+              fit: "contain",
+              radius: 8,
+            };
+          });
+          outlineEditor.addCustomElements(
+            selectedIndex,
+            created,
+            created.length > 1
+              ? `已将 ${created.length} 张图片插入当前画布`
+              : "已将图片插入当前画布"
+          );
+          generation.setStatus("");
+          return created.map((c) => c.id);
+        } else {
+          const first = uploaded[0];
+          outlineEditor.applyImageToSlide(
+            selectedIndex,
+            first.assetId,
+            `${first.assetId}-img`
+          );
+          generation.setStatus("");
+          return [];
+        }
+      } catch (e) {
+        setRawError((e as Error).message);
+        generation.setStatus("");
+        return [];
+      }
+    },
+    [
+      uploadFiles,
+      outlineEditor,
+      selectedIndex,
+      isChatStreaming,
+      ensureProjectId,
+      generation,
+    ]
+  );
+
   // Global Ctrl+V clipboard screenshot paste anywhere in workspace
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -638,12 +799,32 @@ export function useProjectWorkspace() {
       }
       if (imageFiles.length > 0) {
         e.preventDefault();
-        void uploadFiles(imageFiles);
+        const activeEl = document.activeElement as HTMLElement | null;
+        const inEditable = Boolean(
+          activeEl &&
+            (activeEl.tagName === "INPUT" ||
+              activeEl.tagName === "TEXTAREA" ||
+              activeEl.isContentEditable)
+        );
+        if (
+          !inEditable &&
+          outlineEditor.outline?.items.length &&
+          !isChatStreaming
+        ) {
+          void handleDropOrPasteFilesOnStage(imageFiles);
+        } else {
+          void uploadFiles(imageFiles);
+        }
       }
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [uploadFiles]);
+  }, [
+    uploadFiles,
+    handleDropOrPasteFilesOnStage,
+    outlineEditor.outline,
+    isChatStreaming,
+  ]);
 
   // Global keyboard shortcuts: Ctrl/⌘+S, Ctrl/⌘+L, Ctrl/⌘+Z/Y, ↑/↓ slide switch
   useEffect(() => {
@@ -680,7 +861,7 @@ export function useProjectWorkspace() {
         outlineEditor.handleRedo();
         return;
       }
-      if (selectedCustomElIdRef.current) {
+      if (selectedCustomElIdsRef.current.length > 0) {
         return;
       }
       if (e.key === "ArrowUp") {
@@ -768,8 +949,10 @@ export function useProjectWorkspace() {
     clearChatConfirmTimerRef,
     fileInputRef,
     pendingOutlinePromptRef,
-    handleSelectedCustomElementChange,
+    selectedCustomElementIds,
+    handleSelectedCustomElementsChange,
     uploadFiles,
+    handleDropOrPasteFilesOnStage,
     uploadPastedNote,
     importUrlMaterial,
     deleteMaterial,

@@ -578,6 +578,37 @@ export function useOutlineEditor({
     [mutateOutline, flashToast]
   );
 
+  const addCustomElements = useCallback(
+    (index: number, elementsToAdd: CanvasElement[], toastText?: string) => {
+      if (elementsToAdd.length === 0) return;
+      let convertedFromStandard = false;
+      mutateOutline((prev) => {
+        if (!prev.items[index]) return null;
+        const items = [...prev.items];
+        const item = items[index];
+        const elems = item.custom_elements || [];
+        convertedFromStandard = elems.length === 0;
+        items[index] = {
+          ...item,
+          custom_bg: item.custom_bg || "theme:bg",
+          custom_elements: [...elems, ...elementsToAdd],
+        };
+        return { ...prev, items };
+      });
+      const fallbackMsg =
+        elementsToAdd.length > 1
+          ? `已粘贴 ${elementsToAdd.length} 个元素${
+              convertedFromStandard ? "（已切换为自由画布）" : ""
+            }`
+          : `已粘贴元素${convertedFromStandard ? "（已切换为自由画布）" : ""}`;
+      flashToast(toastText || fallbackMsg, 4200, {
+        label: "撤销",
+        onClick: () => handleUndoRef.current(),
+      });
+    },
+    [mutateOutline, flashToast]
+  );
+
   const duplicateCustomElement = useCallback(
     (index: number, elementId: string): string | null => {
       const cur = outlineRef.current?.items[index];
@@ -1016,6 +1047,7 @@ export function useOutlineEditor({
     batchDuplicateCustomElements,
     deleteCustomElement,
     addCustomElement,
+    addCustomElements,
     duplicateCustomElement,
     reorderCustomElement,
     clearCustomLayout,

@@ -106,6 +106,7 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
    - Draftboard 预设主题固定为 4 套：**苹果白**（纯净画布）、**深空钛黑**（暗黑发布会）、**松柏森绿**（深松封面 + 象牙正文）、**美术馆暖石**（亚麻纸感 + 陶土点缀）。
    - **区分「整套主题配色」与「单页自由排版」**：
      * 只要对话围绕**主题、配色、整体风格**展开（包括用户说「4 套都不喜欢」「还有其他风格吗」「帮我换个风格」「帮我做一个」等），**默认目标是修改整套文稿的全局配色**——直接调用 `set_custom_palette` 为全稿定制和谐的封面底色、正文底色和主强调色（系统自动按对比度推导出安全的标题色、正文色、卡片面色与图表色板，全稿实时生效），**切勿只修改当前选中的 1 页来敷衍整套风格需求**。
+     * **精准响应当前画布选中元素**：当上下文包含 `当前画布已选中元素` 且用户指代「这个 / 它 / 把选中的改成…」时，优先先调用 `get_deck_state` 获取该页完整元素列表，精准修改对应 `id` 的元素，同时完整保留同页其他未选中元素的位置、文案与样式；回复中依然用自然中文称呼该元素（不要暴露内部 `id`）。
      * 只有在用户**明确指明针对某一页的版式布局**（例如「把第 2 页做成三卡片」「只重排当前页」）时，才调用 `design_custom_slide` 重绘该单页。
 """
 
@@ -230,6 +231,7 @@ class SlidePatchInput(BaseModel):
 class StudioTurnState:
     project_id: str
     selected_slide_index: int = 0  # 0-based
+    selected_element_ids: list[str] = field(default_factory=list)
     active_theme_id: str = "keynote_light"
     auto_fit: bool = True
     before_outline_version: Optional[str] = None
@@ -549,6 +551,11 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                     if it.layout
                     else ("cover" if idx == 0 else ("closing" if idx == total - 1 and total > 1 else "content"))
                 )
+                selected_id_set = (
+                    set(state.selected_element_ids)
+                    if idx == state.selected_slide_index
+                    else set()
+                )
                 slides_info.append(
                     {
                         "slide_number": idx + 1,
@@ -564,7 +571,17 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                         "is_custom_canvas": bool(it.custom_elements),
                         "custom_bg": it.custom_bg,
                         "custom_elements": (
-                            [el.model_dump(exclude_none=True) for el in it.custom_elements]
+                            [
+                                {
+                                    **el.model_dump(exclude_none=True),
+                                    **(
+                                        {"is_selected": True}
+                                        if el.id in selected_id_set
+                                        else {}
+                                    ),
+                                }
+                                for el in it.custom_elements
+                            ]
                             if it.custom_elements
                             else None
                         ),
@@ -593,6 +610,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                 ),
                 "auto_fit": state.auto_fit,
                 "selected_slide_number": state.selected_slide_index + 1,
+                "selected_element_ids": state.selected_element_ids,
                 "total_slides": len(slides_info),
                 "uploaded_images": images,
                 "outline_confirmed": bool(outline and outline.is_confirmed),
@@ -1703,9 +1721,35 @@ def _build_turn_input(
     outline = _load_outline(project_id, state.before_outline_version)
     total = len(outline.items) if outline else 0
     cur_slide_hint = "暂无大纲"
+    selected_els_hint = ""
     if outline and 0 <= state.selected_slide_index < total:
         cur_it = outline.items[state.selected_slide_index]
         cur_slide_hint = f"第 {state.selected_slide_index + 1} 页「{cur_it.title}」"
+        if state.selected_element_ids and cur_it.custom_elements:
+            sel_set = set(state.selected_element_ids)
+            el_descs: list[str] = []
+            for el in cur_it.custom_elements:
+                if el.id not in sel_set:
+                    continue
+                if el.kind == "text":
+                    preview = (el.text or "").replace("\n", " ").strip()[:24]
+                    el_descs.append(f"id={el.id} (text「{preview}」)")
+                elif el.kind == "chart":
+                    preview = (el.chart_title or el.chart_type or "图表").strip()[:24]
+                    el_descs.append(f"id={el.id} (chart:{el.chart_type or 'bar'}「{preview}」)")
+                elif el.kind == "table":
+                    hdr = " / ".join((el.headers or [])[:3])[:24]
+                    el_descs.append(f"id={el.id} (table「{hdr}」)")
+                elif el.kind == "diagram":
+                    el_descs.append(
+                        f"id={el.id} (diagram:{el.diagram_type or 'timeline'}, {len(el.diagram_steps or [])}步)"
+                    )
+                elif el.kind == "image":
+                    el_descs.append(f"id={el.id} (image「{el.image_asset_id or ''}」)")
+                else:
+                    el_descs.append(f"id={el.id} ({el.kind})")
+            if el_descs:
+                selected_els_hint = f" | 当前画布已选中元素：[{', '.join(el_descs)}]"
 
     raw_brand = meta.get("brand") if isinstance(meta.get("brand"), dict) else None
     active_theme_spec = apply_brand_to_theme(
@@ -1718,7 +1762,7 @@ def _build_turn_input(
     )
     context_header = (
         f"[当前工作台上下文：文稿名「{proj_name}」| 共 {total} 页 | "
-        f"当前选中 {cur_slide_hint} | {theme_hint} | "
+        f"当前选中 {cur_slide_hint}{selected_els_hint} | {theme_hint} | "
         f"自动缩字 {'开' if state.auto_fit else '关'}]"
     )
 
@@ -1732,6 +1776,7 @@ async def stream_studio_chat(
     user_message: str,
     *,
     selected_slide_index: int = 0,
+    selected_element_ids: Optional[list[str]] = None,
     theme_id: str = "keynote_light",
     auto_fit: bool = True,
     replace_last_error: bool = False,
@@ -1756,9 +1801,15 @@ async def stream_studio_chat(
     )
     before_ver = _latest_outline_version(project_id)
 
+    clean_selected_el_ids = [
+        str(eid).strip()
+        for eid in (selected_element_ids or [])
+        if isinstance(eid, str) and eid.strip()
+    ]
     state = StudioTurnState(
         project_id=project_id,
         selected_slide_index=max(0, selected_slide_index),
+        selected_element_ids=list(dict.fromkeys(clean_selected_el_ids)),
         active_theme_id=resolve_theme_id(theme_id) if is_valid_theme(theme_id) else "keynote_light",
         auto_fit=auto_fit,
         before_outline_version=before_ver,

@@ -63,14 +63,181 @@ function fmtChartNum(val: number, suffix = ""): string {
   return `${s}${suffix}`;
 }
 
+function InlineCellInput({
+  value,
+  ariaLabel,
+  align = "left",
+  fontSize,
+  fontWeight = 400,
+  color,
+  onChange,
+  onDone,
+  onTab,
+}: {
+  value: string;
+  ariaLabel: string;
+  align?: "left" | "center" | "right";
+  fontSize: number;
+  fontWeight?: number;
+  color: string;
+  onChange: (nextValue: string) => void;
+  onDone: () => void;
+  onTab?: (shiftKey: boolean) => void;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.focus({ preventScroll: true });
+    node.select();
+  }, []);
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onBlur={() => onDone()}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+        if (e.key === "Tab" && onTab) {
+          e.preventDefault();
+          e.stopPropagation();
+          onTab(e.shiftKey);
+        }
+      }}
+      style={{
+        width: "100%",
+        margin: 0,
+        padding: "1px 3px",
+        border: "none",
+        borderRadius: 3,
+        outline: `1.5px solid ${SELECTION_COLOR}`,
+        background: "rgba(61, 99, 221, 0.12)",
+        boxSizing: "border-box",
+        fontFamily: "inherit",
+        fontSize,
+        fontWeight,
+        lineHeight: 1.25,
+        color,
+        textAlign: align,
+        caretColor: SELECTION_COLOR,
+      }}
+    />
+  );
+}
+
+function InlineDiagramTextarea({
+  value,
+  ariaLabel,
+  fontSize,
+  lineHeight,
+  color,
+  onChange,
+  onDone,
+}: {
+  value: string;
+  ariaLabel: string;
+  fontSize: number;
+  lineHeight: number;
+  color: string;
+  onChange: (nextValue: string) => void;
+  onDone: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.focus({ preventScroll: true });
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      aria-label={ariaLabel}
+      value={value}
+      rows={3}
+      onChange={(e) => onChange(e.target.value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onBlur={() => onDone()}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+        }
+      }}
+      style={{
+        width: "100%",
+        flex: 1,
+        minHeight: Math.round(lineHeight * 2),
+        margin: 0,
+        padding: "2px 4px",
+        border: "none",
+        borderRadius: 4,
+        outline: `1.5px solid ${SELECTION_COLOR}`,
+        background: "rgba(61, 99, 221, 0.08)",
+        resize: "none",
+        boxSizing: "border-box",
+        fontFamily: "inherit",
+        fontSize,
+        lineHeight: `${lineHeight}px`,
+        color,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        caretColor: SELECTION_COLOR,
+      }}
+    />
+  );
+}
+
 function CustomTableView({
   el,
   sw,
   slideBg,
+  interactive = false,
+  editingCell = null,
+  onStartEditCell,
+  onUpdateCell,
 }: {
   el: CanvasElement;
   sw: ThemeSwatches;
   slideBg: string;
+  interactive?: boolean;
+  editingCell?: { row: number; col: number } | null;
+  onStartEditCell?: (cell: { row: number; col: number } | null) => void;
+  onUpdateCell?: (row: number, col: number, value: string) => void;
 }) {
   const headers = el.headers || [];
   const rows = el.rows || [];
@@ -85,6 +252,27 @@ function CustomTableView({
   const headerCol = resolveCanvasColor(el.header_color, sw, sw.title) || sw.title;
   const cellCol = resolveCanvasColor(el.cell_color, sw, sw.body) || sw.body;
   const stripeFill = resolveCanvasColor(el.stripe_fill, sw, sw.surface);
+  const canEdit = Boolean(interactive && onStartEditCell && onUpdateCell);
+
+  const stepCell = (row: number, col: number, shiftKey: boolean) => {
+    if (!onStartEditCell) return;
+    const minRow = headers.length > 0 ? -1 : 0;
+    const maxRow = rows.length - 1;
+    let nextCol = col + (shiftKey ? -1 : 1);
+    let nextRow = row;
+    if (nextCol >= colCount) {
+      nextCol = 0;
+      nextRow += 1;
+    } else if (nextCol < 0) {
+      nextCol = colCount - 1;
+      nextRow -= 1;
+    }
+    if (nextRow < minRow || nextRow > maxRow) {
+      onStartEditCell(null);
+      return;
+    }
+    onStartEditCell({ row: nextRow, col: nextCol });
+  };
 
   return (
     <table
@@ -101,24 +289,45 @@ function CustomTableView({
         <thead>
           <tr>
             {Array.from({ length: colCount }).map((_, ci) => {
-              const raw = String(headers[ci] ?? "").trim();
+              const raw = String(headers[ci] ?? "");
+              const isEditing =
+                canEdit && editingCell?.row === -1 && editingCell?.col === ci;
               return (
                 <th
                   key={ci}
+                  onDoubleClick={(e) => {
+                    if (!canEdit) return;
+                    e.stopPropagation();
+                    onStartEditCell?.({ row: -1, col: ci });
+                  }}
                   style={{
                     backgroundColor: headerFill,
                     color: headerCol,
                     fontWeight: 700,
                     textAlign: "left",
-                    padding: "4px 8px",
+                    padding: isEditing ? "2px 4px" : "4px 8px",
                     borderTop: `1px solid ${sw.divider}`,
                     borderBottom: `1.5px solid ${sw.divider}`,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
+                    cursor: isEditing ? "text" : undefined,
                   }}
                 >
-                  {raw}
+                  {isEditing ? (
+                    <InlineCellInput
+                      ariaLabel={`编辑表头第 ${ci + 1} 列`}
+                      value={raw}
+                      fontSize={fontSize}
+                      fontWeight={700}
+                      color={headerCol}
+                      onChange={(val) => onUpdateCell?.(-1, ci, val)}
+                      onDone={() => onStartEditCell?.(null)}
+                      onTab={(shift) => stepCell(-1, ci, shift)}
+                    />
+                  ) : (
+                    raw.trim()
+                  )}
                 </th>
               );
             })}
@@ -131,25 +340,48 @@ function CustomTableView({
           return (
             <tr key={ri}>
               {Array.from({ length: colCount }).map((_, ci) => {
-                const val = String(row[ci] ?? "").trim();
+                const rawVal = String(row[ci] ?? "");
+                const val = rawVal.trim();
                 const isNumeric = ci > 0 && NUMERIC_CELL_RE.test(val);
+                const isEditing =
+                  canEdit && editingCell?.row === ri && editingCell?.col === ci;
                 return (
                   <td
                     key={ci}
+                    onDoubleClick={(e) => {
+                      if (!canEdit) return;
+                      e.stopPropagation();
+                      onStartEditCell?.({ row: ri, col: ci });
+                    }}
                     style={{
                       backgroundColor: rowBg,
                       color: cellCol,
                       fontWeight: ci === 0 && colCount >= 2 ? 700 : 400,
                       textAlign: isNumeric ? "right" : "left",
-                      padding: "4px 8px",
+                      padding: isEditing ? "2px 4px" : "4px 8px",
                       borderBottom: `1px solid ${sw.divider}`,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                       fontVariantNumeric: isNumeric ? "tabular-nums" : undefined,
+                      cursor: isEditing ? "text" : undefined,
                     }}
                   >
-                    {val}
+                    {isEditing ? (
+                      <InlineCellInput
+                        ariaLabel={`编辑第 ${ri + 1} 行第 ${ci + 1} 列`}
+                        value={rawVal}
+                        align={isNumeric ? "right" : "left"}
+                        fontSize={fontSize}
+                        fontWeight={ci === 0 && colCount >= 2 ? 700 : 400}
+                        color={cellCol}
+                        onChange={(next) => onUpdateCell?.(ri, ci, next)}
+                        onDone={() => onStartEditCell?.(null)}
+                        onTab={(shift) => stepCell(ri, ci, shift)}
+                      />
+                    ) : (
+                      val
+                    )}
                   </td>
                 );
               })}
@@ -657,10 +889,24 @@ function CustomDiagramView({
   el,
   sw,
   slideBg,
+  interactive = false,
+  editingField = null,
+  onStartEditField,
+  onUpdateStep,
 }: {
   el: CanvasElement;
   sw: ThemeSwatches;
   slideBg: string;
+  interactive?: boolean;
+  editingField?: { stepIdx: number; field: "label" | "title" | "desc" } | null;
+  onStartEditField?: (
+    target: { stepIdx: number; field: "label" | "title" | "desc" } | null
+  ) => void;
+  onUpdateStep?: (
+    stepIdx: number,
+    field: "label" | "title" | "desc",
+    value: string
+  ) => void;
 }) {
   const steps = el.diagram_steps || [];
   if (steps.length < 2) return null;
@@ -668,6 +914,7 @@ function CustomDiagramView({
   const n = steps.length;
   const bw = Math.max(320, el.w);
   const bh = Math.max(120, el.h);
+  const canEdit = Boolean(interactive && onStartEditField && onUpdateStep);
 
   const hexClean = sw.accent.replace("#", "").trim();
   const accentDark =
@@ -723,6 +970,11 @@ function CustomDiagramView({
                 }}
               >
                 <div
+                  onDoubleClick={(e) => {
+                    if (!canEdit) return;
+                    e.stopPropagation();
+                    onStartEditField?.({ stepIdx: idx, field: "label" });
+                  }}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -731,7 +983,12 @@ function CustomDiagramView({
                     height: 22,
                     minWidth: 34,
                     maxWidth: "100%",
-                    padding: "0 9px",
+                    padding:
+                      canEdit &&
+                      editingField?.stepIdx === idx &&
+                      editingField?.field === "label"
+                        ? "0 4px"
+                        : "0 9px",
                     borderRadius: 11,
                     backgroundColor: sw.accent,
                     color: accentFg,
@@ -745,22 +1002,78 @@ function CustomDiagramView({
                     flexShrink: 0,
                   }}
                 >
-                  {badgeTxt}
+                  {canEdit &&
+                  editingField?.stepIdx === idx &&
+                  editingField?.field === "label" ? (
+                    <InlineCellInput
+                      ariaLabel={`编辑步骤 ${idx + 1} 标签`}
+                      value={step.label || ""}
+                      align="center"
+                      fontSize={10}
+                      fontWeight={700}
+                      color={accentFg}
+                      onChange={(val) => onUpdateStep?.(idx, "label", val)}
+                      onDone={() => onStartEditField?.(null)}
+                    />
+                  ) : (
+                    badgeTxt
+                  )}
                 </div>
                 <div
+                  onDoubleClick={(e) => {
+                    if (!canEdit) return;
+                    e.stopPropagation();
+                    onStartEditField?.({ stepIdx: idx, field: "title" });
+                  }}
                   style={{
                     fontSize: titlePt,
                     fontWeight: 700,
                     lineHeight: `${Math.round(titlePt * 1.28)}px`,
                     color: sw.title,
-                    marginBottom: step.desc?.trim() ? 6 : 0,
+                    marginBottom:
+                      step.desc?.trim() ||
+                      (editingField?.stepIdx === idx &&
+                        editingField?.field === "desc")
+                        ? 6
+                        : 0,
                     wordBreak: "break-word",
                   }}
                 >
-                  {step.title}
+                  {canEdit &&
+                  editingField?.stepIdx === idx &&
+                  editingField?.field === "title" ? (
+                    <InlineCellInput
+                      ariaLabel={`编辑步骤 ${idx + 1} 标题`}
+                      value={step.title || ""}
+                      fontSize={titlePt}
+                      fontWeight={700}
+                      color={sw.title}
+                      onChange={(val) => onUpdateStep?.(idx, "title", val)}
+                      onDone={() => onStartEditField?.(null)}
+                    />
+                  ) : (
+                    step.title
+                  )}
                 </div>
-                {step.desc?.trim() ? (
+                {canEdit &&
+                editingField?.stepIdx === idx &&
+                editingField?.field === "desc" ? (
+                  <InlineDiagramTextarea
+                    ariaLabel={`编辑步骤 ${idx + 1} 说明`}
+                    value={step.desc || ""}
+                    fontSize={descPt}
+                    lineHeight={Math.round(descPt * 1.38)}
+                    color={sw.body}
+                    onChange={(val) => onUpdateStep?.(idx, "desc", val)}
+                    onDone={() => onStartEditField?.(null)}
+                  />
+                ) : step.desc?.trim() ? (
                   <div
+                    onDoubleClick={(e) => {
+                      if (!canEdit) return;
+                      e.stopPropagation();
+                      onStartEditField?.({ stepIdx: idx, field: "desc" });
+                    }}
                     style={{
                       fontSize: descPt,
                       fontWeight: 400,
@@ -773,6 +1086,14 @@ function CustomDiagramView({
                   >
                     {step.desc}
                   </div>
+                ) : canEdit ? (
+                  <div
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      onStartEditField?.({ stepIdx: idx, field: "desc" });
+                    }}
+                    style={{ flex: 1, minHeight: 16 }}
+                  />
                 ) : null}
               </div>
 
@@ -869,6 +1190,11 @@ function CustomDiagramView({
         return (
           <div key={idx}>
             <div
+              onDoubleClick={(e) => {
+                if (!canEdit) return;
+                e.stopPropagation();
+                onStartEditField?.({ stepIdx: idx, field: "label" });
+              }}
               style={{
                 position: "absolute",
                 left: colX,
@@ -888,7 +1214,22 @@ function CustomDiagramView({
                 boxSizing: "border-box",
               }}
             >
-              {lblTxt}
+              {canEdit &&
+              editingField?.stepIdx === idx &&
+              editingField?.field === "label" ? (
+                <InlineCellInput
+                  ariaLabel={`编辑节点 ${idx + 1} 标签`}
+                  value={step.label || ""}
+                  align="center"
+                  fontSize={11}
+                  fontWeight={700}
+                  color={sw.accent}
+                  onChange={(val) => onUpdateStep?.(idx, "label", val)}
+                  onDone={() => onStartEditField?.(null)}
+                />
+              ) : (
+                lblTxt
+              )}
             </div>
             <div
               style={{
@@ -908,19 +1249,60 @@ function CustomDiagramView({
               }}
             >
               <div
+                onDoubleClick={(e) => {
+                  if (!canEdit) return;
+                  e.stopPropagation();
+                  onStartEditField?.({ stepIdx: idx, field: "title" });
+                }}
                 style={{
                   fontSize: titlePt,
                   fontWeight: 700,
                   lineHeight: `${Math.round(titlePt * 1.28)}px`,
                   color: sw.title,
-                  marginBottom: step.desc?.trim() ? 6 : 0,
+                  marginBottom:
+                    step.desc?.trim() ||
+                    (editingField?.stepIdx === idx &&
+                      editingField?.field === "desc")
+                      ? 6
+                      : 0,
                   wordBreak: "break-word",
                 }}
               >
-                {step.title}
+                {canEdit &&
+                editingField?.stepIdx === idx &&
+                editingField?.field === "title" ? (
+                  <InlineCellInput
+                    ariaLabel={`编辑节点 ${idx + 1} 标题`}
+                    value={step.title || ""}
+                    fontSize={titlePt}
+                    fontWeight={700}
+                    color={sw.title}
+                    onChange={(val) => onUpdateStep?.(idx, "title", val)}
+                    onDone={() => onStartEditField?.(null)}
+                  />
+                ) : (
+                  step.title
+                )}
               </div>
-              {step.desc?.trim() ? (
+              {canEdit &&
+              editingField?.stepIdx === idx &&
+              editingField?.field === "desc" ? (
+                <InlineDiagramTextarea
+                  ariaLabel={`编辑节点 ${idx + 1} 说明`}
+                  value={step.desc || ""}
+                  fontSize={descPt}
+                  lineHeight={Math.round(descPt * 1.38)}
+                  color={sw.body}
+                  onChange={(val) => onUpdateStep?.(idx, "desc", val)}
+                  onDone={() => onStartEditField?.(null)}
+                />
+              ) : step.desc?.trim() ? (
                 <div
+                  onDoubleClick={(e) => {
+                    if (!canEdit) return;
+                    e.stopPropagation();
+                    onStartEditField?.({ stepIdx: idx, field: "desc" });
+                  }}
                   style={{
                     fontSize: descPt,
                     fontWeight: 400,
@@ -933,6 +1315,14 @@ function CustomDiagramView({
                 >
                   {step.desc}
                 </div>
+              ) : canEdit ? (
+                <div
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    onStartEditField?.({ stepIdx: idx, field: "desc" });
+                  }}
+                  style={{ flex: 1, minHeight: 16 }}
+                />
               ) : null}
             </div>
           </div>
@@ -958,6 +1348,7 @@ interface CustomSlideLayerProps {
   onBatchUpdateElements?: (
     patches: Record<string, Partial<CanvasElement>>
   ) => void;
+  onFocusField?: (fieldId: string) => void;
 }
 
 interface OrigMemberState {
@@ -1098,6 +1489,7 @@ export function CustomSlideLayer({
   onUpdateElementText,
   onUpdateElement,
   onBatchUpdateElements,
+  onFocusField,
 }: CustomSlideLayerProps) {
   const sw = theme.swatches;
   const bg = resolveCanvasColor(customBg, sw, sw.bg) || sw.bg;
@@ -1116,6 +1508,38 @@ export function CustomSlideLayer({
     spacings: SpacingGuide[];
   }>({ lines: [], spacings: [] });
   const [marqueeRect, setMarqueeRect] = useState<BoxRect | null>(null);
+  const [editingTableCell, setEditingTableCell] = useState<{
+    elId: string;
+    row: number;
+    col: number;
+  } | null>(null);
+  const [editingDiagramField, setEditingDiagramField] = useState<{
+    elId: string;
+    stepIdx: number;
+    field: "label" | "title" | "desc";
+  } | null>(null);
+
+  useEffect(() => {
+    if (!interactive) {
+      setEditingTableCell(null);
+      setEditingDiagramField(null);
+    }
+  }, [interactive]);
+
+  useEffect(() => {
+    if (
+      editingTableCell &&
+      !elements.some((e) => e.id === editingTableCell.elId)
+    ) {
+      setEditingTableCell(null);
+    }
+    if (
+      editingDiagramField &&
+      !elements.some((e) => e.id === editingDiagramField.elId)
+    ) {
+      setEditingDiagramField(null);
+    }
+  }, [elements, editingTableCell, editingDiagramField]);
 
   const selectedSet = new Set(interactive ? selectedElementIds : []);
 
@@ -1384,12 +1808,20 @@ export function CustomSlideLayer({
     mode: "move" | "resize" | "line-start" | "line-end"
   ) => {
     if (!interactive || e.button !== 0) return;
-    if (editingTextId === el.id) return;
+    if (
+      editingTextId === el.id ||
+      editingTableCell?.elId === el.id ||
+      editingDiagramField?.elId === el.id
+    ) {
+      return;
+    }
     e.stopPropagation();
 
     if (editingTextId) {
       onStartEditText?.(null);
     }
+    if (editingTableCell) setEditingTableCell(null);
+    if (editingDiagramField) setEditingDiagramField(null);
 
     // Shift+click toggles membership cleanly without initiating a drag
     if (mode === "move" && e.shiftKey) {
@@ -1442,6 +1874,8 @@ export function CustomSlideLayer({
     if (editingTextId) {
       onStartEditText?.(null);
     }
+    if (editingTableCell) setEditingTableCell(null);
+    if (editingDiagramField) setEditingDiagramField(null);
     const safeScale = scale > 0.05 ? scale : 0.75;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -1598,7 +2032,12 @@ export function CustomSlideLayer({
           );
         }
 
-        const selectionStyle: React.CSSProperties = isEditingThisText
+        const isEditingThisElement =
+          isEditingThisText ||
+          editingTableCell?.elId === el.id ||
+          editingDiagramField?.elId === el.id;
+
+        const selectionStyle: React.CSSProperties = isEditingThisElement
           ? {
               outline: `2px solid ${SELECTION_COLOR}`,
               outlineOffset: 2,
@@ -1614,7 +2053,10 @@ export function CustomSlideLayer({
           : {};
 
         const resizeHandle =
-          isSelected && isSingleSelected && !isEditingThisText && onUpdateElement ? (
+          isSelected &&
+          isSingleSelected &&
+          !isEditingThisElement &&
+          onUpdateElement ? (
             <div
               onPointerDown={(e) => startDrag(e, el, "resize")}
               onClick={(e) => e.stopPropagation()}
@@ -1678,9 +2120,20 @@ export function CustomSlideLayer({
           return (
             <div
               key={key}
+              title={
+                interactive
+                  ? "拖拽移动 · 双击在属性栏替换配图 · Shift+点击多选"
+                  : undefined
+              }
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
+              }}
+              onDoubleClick={(e) => {
+                if (!interactive) return;
+                e.stopPropagation();
+                onSelectElements?.([el.id]);
+                onFocusField?.("custom-element-editor");
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1727,9 +2180,15 @@ export function CustomSlideLayer({
         }
 
         if (el.kind === "table") {
+          const isEditingThisTable = editingTableCell?.elId === el.id;
           return (
             <div
               key={key}
+              title={
+                interactive && !isEditingThisTable
+                  ? "拖拽移动 · 双击单元格直接编辑 · Shift+点击多选"
+                  : undefined
+              }
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
@@ -1741,12 +2200,49 @@ export function CustomSlideLayer({
                 top: el.y,
                 width: el.w,
                 height: el.h,
-                cursor: interactive ? "move" : "default",
+                cursor: isEditingThisTable
+                  ? "text"
+                  : interactive
+                  ? "move"
+                  : "default",
                 pointerEvents: interactive ? "auto" : "none",
                 ...selectionStyle,
               }}
             >
-              <CustomTableView el={el} sw={sw} slideBg={bg} />
+              <CustomTableView
+                el={el}
+                sw={sw}
+                slideBg={bg}
+                interactive={interactive && Boolean(onUpdateElement)}
+                editingCell={
+                  isEditingThisTable && editingTableCell
+                    ? { row: editingTableCell.row, col: editingTableCell.col }
+                    : null
+                }
+                onStartEditCell={(cell) => {
+                  if (cell) {
+                    onStartEditText?.(null);
+                    setEditingDiagramField(null);
+                    onSelectElements?.([el.id]);
+                    setEditingTableCell({ elId: el.id, ...cell });
+                  } else {
+                    setEditingTableCell(null);
+                  }
+                }}
+                onUpdateCell={(row, col, val) => {
+                  if (!onUpdateElement) return;
+                  if (row === -1) {
+                    const nextHeaders = [...(el.headers || [])];
+                    nextHeaders[col] = val;
+                    onUpdateElement(el.id, { headers: nextHeaders });
+                  } else {
+                    const nextRows = (el.rows || []).map((r) => [...r]);
+                    while (nextRows.length <= row) nextRows.push([]);
+                    nextRows[row][col] = val;
+                    onUpdateElement(el.id, { rows: nextRows });
+                  }
+                }}
+              />
               {resizeHandle}
             </div>
           );
@@ -1756,9 +2252,20 @@ export function CustomSlideLayer({
           return (
             <div
               key={key}
+              title={
+                interactive
+                  ? "拖拽移动 · 双击在属性栏编辑图表数据 · Shift+点击多选"
+                  : undefined
+              }
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
+              }}
+              onDoubleClick={(e) => {
+                if (!interactive) return;
+                e.stopPropagation();
+                onSelectElements?.([el.id]);
+                onFocusField?.("custom-element-editor");
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1779,9 +2286,15 @@ export function CustomSlideLayer({
         }
 
         if (el.kind === "diagram") {
+          const isEditingThisDiagram = editingDiagramField?.elId === el.id;
           return (
             <div
               key={key}
+              title={
+                interactive && !isEditingThisDiagram
+                  ? "拖拽移动 · 双击节点文字直接编辑 · Shift+点击多选"
+                  : undefined
+              }
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
@@ -1793,12 +2306,46 @@ export function CustomSlideLayer({
                 top: el.y,
                 width: el.w,
                 height: el.h,
-                cursor: interactive ? "move" : "default",
+                cursor: isEditingThisDiagram
+                  ? "text"
+                  : interactive
+                  ? "move"
+                  : "default",
                 pointerEvents: interactive ? "auto" : "none",
                 ...selectionStyle,
               }}
             >
-              <CustomDiagramView el={el} sw={sw} slideBg={bg} />
+              <CustomDiagramView
+                el={el}
+                sw={sw}
+                slideBg={bg}
+                interactive={interactive && Boolean(onUpdateElement)}
+                editingField={
+                  isEditingThisDiagram && editingDiagramField
+                    ? {
+                        stepIdx: editingDiagramField.stepIdx,
+                        field: editingDiagramField.field,
+                      }
+                    : null
+                }
+                onStartEditField={(target) => {
+                  if (target) {
+                    onStartEditText?.(null);
+                    setEditingTableCell(null);
+                    onSelectElements?.([el.id]);
+                    setEditingDiagramField({ elId: el.id, ...target });
+                  } else {
+                    setEditingDiagramField(null);
+                  }
+                }}
+                onUpdateStep={(stepIdx, field, val) => {
+                  if (!onUpdateElement) return;
+                  const nextSteps = (el.diagram_steps || []).map((st, idx) =>
+                    idx === stepIdx ? { ...st, [field]: val } : st
+                  );
+                  onUpdateElement(el.id, { diagram_steps: nextSteps });
+                }}
+              />
               {resizeHandle}
             </div>
           );

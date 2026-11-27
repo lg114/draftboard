@@ -12,6 +12,8 @@ import {
   Maximize2,
   Minimize2,
   RefreshCw,
+  StickyNote,
+  X,
 } from "lucide-react";
 import {
   api,
@@ -25,7 +27,10 @@ import {
   ThemeOption,
 } from "../../../../lib/api";
 import { ExportFormatMenu } from "../../../../components/workspace/ExportFormatMenu";
-import { needsContrastHairline } from "../../../../components/workspace/layoutUtils";
+import {
+  needsContrastHairline,
+  normalizeEscapedNewlines,
+} from "../../../../components/workspace/layoutUtils";
 import { SlideRenderer } from "../../../../components/workspace/stage/StandardSlideView";
 import { computeActiveTheme } from "../../../../hooks/workspace/outlineHelpers";
 
@@ -61,6 +66,7 @@ export default function PreviewPage() {
   const [rendering, setRendering] = useState(false);
   const [historicalExport, setHistoricalExport] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -207,6 +213,17 @@ export default function PreviewPage() {
         void toggleFullscreen();
         return;
       }
+      if (
+        e.key.toLowerCase() === "n" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        totalSlides > 0
+      ) {
+        e.preventDefault();
+        setShowNotes((v) => !v);
+        return;
+      }
       if (!totalSlides) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault();
@@ -255,6 +272,9 @@ export default function PreviewPage() {
 
   const currentPageSrc = preview?.pages?.[selected] || "";
   const currentOutlineItem = outline?.items?.[selected] || null;
+  const currentNotes = normalizeEscapedNewlines(
+    currentOutlineItem?.speaker_notes || ""
+  ).trim();
   const currentPageDownloadUrl = currentPageSrc
     ? `${currentPageSrc}${currentPageSrc.includes("?") ? "&" : "?"}download=1`
     : "";
@@ -286,6 +306,28 @@ export default function PreviewPage() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {totalSlides > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowNotes((v) => !v)}
+              aria-pressed={showNotes}
+              title={showNotes ? "收起演讲备注 (N)" : "展开演讲备注 (N)"}
+              aria-label="演讲备注"
+              className={`h-8 px-2 sm:px-2.5 rounded-md text-[13px] font-medium transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ui-press ${
+                showNotes
+                  ? "bg-ui-bg-selected text-ui-accent-text"
+                  : "text-ui-text-secondary hover:text-ui-text hover:bg-ui-bg-hover"
+              }`}
+            >
+              <StickyNote
+                className={`w-3.5 h-3.5 ${
+                  showNotes ? "text-ui-accent-text" : "text-ui-icon"
+                }`}
+              />
+              <span className="hidden md:inline">备注</span>
+            </button>
+          )}
+
           {totalSlides > 0 && (
             <button
               type="button"
@@ -363,7 +405,13 @@ export default function PreviewPage() {
           /* ── Deck Review Stage ── */
           <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center gap-4 anim-msg-in">
               {/* Maximized Viewport-Fit 16:9 Stage */}
-              <div className="w-[min(100%,calc((100dvh-204px)*16/9),1180px)] relative stage-reveal-host">
+              <div
+                className={`relative stage-reveal-host transition-[width] duration-150 ${
+                  showNotes
+                    ? "w-[min(100%,calc((100dvh-318px)*16/9),1180px)]"
+                    : "w-[min(100%,calc((100dvh-204px)*16/9),1180px)]"
+                }`}
+              >
                 <div
                   className={`aspect-[16/9] w-full rounded-lg bg-ui-surface overflow-clip relative ${
                     currentNeedsRim ? "ring-1 ring-ui-n7" : ""
@@ -414,6 +462,39 @@ export default function PreviewPage() {
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
+
+              {/* Collapsible Presenter Speaker Notes Strip (Toggle via N) */}
+              {showNotes && (
+                <section
+                  aria-label={`第 ${selected + 1} 页演讲备注`}
+                  className="w-[min(100%,1180px)] rounded-xl bg-ui-surface ring-1 ring-ui-border-subtle px-4 py-2.5 shrink-0 anim-msg-in"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ui-text-muted">
+                      <StickyNote className="w-3.5 h-3.5 text-ui-icon" />
+                      <span>第 {selected + 1} 页演讲备注</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowNotes(false)}
+                      aria-label="收起演讲备注"
+                      title="收起演讲备注 (N)"
+                      className="p-0.5 rounded text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover cursor-pointer transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="max-h-20 overflow-y-auto clean-scroll text-[13.5px] leading-relaxed whitespace-pre-wrap text-ui-text-secondary">
+                    {currentNotes ? (
+                      currentNotes
+                    ) : (
+                      <span className="text-ui-text-muted">
+                        本页暂未填写演讲备注，可在工作台右侧「属性」或让 AI 助手一键补齐。
+                      </span>
+                    )}
+                  </div>
+                </section>
+              )}
 
               {/* Borderless Swipeable Contact-Sheet Filmstrip */}
               <div className="w-[min(100%,1180px)] flex flex-col items-center gap-2 shrink-0">
@@ -493,6 +574,7 @@ export default function PreviewPage() {
                     方向键或空格翻页
                   </span>
                   <span className="hidden sm:inline">F 全屏</span>
+                  <span className="hidden sm:inline">N 备注</span>
                 </div>
               </div>
             </div>
@@ -568,6 +650,33 @@ export default function PreviewPage() {
             </div>
           </div>
 
+          {/* Fullscreen Teleprompter Notes Card (N to toggle) */}
+          {showNotes && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="fixed bottom-18 left-1/2 -translate-x-1/2 w-[min(92vw,760px)] max-h-[26dvh] overflow-y-auto clean-scroll rounded-xl bg-ui-bg/92 backdrop-blur-md ring-1 ring-ui-border-subtle px-5 py-3.5 text-left shadow-[0_14px_40px_rgba(0,0,0,0.72)] select-text anim-msg-in"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ui-text-muted">
+                  <StickyNote className="w-3.5 h-3.5 text-ui-icon" />
+                  <span>第 {selected + 1} 页演讲备注</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowNotes(false)}
+                  aria-label="收起演讲备注"
+                  title="收起演讲备注 (N)"
+                  className="p-0.5 rounded text-ui-icon-quiet hover:text-ui-text hover:bg-ui-control-hover cursor-pointer transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[14px] leading-relaxed whitespace-pre-wrap text-ui-text">
+                {currentNotes || "本页暂未填写演讲备注。"}
+              </p>
+            </div>
+          )}
+
           {/* Pointer / Keyboard / Touch-Reachable Floating HUD */}
           <div
             onClick={(e) => e.stopPropagation()}
@@ -595,6 +704,21 @@ export default function PreviewPage() {
               className="p-1 rounded-full hover:bg-ui-control-hover disabled:opacity-30 cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
+            </button>
+            <span className="w-px h-3.5 bg-ui-border-subtle mx-0.5" />
+            <button
+              type="button"
+              onClick={() => setShowNotes((v) => !v)}
+              aria-pressed={showNotes}
+              title="切换演讲备注 (N)"
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                showNotes
+                  ? "bg-ui-bg-selected text-ui-accent-text"
+                  : "hover:bg-ui-control-hover"
+              }`}
+            >
+              <StickyNote className="w-3.5 h-3.5" />
+              <span>备注</span>
             </button>
             <span className="w-px h-3.5 bg-ui-border-subtle mx-0.5" />
             <button

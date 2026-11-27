@@ -32,6 +32,7 @@ interface AgentChatPanelProps {
   pid: string;
   outline: Outline | null;
   selectedIndex: number;
+  selectedElementIds?: string[];
   materials?: Material[];
   materialsCount: number;
   themes: ThemeOption[];
@@ -530,6 +531,7 @@ export function AgentChatPanel({
   pid,
   outline,
   selectedIndex,
+  selectedElementIds = [],
   materials = [],
   materialsCount,
   themes,
@@ -558,6 +560,38 @@ export function AgentChatPanel({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const totalSlides = outline?.items.length || 0;
+  const currentSlideElements = outline?.items[selectedIndex]?.custom_elements || [];
+  const selectedElements = selectedElementIds.length
+    ? currentSlideElements.filter((el) => selectedElementIds.includes(el.id))
+    : [];
+  const selectedContextLabel = (() => {
+    if (selectedElements.length === 0) return null;
+    const kindLabels: Record<string, string> = {
+      text: "文本框",
+      card: "卡片",
+      line: "分割线",
+      image: "图片",
+      table: "表格",
+      chart: "图表",
+      diagram: "图示",
+    };
+    if (selectedElements.length === 1) {
+      const el = selectedElements[0];
+      const kindCn = kindLabels[el.kind] || el.kind;
+      const snippet =
+        el.kind === "text"
+          ? (el.text || "").replace(/\s+/g, " ").trim().slice(0, 12)
+          : el.kind === "chart"
+          ? (el.chart_title || "").trim().slice(0, 12)
+          : el.kind === "table"
+          ? (el.headers?.[0] || "").trim().slice(0, 10)
+          : el.kind === "image"
+          ? (el.image_asset_id || "").trim().slice(0, 12)
+          : "";
+      return snippet ? `${kindCn}「${snippet}」` : kindCn;
+    }
+    return `${selectedElements.length} 个元素`;
+  })();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -613,11 +647,21 @@ export function AgentChatPanel({
 
   const quickPrompts =
     totalSlides > 0
-      ? [
-          `只精简第 ${selectedIndex + 1} 页的正文，保留核心事实`,
-          "检查全稿排版并找出缺失素材出处的页面",
-          "给每一页补齐演讲者口播备注",
-        ]
+      ? selectedElements.length > 0
+        ? [
+            selectedElements.length === 1 && selectedElements[0].kind === "chart"
+              ? "把当前选中的图表换一种更清晰的呈现方式"
+              : selectedElements.length === 1 && selectedElements[0].kind === "table"
+              ? "帮我精简当前选中表格的措辞并突出关键变化"
+              : "帮我优化当前选中元素的文案和排版",
+            `只精简第 ${selectedIndex + 1} 页的正文，保留核心事实`,
+            "给每一页补齐演讲者口播备注",
+          ]
+        : [
+            `只精简第 ${selectedIndex + 1} 页的正文，保留核心事实`,
+            "检查全稿排版并找出缺失素材出处的页面",
+            "给每一页补齐演讲者口播备注",
+          ]
       : materialsCount > 0
       ? [
           "基于当前素材生成一份 6 页汇报大纲",
@@ -661,8 +705,17 @@ export function AgentChatPanel({
       {/* Scrollable Editorial Conversation Thread (matching mockup: 当前第 N 页 + 你 / 助手) */}
       <div className="flex-1 min-h-0 overflow-y-auto clean-scroll px-4 py-3.5 space-y-5">
         {totalSlides > 0 && (
-          <div className="text-[12.5px] text-ui-text-muted">
-            当前第 {selectedIndex + 1} 页
+          <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-ui-text-muted">
+            <span>当前第 {selectedIndex + 1} 页</span>
+            {selectedContextLabel && (
+              <span
+                title="AI 助手会自动结合你当前画布上选中的元素进行精准修改"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-bg-selected text-ui-accent-text text-[12px] font-medium max-w-full truncate"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-ui-accent shrink-0" />
+                <span className="truncate">已选 {selectedContextLabel}</span>
+              </span>
+            )}
           </div>
         )}
 
