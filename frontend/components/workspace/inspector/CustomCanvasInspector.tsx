@@ -69,7 +69,7 @@ export function CustomCanvasInspector({
                   setSaveLayoutOpen((v) => !v);
                 }}
                 title="将当前自由画布结构收藏为常用版式，随时复用到其他页面"
-                className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-1 text-[12px]"
+                className="rounded-lg bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text font-medium transition-colors cursor-pointer inline-flex items-center gap-1 px-2 py-1 text-[12px]"
               >
                 <BookmarkPlus className="w-3.5 h-3.5" />
                 <span>收藏</span>
@@ -80,7 +80,7 @@ export function CustomCanvasInspector({
                 type="button"
                 onClick={onClearCustomLayout}
                 title="放弃自由画布，恢复使用标准模板版式"
-                className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-1 text-[12px]"
+                className="rounded-lg bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text font-medium transition-colors cursor-pointer inline-flex items-center gap-1 px-2 py-1 text-[12px]"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>恢复标准</span>
@@ -109,7 +109,7 @@ export function CustomCanvasInspector({
               value={saveLayoutName}
               onChange={(e) => setSaveLayoutName(e.target.value)}
               placeholder="输入版式名称（如：3卡片KPI页）"
-              className="ui-field flex-1 min-w-0 h-8 px-2.5 text-[12.5px]"
+              className="ui-field bg-ui-bg flex-1 min-w-0 h-8 px-2.5 text-[12.5px]"
             />
             <button
               type="submit"
@@ -198,7 +198,7 @@ export function CustomCanvasInspector({
                         rows: [...rows, newRow],
                       });
                     }}
-                    className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
+                    className="rounded-md bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text font-medium transition-colors cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
                   >
                     <Plus className="w-3 h-3" />
                     <span>加一行</span>
@@ -245,7 +245,7 @@ export function CustomCanvasInspector({
                                 }}
                                 placeholder={`列 ${ci + 1}`}
                                 title={h}
-                                className="ui-field w-full min-w-0 px-1.5 py-1 text-[12.5px] font-semibold"
+                                className="ui-field bg-ui-bg w-full min-w-0 px-1.5 py-1 text-[12px] font-semibold text-ui-text"
                               />
                             </th>
                           ))}
@@ -276,7 +276,7 @@ export function CustomCanvasInspector({
                                   });
                                 }}
                                 title={row[ci] ?? ""}
-                                className="ui-field w-full min-w-0 px-1.5 py-1 text-[12.5px] bg-ui-bg"
+                                className="ui-field bg-ui-bg w-full min-w-0 px-1.5 py-1 text-[12px]"
                               />
                             </td>
                           ))}
@@ -316,7 +316,7 @@ export function CustomCanvasInspector({
             return (
               <div
                 key={`${el.id}-chart-${cIdx}`}
-                className="rounded-xl bg-ui-surface border border-ui-border-subtle p-3 space-y-2.5"
+                className="rounded-xl bg-ui-surface p-3 space-y-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-semibold text-ui-text">
@@ -337,7 +337,7 @@ export function CustomCanvasInspector({
                         chart_series: nextSeries,
                       });
                     }}
-                    className="ui-btn-subtle inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
+                    className="rounded-md bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text font-medium transition-colors cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
                   >
                     <Plus className="w-3 h-3" />
                     <span>加一项</span>
@@ -355,7 +355,7 @@ export function CustomCanvasInspector({
                     }
                     placeholder="图表标题（选填）"
                     title={el.chart_title || ""}
-                    className="ui-field flex-1 min-w-0 px-2.5 py-1.5 text-[12.5px]"
+                    className="ui-field bg-ui-bg flex-1 min-w-0 px-2.5 py-1.5 text-[12.5px]"
                   />
                   <input
                     type="text"
@@ -367,7 +367,7 @@ export function CustomCanvasInspector({
                     }
                     placeholder="单位"
                     title="数值单位后缀（如 %、万、ms）"
-                    className="ui-field w-[62px] shrink-0 px-2 py-1.5 text-[12.5px]"
+                    className="ui-field bg-ui-bg w-[62px] shrink-0 px-2 py-1.5 text-[12.5px]"
                   />
                 </div>
 
@@ -376,7 +376,7 @@ export function CustomCanvasInspector({
                     <table className="w-full border-collapse text-[12.5px]">
                       <thead>
                         <tr>
-                          <th className="p-0.5 text-left text-[12px] font-medium text-ui-text-muted">
+                          <th className="p-0.5 pl-1 text-left text-[11.5px] font-medium text-ui-text-muted">
                             分类
                           </th>
                           {series.map((s, si) => (
@@ -395,7 +395,7 @@ export function CustomCanvasInspector({
                                   });
                                 }}
                                 placeholder={`系列 ${si + 1}`}
-                                className="ui-field w-full min-w-[58px] px-1.5 py-1 text-[12.5px] font-semibold"
+                                className="ui-field bg-ui-bg w-full min-w-[58px] px-2 py-1 text-[12px] font-semibold"
                               />
                             </th>
                           ))}
@@ -416,7 +416,7 @@ export function CustomCanvasInspector({
                                     chart_categories: nextCats,
                                   });
                                 }}
-                                className="ui-field w-full min-w-[60px] px-1.5 py-1 text-[12.5px] bg-ui-bg"
+                                className="ui-field bg-ui-bg w-full min-w-[60px] px-2 py-1 text-[12.5px]"
                               />
                             </td>
                             {series.map((s, si) => (
@@ -446,7 +446,7 @@ export function CustomCanvasInspector({
                                       chart_series: nextSeries,
                                     });
                                   }}
-                                  className="ui-field w-full min-w-[58px] px-1.5 py-1 text-[12.5px] bg-ui-bg font-mono tabular-nums"
+                                  className="ui-field bg-ui-bg w-full min-w-[58px] px-2 py-1 text-[12.5px] font-mono tabular-nums"
                                 />
                               </td>
                             ))}

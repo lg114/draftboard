@@ -179,27 +179,32 @@ export function StandardSlideEditor({
                     <button
                       key={`${img.asset_id}-${i}`}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() =>
                         onUpdateField("image_asset_id", img.asset_id)
                       }
                       title={img.asset_id}
-                      className={`group rounded-lg overflow-hidden bg-ui-surface-input p-1.5 text-left transition-all cursor-pointer border ${
+                      className={`group rounded-xl overflow-clip p-1.5 text-left transition-colors cursor-pointer ${
                         selected
-                          ? "border-ui-accent bg-ui-bg-selected"
-                          : "border-ui-border-subtle hover:border-ui-border"
+                          ? "bg-ui-bg-selected ring-1 ring-ui-accent"
+                          : "bg-ui-surface hover:bg-ui-control-hover"
                       }`}
                     >
-                      <div className="aspect-[16/10] rounded bg-ui-bg overflow-hidden flex items-center justify-center mb-1">
+                      <div className="aspect-[16/10] rounded-lg bg-ui-bg overflow-clip flex items-center justify-center mb-1.5">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={`/api/projects/${pid}/assets/${encodeURIComponent(
                             img.asset_id
                           )}`}
                           alt={img.asset_id}
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-contain block"
                         />
                       </div>
-                      <div className="text-[12.5px] text-ui-text-secondary truncate px-0.5 font-medium">
+                      <div
+                        className={`text-[12px] truncate px-0.5 font-medium ${
+                          selected ? "text-ui-text" : "text-ui-text-secondary"
+                        }`}
+                      >
                         {formatAssetLabel(img.asset_id)}
                       </div>
                     </button>
@@ -210,12 +215,12 @@ export function StandardSlideEditor({
               <button
                 type="button"
                 onClick={onUploadClick}
-                className="w-full py-5 px-3 rounded-xl border border-dashed border-ui-border-subtle hover:border-ui-border bg-ui-surface-input flex flex-col items-center justify-center gap-1.5 text-ui-text-muted hover:text-ui-text transition-colors cursor-pointer"
+                className="w-full py-5 px-3 rounded-xl bg-ui-surface hover:bg-ui-control-hover flex flex-col items-center justify-center gap-1.5 text-ui-text-muted hover:text-ui-text transition-colors cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-full bg-ui-bg-selected flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-ui-bg flex items-center justify-center">
                   <Plus className="w-4 h-4" />
                 </div>
-                <span className="text-[13px] font-medium">
+                <span className="text-[12.5px] font-medium">
                   上传 PNG / JPG 配图
                 </span>
               </button>
