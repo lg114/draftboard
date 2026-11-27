@@ -59,6 +59,7 @@ jobs:
         run: |
           rm -rf dist
           uv build
+          uv run python -c "import glob, zipfile; whl = glob.glob('dist/*.whl')[0]; names = zipfile.ZipFile(whl).namelist(); assert 'draftboard/static/index.html' in names, f'Embedded frontend missing from {whl}'"
 
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4

@@ -29,10 +29,10 @@ Draftboard 的做法是：先把材料整理成可编辑的大纲（每一页都
 ## 快速体验（不需要模型）
 
 ```bash
-cd backend
-uv sync
-uv run draftboard serve
+uvx --python 3.12 draftboard@latest serve
 ```
+
+（若从源码克隆运行，需先构建一次前端静态资源，见下方 [从源码运行](#从源码运行开发)。）
 
 打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)，点击 **体验示例**。
 
@@ -79,28 +79,26 @@ Debian/Ubuntu 可通过 `fonts-liberation` 和 `fonts-wqy-microhei` 安装。其
 
 找不到字体时，导出会报 `Font file not found` 并中止，不会生成残缺文件。
 
-### 从源码运行（推荐）
+### 从 PyPI 安装（推荐，无需 Node.js）
 
-```bash
-cd backend
-uv sync
-uv run draftboard serve
-```
-
-也可以：
-
-```bash
-pip install -e ./backend
-draftboard serve
-```
-
-### 从 PyPI 安装
+发布的安装包已内置构建好的 Next.js 界面：
 
 ```bash
 uvx --python 3.12 draftboard@latest serve
 # 或
 pip install draftboard && draftboard serve
 ```
+
+### 从源码运行（开发）
+
+构建产物 `backend/src/draftboard/static/` 会在发版与 Docker 构建时自动生成，不纳入 Git 追踪。首次从源码克隆运行时，请先用 Node.js 20+ 构建一次前端：
+
+```bash
+cd frontend && npm ci && npm run build
+cd ../backend && uv sync && uv run draftboard serve
+```
+
+安装过前端依赖后，也可以直接运行 `uv run draftboard serve --build` 自动编译并启动。
 
 ### Docker 部署
 
@@ -114,13 +112,11 @@ docker compose up -d --build
 
 模型密钥只用于大纲生成和对话，可不配。配置方式见 [backend/.env.example](backend/.env.example)。
 
-### 前端开发（可选）
-
-服务已内置打包好的界面。只有修改 Next.js 前端时才需要重新构建：
+### 前端开发
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev      # http://localhost:3000，API 代理到 :8000
 npm run build    # 构建后自动复制到 backend/src/draftboard/static
 ```

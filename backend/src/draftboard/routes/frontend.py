@@ -25,10 +25,30 @@ def _web_dir() -> pathlib.Path:
     return _STATIC_DIR
 
 
+_MISSING_BUILD_HTML = """<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Draftboard · Frontend Not Built</title></head>
+<body style="margin:0;padding:40px;background:#0D0D0E;color:#E5E6E9;font-family:system-ui,-apple-system,sans-serif;line-height:1.6">
+  <h1 style="font-size:20px;margin:0 0 12px">Frontend static bundle not built yet</h1>
+  <p style="color:#919294;margin:0 0 16px">Build the Next.js UI once from source, or install the pre-built PyPI package (<code>uvx draftboard@latest serve</code>).</p>
+  <pre style="background:#151516;padding:14px 16px;border-radius:10px;display:inline-block">cd frontend &amp;&amp; npm ci &amp;&amp; npm run build</pre>
+</body>
+</html>
+"""
+
+
 @router.api_route("/", methods=["GET", "HEAD"])
 def index():
+    index_path = _web_dir() / "index.html"
+    if not index_path.is_file():
+        return Response(
+            content=_MISSING_BUILD_HTML,
+            status_code=503,
+            media_type="text/html; charset=utf-8",
+            headers={"Cache-Control": "no-cache"},
+        )
     return FileResponse(
-        _web_dir() / "index.html",
+        index_path,
         headers={"Cache-Control": "no-cache"},
     )
 

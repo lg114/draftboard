@@ -27,6 +27,10 @@ draftboard = "draftboard.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/draftboard"]
+artifacts = ["src/draftboard/static/**"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["src/draftboard/static/**"]
 
 [dependency-groups]
 dev = [

@@ -35,3 +35,6 @@ web-data/
 
 # LibreOffice scratch for preview rendering
 .lo-scratch/
+
+# Built Next.js static export synced into backend package (built in Docker/PyPI CI or via `npm run build`)
+backend/src/draftboard/static/

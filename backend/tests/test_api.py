@@ -615,7 +615,24 @@ def test_unknown_project_404(client):
     assert client.get("/api/projects/nope/materials").status_code == 404
 
 
-def test_index_page_served(client):
+def test_index_page_served(client, tmp_path, monkeypatch):
+    from draftboard.routes import frontend as frontend_routes
+
+    fake_web = tmp_path / "static"
+    (fake_web / "p" / "__placeholder__").mkdir(parents=True)
+    (fake_web / "index.html").write_text(
+        "<!doctype html><title>Draftboard</title>", encoding="utf-8"
+    )
+    (fake_web / "p" / "__placeholder__.html").write_text(
+        "<!doctype html><title>Draftboard __placeholder__</title>",
+        encoding="utf-8",
+    )
+    (fake_web / "p" / "__placeholder__" / "preview.html").write_text(
+        "<!doctype html><title>Preview __placeholder__</title>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(frontend_routes, "_web_dir", lambda: fake_web)
+
     r = client.get("/")
     assert r.status_code == 200
     assert "Draftboard" in r.text
@@ -632,6 +649,14 @@ def test_index_page_served(client):
 
     # Rejects path traversal or invalid project IDs
     assert client.get("/p/../evil").status_code == 404
+
+    # Friendly 503 hint when running from a fresh git checkout before building frontend
+    empty_web = tmp_path / "empty_static"
+    empty_web.mkdir()
+    monkeypatch.setattr(frontend_routes, "_web_dir", lambda: empty_web)
+    r_missing = client.get("/")
+    assert r_missing.status_code == 503
+    assert "npm run build" in r_missing.text
 
 
 # ── Step 2: Themes, Image Assets, Two-Column, Speaker Notes & Auto-Fit ──────

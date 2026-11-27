@@ -29,10 +29,10 @@ Everything stays local. There is no public hosted version.
 ## Quick start (no model required)
 
 ```bash
-cd backend
-uv sync
-uv run draftboard serve
+uvx --python 3.12 draftboard@latest serve
 ```
+
+(Or from a cloned repository, build the frontend once first — see [From source](#from-source-development).)
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000) and click **体验示例**.
 
@@ -69,28 +69,26 @@ Debian/Ubuntu provide these via `fonts-liberation` and `fonts-wqy-microhei`. Any
 
 If no font is found, export fails with `Font file not found` and writes nothing.
 
-### From source (recommended)
+### From PyPI (recommended, no Node.js required)
 
-```bash
-cd backend
-uv sync
-uv run draftboard serve
-```
-
-Or:
-
-```bash
-pip install -e ./backend
-draftboard serve
-```
-
-### From PyPI
+The published wheel already embeds the built Next.js UI:
 
 ```bash
 uvx --python 3.12 draftboard@latest serve
 # or
 pip install draftboard && draftboard serve
 ```
+
+### From source (development)
+
+Built frontend assets (`backend/src/draftboard/static/`) are generated during packaging and not tracked in Git. When running from a fresh clone, build the UI once with Node.js 20+:
+
+```bash
+cd frontend && npm ci && npm run build
+cd ../backend && uv sync && uv run draftboard serve
+```
+
+Or use `uv run draftboard serve --build` after `npm ci` to rebuild automatically before starting.
 
 ### Docker
 
@@ -104,13 +102,11 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Projects, model profiles, a
 
 Model keys are optional and only used for outline generation and chat. See [backend/.env.example](backend/.env.example). The example deck does not use them.
 
-### Frontend (optional)
-
-The server already embeds the built UI from `backend/src/draftboard/static`. Rebuild only when you change the Next.js app:
+### Frontend development
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev      # http://localhost:3000, proxies /api/* to :8000
 npm run build    # exports and copies into backend/src/draftboard/static
 ```
