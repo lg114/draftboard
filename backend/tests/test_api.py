@@ -615,11 +615,9 @@ def test_unknown_project_404(client):
     assert client.get("/api/projects/nope/materials").status_code == 404
 
 
-def test_index_page_served(client, tmp_path, monkeypatch):
-    from draftboard.routes import frontend as frontend_routes
-
-    fake_web = tmp_path / "static"
-    (fake_web / "p" / "__placeholder__").mkdir(parents=True)
+def _make_fake_web_dir(tmp_path_factory) -> pathlib.Path:
+    fake_web = tmp_path_factory.mktemp("fake_web")
+    (fake_web / "p" / "__placeholder__").mkdir(parents=True, exist_ok=True)
     (fake_web / "index.html").write_text(
         "<!doctype html><title>Draftboard</title>", encoding="utf-8"
     )
@@ -631,6 +629,13 @@ def test_index_page_served(client, tmp_path, monkeypatch):
         "<!doctype html><title>Preview __placeholder__</title>",
         encoding="utf-8",
     )
+    return fake_web
+
+
+def test_index_page_served(client, tmp_path_factory, monkeypatch):
+    from draftboard.routes import frontend as frontend_routes
+
+    fake_web = _make_fake_web_dir(tmp_path_factory)
     monkeypatch.setattr(frontend_routes, "_web_dir", lambda: fake_web)
 
     r = client.get("/")
@@ -651,8 +656,7 @@ def test_index_page_served(client, tmp_path, monkeypatch):
     assert client.get("/p/../evil").status_code == 404
 
     # Friendly 503 hint when running from a fresh git checkout before building frontend
-    empty_web = tmp_path / "empty_static"
-    empty_web.mkdir()
+    empty_web = tmp_path_factory.mktemp("empty_static")
     monkeypatch.setattr(frontend_routes, "_web_dir", lambda: empty_web)
     r_missing = client.get("/")
     assert r_missing.status_code == 503
@@ -914,14 +918,21 @@ def test_project_summary_preview_and_theme_sync(client):
     assert summary2["stage"] == "outline_draft"
 
 
-def test_zero_friction_project_creation_and_auto_naming(client):
+def test_zero_friction_project_creation_and_auto_naming(
+    client, tmp_path_factory, monkeypatch
+):
     import draftboard.tasks as tasks_mod
     import draftboard.tools as tools_mod
+    from draftboard.routes import frontend as frontend_routes
+
+    fake_web = _make_fake_web_dir(tmp_path_factory)
+    monkeypatch.setattr(frontend_routes, "_web_dir", lambda: fake_web)
 
     # 1. /p/new SPA shell is served directly without creating a project on disk
     r_new = client.get("/p/new")
     assert r_new.status_code == 200
     assert "Draftboard" in r_new.text
+    assert "__placeholder__" not in r_new.text
     assert client.get("/api/projects").json()["projects"] == []
 
     # 2. POST /api/projects with empty body auto-generates deck ID + untitled placeholder
