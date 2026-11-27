@@ -723,11 +723,26 @@ def _render_pptx_chart(
                 _draw_chart_legend(c, bx, by + bh - 14, bw, slide_h, leg_items, fonts, muted_col)
             return
 
-        # ── Vertical Column (`bar`) or Line (`line`) Chart ──
-        all_vals = [v for _, vals, _, _ in series_data for v in vals]
-        raw_max = max(all_vals, default=1.0)
+        # ── Vertical Column (`bar`), Stacked Column (`stacked_bar`), or Line (`line`) Chart ──
+        is_stacked = chart.chart_type == XL_CHART_TYPE.COLUMN_STACKED
+        n_cat = len(categories)
+        n_ser = len(series_data)
+        if is_stacked:
+            pos_sums = [
+                sum(max(0.0, vals[ci]) for _, vals, _, _ in series_data if ci < len(vals))
+                for ci in range(n_cat)
+            ]
+            neg_sums = [
+                sum(min(0.0, vals[ci]) for _, vals, _, _ in series_data if ci < len(vals))
+                for ci in range(n_cat)
+            ]
+            raw_max = max(pos_sums, default=1.0)
+            min_val = min(0.0, min(neg_sums, default=0.0))
+        else:
+            all_vals = [v for _, vals, _, _ in series_data for v in vals]
+            raw_max = max(all_vals, default=1.0)
+            min_val = min(0.0, min(all_vals, default=0.0))
         max_val = max(raw_max * 1.12, 1e-6)
-        min_val = min(0.0, min(all_vals, default=0.0))
         span = max(max_val - min_val, 1e-6)
 
         y_axis_w = 34.0
@@ -752,8 +767,6 @@ def _render_pptx_chart(
             tw = _measure_dual_width(tlbl, 8.5, fonts, False)
             _draw_dual_text(c, px - 6.0 - tw, slide_h - (gy + 3.0), tlbl, 8.5, fonts, False, muted_col)
 
-        n_cat = len(categories)
-        n_ser = len(series_data)
         slot_w = pw / max(1, n_cat)
 
         # X-axis category labels
@@ -793,6 +806,79 @@ def _render_pptx_chart(
                         lbl = _fmt_chart_num(v, value_suffix)
                         lw = _measure_dual_width(lbl, 9.0, fonts, True)
                         _draw_dual_text(c, cx - lw / 2.0, slide_h - (cy - 7.0), lbl, 9.0, fonts, True, body_col)
+        elif is_stacked:
+            bar_w = min(slot_w * 0.56, 68.0)
+            for ci in range(n_cat):
+                bx_bar = px + (ci + 0.5) * slot_w - bar_w / 2.0
+                cum_pos = 0.0
+                cum_neg = 0.0
+                pos_indices = [
+                    si
+                    for si, (_, vals, _, _) in enumerate(series_data)
+                    if (vals[ci] if ci < len(vals) else 0.0) > 0.0
+                ]
+                top_pos_si = pos_indices[-1] if pos_indices else -1
+                for si, (_, vals, scol, _) in enumerate(series_data):
+                    v = vals[ci] if ci < len(vals) else 0.0
+                    if abs(v) < 1e-9:
+                        continue
+                    if v >= 0.0:
+                        y_bot = py + ph * (1.0 - (cum_pos - min_val) / span)
+                        cum_pos += v
+                        y_top = py + ph * (1.0 - (cum_pos - min_val) / span)
+                    else:
+                        y_top = py + ph * (1.0 - (cum_neg - min_val) / span)
+                        cum_neg += v
+                        y_bot = py + ph * (1.0 - (cum_neg - min_val) / span)
+                    seg_h = max(1.5, abs(y_bot - y_top))
+                    seg_top = min(y_top, y_bot)
+                    c.saveState()
+                    c.setFillColor(scol)
+                    if si == top_pos_si and seg_h >= 6.0:
+                        c.roundRect(
+                            bx_bar,
+                            slide_h - seg_top - seg_h,
+                            bar_w,
+                            seg_h,
+                            min(3.0, bar_w / 4.0),
+                            stroke=0,
+                            fill=1,
+                        )
+                        # Square off the bottom corners so segments stack flush
+                        c.rect(
+                            bx_bar,
+                            slide_h - seg_top - seg_h,
+                            bar_w,
+                            min(3.5, seg_h / 2.0),
+                            stroke=0,
+                            fill=1,
+                        )
+                    else:
+                        c.rect(
+                            bx_bar,
+                            slide_h - seg_top - seg_h,
+                            bar_w,
+                            seg_h,
+                            stroke=0,
+                            fill=1,
+                        )
+                    c.restoreState()
+                    if show_values and seg_h >= 15.0:
+                        lum = 0.2126 * scol.red + 0.7152 * scol.green + 0.0722 * scol.blue
+                        lbl_col = Color(1.0, 1.0, 1.0) if lum < 0.62 else Color(0.10, 0.10, 0.12)
+                        lbl = _fmt_chart_num(v, value_suffix)
+                        lw = _measure_dual_width(lbl, 8.8, fonts, True)
+                        if lw <= bar_w + 6.0:
+                            _draw_dual_text(
+                                c,
+                                bx_bar + (bar_w - lw) / 2.0,
+                                slide_h - (seg_top + seg_h / 2.0 + 3.0),
+                                lbl,
+                                8.8,
+                                fonts,
+                                True,
+                                lbl_col,
+                            )
         else:
             group_w = min(slot_w * 0.64, 56.0 * n_ser)
             bar_w = max(6.0, (group_w - max(0, n_ser - 1) * 3.0) / max(1, n_ser))
@@ -1007,7 +1093,42 @@ def _render_pptx_to_pdf(pptx_path: pathlib.Path, pdf_path: pathlib.Path) -> int:
                         if has_stroke and stroke_col is not None:
                             c.setStrokeColor(stroke_col)
                             c.setLineWidth(stroke_w)
-                        if radius_pt > 0.1:
+                        auto_type = None
+                        try:
+                            auto_type = shape.auto_shape_type
+                        except Exception:
+                            pass
+                        if auto_type == MSO_SHAPE.OVAL:
+                            c.ellipse(
+                                bx,
+                                slide_h - by - bh,
+                                bx + bw,
+                                slide_h - by,
+                                stroke=1 if has_stroke else 0,
+                                fill=1 if has_fill else 0,
+                            )
+                        elif auto_type == MSO_SHAPE.RIGHT_ARROW:
+                            head_w = min(bw * 0.52, bh * 0.85)
+                            shaft_h = bh * 0.36
+                            mid_y = slide_h - (by + bh / 2.0)
+                            top_y = slide_h - by
+                            bot_y = slide_h - (by + bh)
+                            shaft_x = bx + bw - head_w
+                            p = c.beginPath()
+                            p.moveTo(bx, mid_y + shaft_h / 2.0)
+                            p.lineTo(shaft_x, mid_y + shaft_h / 2.0)
+                            p.lineTo(shaft_x, top_y)
+                            p.lineTo(bx + bw, mid_y)
+                            p.lineTo(shaft_x, bot_y)
+                            p.lineTo(shaft_x, mid_y - shaft_h / 2.0)
+                            p.lineTo(bx, mid_y - shaft_h / 2.0)
+                            p.close()
+                            c.drawPath(
+                                p,
+                                stroke=1 if has_stroke else 0,
+                                fill=1 if has_fill else 0,
+                            )
+                        elif radius_pt > 0.1:
                             c.roundRect(
                                 bx,
                                 slide_h - by - bh,

@@ -36,6 +36,7 @@ export function CustomCanvasInspector({
   const customTextElements = elements.filter((el) => el.kind === "text");
   const customTableElements = elements.filter((el) => el.kind === "table");
   const customChartElements = elements.filter((el) => el.kind === "chart");
+  const customDiagramElements = elements.filter((el) => el.kind === "diagram");
 
   let primaryCustomHeadingId: string | null = null;
   let maxFs = -1;
@@ -480,6 +481,160 @@ export function CustomCanvasInspector({
                     </table>
                   </div>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Inline Diagram Steps Editors */}
+      {customDiagramElements.length > 0 && onUpdateCustomElement && (
+        <div className="space-y-3 pt-1">
+          {customDiagramElements.map((el, dIdx) => {
+            const steps = el.diagram_steps || [];
+            const dtype = el.diagram_type || "timeline";
+            return (
+              <div
+                key={`${el.id}-diagram-${dIdx}`}
+                className="rounded-xl bg-ui-surface p-3 space-y-2.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-semibold text-ui-text">
+                    {dtype === "timeline" ? "时间轴步骤" : "流程步骤"}
+                    {customDiagramElements.length > 1 ? ` ${dIdx + 1}` : ""}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center bg-ui-bg rounded-md p-0.5 gap-0.5 text-[11.5px]">
+                      {(
+                        [
+                          { v: "timeline", l: "时间轴" },
+                          { v: "process", l: "流程" },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.v}
+                          type="button"
+                          onClick={() =>
+                            onUpdateCustomElement(el.id, {
+                              diagram_type: opt.v,
+                            })
+                          }
+                          className={`px-1.5 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                            dtype === opt.v
+                              ? "bg-ui-bg-selected text-ui-text"
+                              : "text-ui-text-muted hover:text-ui-text"
+                          }`}
+                        >
+                          {opt.l}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={steps.length >= 6}
+                      onClick={() => {
+                        if (steps.length >= 6) return;
+                        const nextNum = steps.length + 1;
+                        onUpdateCustomElement(el.id, {
+                          diagram_steps: [
+                            ...steps,
+                            {
+                              label:
+                                dtype === "timeline"
+                                  ? `Q${nextNum}`
+                                  : String(nextNum).padStart(2, "0"),
+                              title: `阶段 ${nextNum}`,
+                              desc: "补充关键目标与交付物",
+                            },
+                          ],
+                        });
+                      }}
+                      className="rounded-md bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 text-[12px]"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>加阶段</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {steps.map((step, si) => (
+                    <div
+                      key={si}
+                      className="rounded-lg bg-ui-bg/60 p-2 space-y-1.5"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={step.label ?? ""}
+                          onChange={(e) => {
+                            const nextSteps = steps.map((st, idxS) =>
+                              idxS === si
+                                ? { ...st, label: e.target.value }
+                                : st
+                            );
+                            onUpdateCustomElement(el.id, {
+                              diagram_steps: nextSteps,
+                            });
+                          }}
+                          placeholder={
+                            dtype === "timeline"
+                              ? `Q${si + 1}`
+                              : String(si + 1).padStart(2, "0")
+                          }
+                          title="阶段标签（如 Q1 / 01 / 阶段一）"
+                          className="ui-field bg-ui-bg w-[64px] shrink-0 px-2 py-1 text-[12px] font-mono"
+                        />
+                        <input
+                          type="text"
+                          value={step.title}
+                          onChange={(e) => {
+                            const nextSteps = steps.map((st, idxS) =>
+                              idxS === si
+                                ? { ...st, title: e.target.value }
+                                : st
+                            );
+                            onUpdateCustomElement(el.id, {
+                              diagram_steps: nextSteps,
+                            });
+                          }}
+                          placeholder={`阶段 ${si + 1} 标题`}
+                          className="ui-field bg-ui-bg flex-1 min-w-0 px-2 py-1 text-[12.5px] font-semibold"
+                        />
+                        {steps.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateCustomElement(el.id, {
+                                diagram_steps: steps.filter(
+                                  (_, idxS) => idxS !== si
+                                ),
+                              })
+                            }
+                            title="删除该阶段"
+                            className="p-1 rounded text-ui-icon-quiet hover:text-ui-danger hover:bg-ui-danger-bg cursor-pointer transition-colors shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      <AutoGrowTextarea
+                        value={step.desc ?? ""}
+                        onChange={(val) => {
+                          const nextSteps = steps.map((st, idxS) =>
+                            idxS === si ? { ...st, desc: val } : st
+                          );
+                          onUpdateCustomElement(el.id, {
+                            diagram_steps: nextSteps,
+                          });
+                        }}
+                        minRows={1}
+                        placeholder="简要说明（选填）"
+                        className="ui-field bg-ui-bg w-full px-2 py-1 text-[12px] leading-relaxed"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })}

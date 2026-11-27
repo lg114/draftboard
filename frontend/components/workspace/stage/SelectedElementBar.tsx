@@ -35,6 +35,7 @@ const KIND_LABELS: Record<CanvasElement["kind"], string> = {
   image: "图片",
   table: "表格",
   chart: "图表",
+  diagram: "图示",
   line: "线条",
 };
 
@@ -371,6 +372,7 @@ export function SelectedElementBar({
             {(
               [
                 { v: "bar", l: "柱状" },
+                { v: "stacked_bar", l: "堆叠" },
                 { v: "hbar", l: "条形" },
                 { v: "line", l: "折线" },
                 { v: "donut", l: "环形" },
@@ -409,6 +411,64 @@ export function SelectedElementBar({
             }`}
           >
             数值标签
+          </button>
+        </>
+      )}
+
+      {selectedEl.kind === "diagram" && (
+        <>
+          <div className="flex items-center bg-ui-bg rounded-lg p-0.5 gap-0.5 shrink-0">
+            {(
+              [
+                { v: "timeline", l: "时间轴" },
+                { v: "process", l: "流程步骤" },
+              ] as const
+            ).map((opt) => {
+              const activeDt = (selectedEl.diagram_type ?? "timeline") === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  aria-pressed={activeDt}
+                  onClick={() =>
+                    onUpdate(selectedEl.id, { diagram_type: opt.v })
+                  }
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    activeDt
+                      ? "bg-ui-bg-selected text-ui-text"
+                      : "text-ui-text-muted hover:text-ui-text"
+                  }`}
+                >
+                  {opt.l}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            disabled={(selectedEl.diagram_steps?.length ?? 0) >= 6}
+            onClick={() => {
+              const steps = selectedEl.diagram_steps || [];
+              if (steps.length >= 6) return;
+              const nextNum = steps.length + 1;
+              onUpdate(selectedEl.id, {
+                diagram_steps: [
+                  ...steps,
+                  {
+                    label:
+                      (selectedEl.diagram_type ?? "timeline") === "timeline"
+                        ? `Q${nextNum}`
+                        : String(nextNum).padStart(2, "0"),
+                    title: `阶段 ${nextNum}`,
+                    desc: "补充本阶段核心交付与里程碑",
+                  },
+                ],
+              });
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5 text-ui-icon" />
+            <span>加阶段</span>
           </button>
         </>
       )}

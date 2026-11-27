@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Minus, Plus, Square, Type } from "lucide-react";
+import {
+  BarChart3,
+  GitCommitHorizontal,
+  Image as ImageIcon,
+  Minus,
+  Plus,
+  Square,
+  Type,
+  Workflow,
+} from "lucide-react";
 import type {
   BrandKit,
   CanvasElement,
@@ -247,7 +256,9 @@ export function SlideStageCanvas({
     !diffPreviewActive && exportInSync && hasRenderedPage;
   const showRenderedImage = isSyncedArtifact && !isCustomCanvas;
 
-  const handleQuickAddElement = (kind: "text" | "card" | "line" | "image") => {
+  const handleQuickAddElement = (
+    kind: "text" | "card" | "line" | "image" | "timeline" | "process" | "stacked_bar"
+  ) => {
     if (!onAddCustomElement) return;
     const id = `el_${kind}_${Date.now().toString(36)}_${Math.random()
       .toString(36)
@@ -291,6 +302,57 @@ export function SlideStageCanvas({
         h: 0,
         color: "theme:divider",
         line_width: 2,
+      };
+    } else if (kind === "timeline") {
+      nextEl = {
+        id,
+        kind: "diagram",
+        x: 48,
+        y: 148 + (count % 3) * 12,
+        w: 864,
+        h: 256,
+        diagram_type: "timeline",
+        diagram_steps: [
+          { label: "Q1", title: "需求调研与立项", desc: "梳理核心业务场景与目标指标" },
+          { label: "Q2", title: "核心能力上线", desc: "完成架构落地并启动种子客户试点" },
+          { label: "Q3", title: "规模化推广", desc: "全量开放并持续优化转化效率" },
+          { label: "Q4", title: "复盘与迭代", desc: "沉淀标准方法论并规划下一周期" },
+        ],
+      };
+    } else if (kind === "process") {
+      nextEl = {
+        id,
+        kind: "diagram",
+        x: 48,
+        y: 156 + (count % 3) * 12,
+        w: 864,
+        h: 236,
+        diagram_type: "process",
+        diagram_steps: [
+          { label: "01", title: "输入素材", desc: "上传文档、数据与关键配图" },
+          { label: "02", title: "结构编排", desc: "提炼论点并匹配高信息密度版式" },
+          { label: "03", title: "精准微调", desc: "可视化调整图表、图示与配色" },
+          { label: "04", title: "交付导出", desc: "生成原生可编辑 PPTX 与矢量 PDF" },
+        ],
+      };
+    } else if (kind === "stacked_bar") {
+      nextEl = {
+        id,
+        kind: "chart",
+        x: 120 + jitter,
+        y: 132 + jitter,
+        w: 720,
+        h: 320,
+        chart_type: "stacked_bar",
+        chart_title: "季度营收构成（示例）",
+        chart_categories: ["Q1", "Q2", "Q3", "Q4"],
+        chart_series: [
+          { name: "订阅收入", values: [32, 41, 52, 66] },
+          { name: "企业定制", values: [18, 22, 26, 31] },
+          { name: "增值服务", values: [9, 13, 16, 21] },
+        ],
+        show_values: true,
+        value_suffix: "万",
       };
     } else {
       const firstImg = imageAssets[0];
@@ -652,6 +714,31 @@ export function SlideStageCanvas({
                           ? "图片元素"
                           : "图片（需先上传）"}
                       </span>
+                    </button>
+                    <div className="my-1 h-px bg-ui-border-subtle" />
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddElement("timeline")}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                    >
+                      <GitCommitHorizontal className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>时间轴图示</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddElement("process")}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                    >
+                      <Workflow className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>流程步骤图</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddElement("stacked_bar")}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text hover:bg-ui-control-hover transition-colors cursor-pointer text-left"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5 text-ui-icon shrink-0" />
+                      <span>堆叠柱状图</span>
                     </button>
                   </div>
                 )}

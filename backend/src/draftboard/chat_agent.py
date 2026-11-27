@@ -84,14 +84,15 @@ STUDIO_AGENT_INSTRUCTIONS = """你是 Draftboard 的专属 PPT 创作 Agent，�
    - 严守 Draftboard 事实护栏：**绝不编造数字、指标、引用或图片内容**。凡是来自素材的事实，必须填写来自 `read_project_materials` 的真实 `source_ids`；若用户要求的内容在素材中缺乏依据，明确坦诚告知缺口，并将对应页面标记为 `evidence_status="unsupported"`（`source_ids=[]`），绝不伪造数据。
 2. **双轨排版策略（所说即能改）**：
    - **标准模板轨道**（`create_deck_outline` / `update_slide` / `batch_update_slides` / `manage_slides`）：适合快速构建常规页面，包含 `cover / content / bullets / two_column / text_image / closing`。
-   - **自由画布轨道**（`design_custom_slide`）：当用户不满意固定模板，或需要**便当盒多卡片（Bento Grid）、大数字指标卡（KPI）、多维对比表格（`table`）、数据可视化图表（`chart`：柱状图 `bar` / 条形图 `hbar` / 折线图 `line` / 环形图 `donut`）、横向流程时间轴、左图右文/半屏出血大图、居中金句、章节过渡页、或任意自定义字号/对齐/配色**时，直接用 `design_custom_slide` 在 `960×540` pt 画布上用 6 种原生可编辑元素（`card`、`line`、`image`、`text`、`table`、`chart`）精准构图！
+   - **自由画布轨道**（`design_custom_slide`）：当用户不满意固定模板，或需要**便当盒多卡片（Bento Grid）、大数字指标卡（KPI）、多维对比表格（`table`）、数据可视化图表（`chart`：柱状图 `bar` / 堆叠柱状图 `stacked_bar` / 条形图 `hbar` / 折线图 `line` / 环形图 `donut`）、结构化时间轴或流程步骤图（`diagram`：`diagram_type="timeline" | "process"` + `diagram_steps=[{label, title, desc}]`，导出为 100% 原生可编辑形状）、左图右文/半屏出血大图、居中金句、章节过渡页、或任意自定义字号/对齐/配色**时，直接用 `design_custom_slide` 在 `960×540` pt 画布上用 7 种原生可编辑元素（`card`、`line`、`image`、`text`、`table`、`chart`、`diagram`）精准构图！
    - 自由画布设计规范：
      * 画布固定 `960×540` pt，常规留白建议 `48` pt（安全内容区 `x=48..912, y=36..504`）；
-     * **绘制顺序（Z-order）**：先放背景色块和 `card`，再放 `line`、`image`、`table`、`chart`，最后放前景 `text`；
+     * **绘制顺序（Z-order）**：先放背景色块和 `card`，再放 `line`、`image`、`table`、`chart`、`diagram`，最后放前景 `text`；
+     * **结构化图示优先**：凡是路线图、里程碑、演进时间线、工作流/步骤拆解（2–6 个阶段），优先直接用单个 `kind="diagram"` 元素（`diagram_type="timeline"` 或 `"process"`），不要手动画十几个零散的 `card`、`line` 和 `text` 拼凑；
      * **显式绘制页面标题与卡片文字**：`design_custom_slide` 的 `title` 参数仅用于左侧目录名称，**不会自动绘制在画布顶部**，内容页必须在顶部放置主标题 `text` 元素（如 `x=48, y=36, w=864, h=44, font_size=28, bold=True, color="theme:title"`）；`card` 仅作圆角背景块，所有文字必须使用独立的 `text` 元素叠放在 `card` 之上；画卡片布局（如三列卡片）时，整张 `card` 高度应完整包住内部标题与正文（如 `y=132, h=336`），不要只画很矮的色条让正文悬空在卡片外或让下半屏大片留白；`line_height` 建议省略（自动使用 `1.35×` 字号）或填写大于字号的绝对 pt 值；
-     * **优先使用主题语义色**（`theme:bg`、`theme:cover_bg`、`theme:surface`、`theme:title`、`theme:cover_title`、`theme:body`、`theme:cover_body`、`theme:accent`、`theme:muted`、`theme:divider`），确保切换全局主题时自动换肤；表格和图表默认自动继承当前主题配色，仅在用户点名特定颜色时使用 `#RRGGBB`；
-     * 表格与图表数据**必须 100% 源自项目素材真实数字**，严禁编造或补齐不存在的数据；图表需保证每组 `chart_series.values` 长度与 `chart_categories` 严格一致；表格每行高度至少留足 `24–36` pt；
-     * 严禁让任意 `text` / `table` / `chart` 框互相重叠或超出 `960×540` 边界；若工具返回 `[OVERFLOW]` / `[OVERLAP]` / `[OUT_OF_BOUNDS]` / `[INVALID_TABLE]` / `[INVALID_CHART]`，立刻调整坐标、行高或数据后重试直至通过。
+     * **优先使用主题语义色**（`theme:bg`、`theme:cover_bg`、`theme:surface`、`theme:title`、`theme:cover_title`、`theme:body`、`theme:cover_body`、`theme:accent`、`theme:muted`、`theme:divider`），确保切换全局主题时自动换肤；表格、图表和图示默认自动继承当前主题配色，仅在用户点名特定颜色时使用 `#RRGGBB`；
+     * 表格与图表数据**必须 100% 源自项目素材真实数字**，严禁编造或补齐不存在的数据；图表需保证每组 `chart_series.values` 长度与 `chart_categories` 严格一致；结构构成/占比堆叠对比优先选用 `stacked_bar`；表格每行高度至少留足 `24–36` pt；
+     * 严禁让任意 `text` / `table` / `chart` / `diagram` 框互相重叠或超出 `960×540` 边界；若工具返回 `[OVERFLOW]` / `[OVERLAP]` / `[OUT_OF_BOUNDS]` / `[INVALID_TABLE]` / `[INVALID_CHART]` / `[INVALID_DIAGRAM]`，立刻调整坐标、行高或数据后重试直至通过。
    - 给用户提排版建议时，只推荐工作台**真正支持且能直接代改**的方案；用户问“怎么改好看”时，给出清晰方案并顺手询问是否由你直接代改；用户说“帮我改好看 / 照你说的改”就直接动手改完！
 3. **改完主动自检排版**：
    - 凡是新建大纲或较大幅度改动文字后，主动调用一次 `check_deck_layout` 检查是否超框及全稿节奏。
@@ -969,7 +970,7 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
         source_ids: Optional[list[str]] = None,
         evidence_status: Optional[EvidenceLiteral] = None,
     ) -> str:
-        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 6 种原生可编辑元素：card（圆角矩形卡片，仅作背景块，文字请另建 text 元素叠放）、line（线条）、image（已上传图片）、text（文本框）、table（原生可编辑表格：headers + rows）、chart（原生可编辑数据图表：chart_type=bar/hbar/line/donut + chart_categories + chart_series）。注意：title 参数仅更新目录名称、不会自动画在画布上，内容页请在画布顶部（如 y=36）显式放置标题 text 元素。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、表格/图表校验、文本溢出与元素碰撞检测。"""
+        """为指定页码（从 1 开始）设计自由画布排版（960x540 pt 坐标系）。支持 7 种原生可编辑元素：card（圆角矩形卡片，仅作背景块，文字请另建 text 元素叠放）、line（线条）、image（已上传图片）、text（文本框）、table（原生可编辑表格：headers + rows）、chart（原生可编辑数据图表：chart_type=bar/stacked_bar/hbar/line/donut + chart_categories + chart_series）、diagram（原生可编辑结构化图示：diagram_type=timeline/process + 2..6 条 diagram_steps[{label, title, desc}]）。注意：title 参数仅更新目录名称、不会自动画在画布上，内容页请在画布顶部（如 y=36）显式放置标题 text 元素。优先使用 theme:* 语义色以兼容全局换肤。保存前会自动执行越界、表格/图表/图示校验、文本溢出与元素碰撞检测。"""
         ver = state.current_outline_version()
         outline = _load_outline(state.project_id, ver)
         if not outline or not outline.items:
@@ -1047,6 +1048,29 @@ def build_studio_tools(state: StudioTurnState) -> list[Any]:
                             line_height=raw_el.line_height,
                         )
                     )
+            elif raw_el.kind == "diagram":
+                norm_steps = [
+                    st.model_copy(
+                        update={
+                            "label": (st.label or "").replace("\\n", " ").strip(),
+                            "title": (st.title or "").replace("\\n", " ").strip(),
+                            "desc": (st.desc or "")
+                            .replace("\\r\\n", "\n")
+                            .replace("\\n", "\n")
+                            .strip(),
+                        }
+                    )
+                    for st in (raw_el.diagram_steps or [])
+                ]
+                cleaned_elements.append(
+                    raw_el.model_copy(
+                        update={
+                            "id": eid,
+                            "diagram_type": raw_el.diagram_type or "timeline",
+                            "diagram_steps": norm_steps,
+                        }
+                    )
+                )
             else:
                 cleaned_elements.append(raw_el.model_copy(update={"id": eid}))
 

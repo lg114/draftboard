@@ -14,9 +14,15 @@ export interface ChartSeries {
   color?: string | null;
 }
 
+export interface DiagramStep {
+  label?: string;
+  title: string;
+  desc?: string;
+}
+
 export interface CanvasElement {
   id: string;
-  kind: "text" | "card" | "line" | "image" | "table" | "chart";
+  kind: "text" | "card" | "line" | "image" | "table" | "chart" | "diagram";
   x: number;
   y: number;
   w: number;
@@ -43,12 +49,15 @@ export interface CanvasElement {
   stripe_fill?: string | null;
   table_font_size?: number | null;
   // Chart fields
-  chart_type?: "bar" | "hbar" | "line" | "donut" | null;
+  chart_type?: "bar" | "stacked_bar" | "hbar" | "line" | "donut" | null;
   chart_title?: string | null;
   chart_categories?: string[] | null;
   chart_series?: ChartSeries[] | null;
   show_values?: boolean | null;
   value_suffix?: string | null;
+  // Diagram fields
+  diagram_type?: "timeline" | "process" | null;
+  diagram_steps?: DiagramStep[] | null;
 }
 
 export interface OutlineItem {

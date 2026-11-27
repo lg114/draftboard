@@ -390,11 +390,35 @@ function CustomChartView({
     );
   }
 
-  // Vertical Column ("bar") & Line ("line")
-  const allVals = series.flatMap((s) => s.values.map((v) => Number(v) || 0));
-  const rawMax = Math.max(...allVals, 1);
+  const isHexDark = (hex: string): boolean => {
+    const clean = hex.replace("#", "").trim();
+    if (clean.length !== 6) return true;
+    const r = parseInt(clean.slice(0, 2), 16) / 255;
+    const g = parseInt(clean.slice(2, 4), 16) / 255;
+    const b = parseInt(clean.slice(4, 6), 16) / 255;
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return lum < 0.62;
+  };
+
+  // Vertical Column ("bar"), Stacked Column ("stacked_bar"), & Line ("line")
+  const isStacked = chartType === "stacked_bar";
+  let rawMax: number;
+  let minVal: number;
+  if (isStacked) {
+    const posSums = cats.map((_, ci) =>
+      series.reduce((acc, s) => acc + Math.max(0, Number(s.values[ci]) || 0), 0)
+    );
+    const negSums = cats.map((_, ci) =>
+      series.reduce((acc, s) => acc + Math.min(0, Number(s.values[ci]) || 0), 0)
+    );
+    rawMax = Math.max(...posSums, 1);
+    minVal = Math.min(0, ...negSums);
+  } else {
+    const allVals = series.flatMap((s) => s.values.map((v) => Number(v) || 0));
+    rawMax = Math.max(...allVals, 1);
+    minVal = Math.min(0, ...allVals);
+  }
   const maxVal = Math.max(rawMax * 1.14, 1e-6);
-  const minVal = Math.min(0, ...allVals);
   const span = Math.max(maxVal - minVal, 1e-6);
 
   const yAxisW = 36;
@@ -495,6 +519,75 @@ function CustomChartView({
               </g>
             );
           })
+        : isStacked
+        ? (() => {
+            const barW = Math.min(slotW * 0.56, 68);
+            return cats.map((_, ci) => {
+              const bxBar = px + (ci + 0.5) * slotW - barW / 2;
+              let cumPos = 0;
+              let cumNeg = 0;
+              const posIndices = series
+                .map((s, si) => ((Number(s.values[ci]) || 0) > 0 ? si : -1))
+                .filter((si) => si >= 0);
+              const topPosSi =
+                posIndices.length > 0 ? posIndices[posIndices.length - 1] : -1;
+              return (
+                <g key={ci}>
+                  {series.map((s, si) => {
+                    const v = Number(s.values[ci]) || 0;
+                    if (Math.abs(v) < 1e-9) return null;
+                    let yBot: number;
+                    let yTop: number;
+                    if (v >= 0) {
+                      yBot = py + ph * (1 - (cumPos - minVal) / span);
+                      cumPos += v;
+                      yTop = py + ph * (1 - (cumPos - minVal) / span);
+                    } else {
+                      yTop = py + ph * (1 - (cumNeg - minVal) / span);
+                      cumNeg += v;
+                      yBot = py + ph * (1 - (cumNeg - minVal) / span);
+                    }
+                    const segH = Math.max(1.5, Math.abs(yBot - yTop));
+                    const segTop = Math.min(yTop, yBot);
+                    const fillHex = seriesColors[si];
+                    const lblFill = isHexDark(fillHex) ? "#FFFFFF" : "#18181B";
+                    const roundTop = si === topPosSi && segH >= 6;
+                    const rx = Math.min(3, barW / 4);
+                    return (
+                      <g key={si}>
+                        {roundTop ? (
+                          <path
+                            d={`M${bxBar},${segTop + rx} Q${bxBar},${segTop} ${bxBar + rx},${segTop} L${bxBar + barW - rx},${segTop} Q${bxBar + barW},${segTop} ${bxBar + barW},${segTop + rx} L${bxBar + barW},${segTop + segH} L${bxBar},${segTop + segH} Z`}
+                            fill={fillHex}
+                          />
+                        ) : (
+                          <rect
+                            x={bxBar}
+                            y={segTop}
+                            width={barW}
+                            height={segH}
+                            fill={fillHex}
+                          />
+                        )}
+                        {showValues && segH >= 15 && (
+                          <text
+                            x={bxBar + barW / 2}
+                            y={segTop + segH / 2 + 3.2}
+                            fill={lblFill}
+                            fontSize={9}
+                            fontWeight={700}
+                            textAnchor="middle"
+                          >
+                            {fmtChartNum(v, suffix)}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            });
+          })()
         : (() => {
             const groupW = Math.min(slotW * 0.64, 56 * series.length);
             const barW = Math.max(
@@ -546,6 +639,295 @@ function CustomChartView({
           series.map((s, si) => ({ label: s.name, color: seriesColors[si] }))
         )}
     </svg>
+  );
+}
+
+function CustomDiagramView({
+  el,
+  sw,
+  slideBg,
+}: {
+  el: CanvasElement;
+  sw: ThemeSwatches;
+  slideBg: string;
+}) {
+  const steps = el.diagram_steps || [];
+  if (steps.length < 2) return null;
+  const dtype = el.diagram_type || "timeline";
+  const n = steps.length;
+  const bw = Math.max(320, el.w);
+  const bh = Math.max(120, el.h);
+
+  const hexClean = sw.accent.replace("#", "").trim();
+  const accentDark =
+    hexClean.length === 6
+      ? 0.2126 * (parseInt(hexClean.slice(0, 2), 16) / 255) +
+          0.7152 * (parseInt(hexClean.slice(2, 4), 16) / 255) +
+          0.0722 * (parseInt(hexClean.slice(4, 6), 16) / 255) <
+        0.62
+      : true;
+  const accentFg = accentDark ? "#FFFFFF" : "#141416";
+
+  if (dtype === "process") {
+    const arrowGap = n <= 4 ? 22 : 16;
+    const colW = (bw - arrowGap * (n - 1)) / n;
+    const titlePt = colW >= 145 ? 14 : 13;
+    const descPt = colW >= 155 ? 12 : 11;
+    const padX = colW >= 135 ? 12 : 9;
+    const padY = 12;
+
+    return (
+      <div
+        style={{
+          position: "relative",
+          width: bw,
+          height: bh,
+          overflow: "hidden",
+        }}
+      >
+        {steps.map((step, idx) => {
+          const cx = idx * (colW + arrowGap);
+          const badgeTxt = (step.label || "").trim() || String(idx + 1).padStart(2, "0");
+          const aw = Math.max(8, arrowGap - 8);
+          const ah = 13;
+          const ax = cx + colW + (arrowGap - aw) / 2;
+          const ay = (bh - ah) / 2;
+          return (
+            <div key={idx}>
+              <div
+                style={{
+                  position: "absolute",
+                  left: cx,
+                  top: 0,
+                  width: colW,
+                  height: bh,
+                  borderRadius: 12,
+                  backgroundColor: sw.surface,
+                  border: `0.75px solid ${sw.divider}`,
+                  padding: `${padY}px ${padX}px`,
+                  boxSizing: "border-box",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    alignSelf: "flex-start",
+                    height: 22,
+                    minWidth: 34,
+                    maxWidth: "100%",
+                    padding: "0 9px",
+                    borderRadius: 11,
+                    backgroundColor: sw.accent,
+                    color: accentFg,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    lineHeight: "12px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    marginBottom: 10,
+                    flexShrink: 0,
+                  }}
+                >
+                  {badgeTxt}
+                </div>
+                <div
+                  style={{
+                    fontSize: titlePt,
+                    fontWeight: 700,
+                    lineHeight: `${Math.round(titlePt * 1.28)}px`,
+                    color: sw.title,
+                    marginBottom: step.desc?.trim() ? 6 : 0,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {step.title}
+                </div>
+                {step.desc?.trim() ? (
+                  <div
+                    style={{
+                      fontSize: descPt,
+                      fontWeight: 400,
+                      lineHeight: `${Math.round(descPt * 1.38)}px`,
+                      color: sw.body,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {step.desc}
+                  </div>
+                ) : null}
+              </div>
+
+              {idx < n - 1 && (
+                <svg
+                  width={aw}
+                  height={ah}
+                  viewBox={`0 0 ${aw} ${ah}`}
+                  style={{
+                    position: "absolute",
+                    left: ax,
+                    top: ay,
+                    overflow: "visible",
+                  }}
+                >
+                  {(() => {
+                    const headW = Math.min(aw * 0.52, ah * 0.85);
+                    const shaftH = ah * 0.36;
+                    const midY = ah / 2;
+                    const shaftX = aw - headW;
+                    return (
+                      <polygon
+                        points={`0,${midY - shaftH / 2} ${shaftX},${midY - shaftH / 2} ${shaftX},0 ${aw},${midY} ${shaftX},${ah} ${shaftX},${midY + shaftH / 2} 0,${midY + shaftH / 2}`}
+                        fill={sw.accent}
+                      />
+                    );
+                  })()}
+                </svg>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Timeline mode ("timeline")
+  const gap = n <= 4 ? 14 : 10;
+  const colW = (bw - gap * (n - 1)) / n;
+  const titlePt = colW >= 145 ? 14 : 13;
+  const descPt = colW >= 155 ? 12 : 11;
+  const padX = colW >= 135 ? 12 : 9;
+  const padY = 11;
+  const trackY = 34;
+  const nodeD = 16;
+  const cardY = trackY + 18;
+  const cardH = Math.max(56, bh - cardY);
+  const firstCx = colW / 2;
+  const lastCx = bw - colW / 2;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: bw,
+        height: bh,
+        overflow: "hidden",
+      }}
+    >
+      <svg
+        width={bw}
+        height={cardY}
+        viewBox={`0 0 ${bw} ${cardY}`}
+        style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
+      >
+        <line
+          x1={firstCx}
+          y1={trackY}
+          x2={lastCx}
+          y2={trackY}
+          stroke={sw.divider}
+          strokeWidth={2}
+          strokeLinecap="round"
+        />
+        {steps.map((_, idx) => {
+          const cx = idx * (colW + gap) + colW / 2;
+          return (
+            <circle
+              key={idx}
+              cx={cx}
+              cy={trackY}
+              r={nodeD / 2}
+              fill={sw.accent}
+              stroke={slideBg}
+              strokeWidth={2}
+            />
+          );
+        })}
+      </svg>
+
+      {steps.map((step, idx) => {
+        const colX = idx * (colW + gap);
+        const lblTxt = (step.label || "").trim() || `0${idx + 1}`;
+        return (
+          <div key={idx}>
+            <div
+              style={{
+                position: "absolute",
+                left: colX,
+                top: 0,
+                width: colW,
+                height: 22,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 11,
+                fontWeight: 700,
+                color: sw.accent,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                padding: "0 2px",
+                boxSizing: "border-box",
+              }}
+            >
+              {lblTxt}
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                left: colX,
+                top: cardY,
+                width: colW,
+                height: cardH,
+                borderRadius: 10,
+                backgroundColor: sw.surface,
+                border: `0.75px solid ${sw.divider}`,
+                padding: `${padY}px ${padX}px`,
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: titlePt,
+                  fontWeight: 700,
+                  lineHeight: `${Math.round(titlePt * 1.28)}px`,
+                  color: sw.title,
+                  marginBottom: step.desc?.trim() ? 6 : 0,
+                  wordBreak: "break-word",
+                }}
+              >
+                {step.title}
+              </div>
+              {step.desc?.trim() ? (
+                <div
+                  style={{
+                    fontSize: descPt,
+                    fontWeight: 400,
+                    lineHeight: `${Math.round(descPt * 1.38)}px`,
+                    color: sw.body,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflow: "hidden",
+                  }}
+                >
+                  {step.desc}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -776,8 +1158,20 @@ export function CustomSlideLayer({
         setLiveBox(nextBox);
         setGuides({ x: null, y: null });
       } else {
-        const minW = d.kind === "chart" ? 180 : d.kind === "table" ? 160 : 32;
-        const minH = d.kind === "chart" ? 120 : d.kind === "table" ? 60 : 24;
+        const minW =
+          d.kind === "diagram"
+            ? 320
+            : d.kind === "chart"
+            ? 180
+            : d.kind === "table"
+            ? 160
+            : 32;
+        const minH =
+          d.kind === "diagram" || d.kind === "chart"
+            ? 120
+            : d.kind === "table"
+            ? 60
+            : 24;
         const nw = Math.round(
           Math.max(minW, Math.min(960 - d.origX, d.origW + dx))
         );
@@ -1123,6 +1517,33 @@ export function CustomSlideLayer({
               }}
             >
               <CustomChartView el={el} theme={theme} />
+              {resizeHandle}
+            </div>
+          );
+        }
+
+        if (el.kind === "diagram") {
+          return (
+            <div
+              key={key}
+              onClick={(e) => {
+                if (!interactive) return;
+                e.stopPropagation();
+                onSelectElement?.(el.id);
+              }}
+              onPointerDown={(e) => startDrag(e, el, "move")}
+              style={{
+                position: "absolute",
+                left: el.x,
+                top: el.y,
+                width: el.w,
+                height: el.h,
+                cursor: interactive ? "move" : "default",
+                pointerEvents: interactive ? "auto" : "none",
+                ...selectionStyle,
+              }}
+            >
+              <CustomDiagramView el={el} sw={sw} slideBg={bg} />
               {resizeHandle}
             </div>
           );

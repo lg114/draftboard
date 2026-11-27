@@ -442,6 +442,7 @@ export function useOutlineEditor({
         image: "图片元素",
         table: "表格",
         chart: "图表",
+        diagram: "结构化图示",
       };
       flashToast(`已添加${labels[element.kind] || "元素"}`);
     },

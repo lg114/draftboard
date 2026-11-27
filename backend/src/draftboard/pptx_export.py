@@ -28,7 +28,6 @@ from pptx.util import Pt
 from draftboard.measure import FontPair, load_fonts, measure_box
 from draftboard.models import Artifact, CanvasElement, Slide, SlideLayout, validate_ir
 from draftboard.themes import ThemeSpec, get_theme
-from draftboard.user_library import apply_brand_to_theme
 
 CANVAS_W_PT = 960
 CANVAS_H_PT = 540
@@ -596,10 +595,10 @@ def _measure_custom_slide(
         elif el.kind == "chart":
             cats = el.chart_categories or []
             series_list = el.chart_series or []
-            if el.chart_type not in ("bar", "hbar", "line", "donut"):
+            if el.chart_type not in ("bar", "stacked_bar", "hbar", "line", "donut"):
                 errors.append(
                     f"Slide '{slide.slide_id}', element '{el.id}': "
-                    f"[INVALID_CHART] chart_type must be one of bar/hbar/line/donut (got {el.chart_type!r})."
+                    f"[INVALID_CHART] chart_type must be one of bar/stacked_bar/hbar/line/donut (got {el.chart_type!r})."
                 )
                 continue
             if not cats or len(cats) > 12:
@@ -628,6 +627,37 @@ def _measure_custom_slide(
                 errors.append(
                     f"Slide '{slide.slide_id}', element '{el.id}': "
                     f"[OVERFLOW] Chart box {el.w:.0f}x{el.h:.0f}pt is too small (min 180x120pt)."
+                )
+                continue
+            text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
+
+        elif el.kind == "diagram":
+            dtype = el.diagram_type or "timeline"
+            steps = el.diagram_steps or []
+            if dtype not in ("timeline", "process"):
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_DIAGRAM] diagram_type must be timeline or process (got {el.diagram_type!r})."
+                )
+                continue
+            if len(steps) < 2 or len(steps) > 6:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_DIAGRAM] diagram_steps must have 2..6 items (got {len(steps)})."
+                )
+                continue
+            empty_titles = [idx + 1 for idx, st in enumerate(steps) if not (st.title or "").strip()]
+            if empty_titles:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[INVALID_DIAGRAM] Step(s) {empty_titles} must have a non-empty title."
+                )
+                continue
+            min_w = 480 if len(steps) >= 5 else 320
+            if el.w < min_w or el.h < 120:
+                errors.append(
+                    f"Slide '{slide.slide_id}', element '{el.id}': "
+                    f"[OVERFLOW] Diagram box {el.w:.0f}x{el.h:.0f}pt is too small for {len(steps)} steps (min {min_w}x120pt)."
                 )
                 continue
             text_boxes.append((el.id, el.x, el.y, el.x + el.w, el.y + el.h))
@@ -765,6 +795,9 @@ def _export_custom_slide(
 
         elif el.kind == "chart":
             _export_custom_chart(pptx_slide, el, theme)
+
+        elif el.kind == "diagram":
+            _export_custom_diagram(pptx_slide, el, theme, bg_hex)
 
 
 def _set_table_cell_borders(
@@ -1005,6 +1038,7 @@ def _export_custom_chart(
 
     chart_type_map = {
         "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
+        "stacked_bar": XL_CHART_TYPE.COLUMN_STACKED,
         "hbar": XL_CHART_TYPE.BAR_CLUSTERED,
         "line": XL_CHART_TYPE.LINE_MARKERS,
         "donut": XL_CHART_TYPE.DOUGHNUT,
@@ -1073,7 +1107,9 @@ def _export_custom_chart(
         dl = plot.data_labels
         dl.font.size = Pt(10)
         dl.font.name = FONT_LATIN
-        dl.font.color.rgb = theme.body_rgb
+        dl.font.color.rgb = (
+            RGBColor(0xFF, 0xFF, 0xFF) if el.chart_type == "stacked_bar" else theme.body_rgb
+        )
         suffix = (el.value_suffix or "").strip()
         if suffix:
             safe_suffix = suffix.replace('"', "")
@@ -1083,9 +1119,14 @@ def _export_custom_chart(
                 dl.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
             except Exception:
                 pass
+        elif el.chart_type == "stacked_bar":
+            try:
+                dl.position = XL_DATA_LABEL_POSITION.CENTER
+            except Exception:
+                pass
 
     # Clean axes for cartesian charts
-    if el.chart_type in ("bar", "hbar", "line"):
+    if el.chart_type in ("bar", "stacked_bar", "hbar", "line"):
         try:
             cat_axis = chart.category_axis
             cat_axis.tick_labels.font.size = Pt(10)
@@ -1104,6 +1145,287 @@ def _export_custom_chart(
             val_axis.format.line.fill.background()
         except Exception:
             pass
+
+
+def _add_clean_autoshape(
+    pptx_slide,
+    shape_type,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    *,
+    fill_hex: Optional[str] = None,
+    border_hex: Optional[str] = None,
+    border_w: float = 0.0,
+    radius_pt: Optional[float] = None,
+):
+    """Create a shadowless native PPTX AutoShape with exact fill/border/radius."""
+    shape = pptx_slide.shapes.add_shape(shape_type, Pt(x), Pt(y), Pt(w), Pt(h))
+    shape.shadow.inherit = False
+    style_el = shape._element.find(qn("p:style"))
+    if style_el is not None:
+        effect_ref = style_el.find(qn("a:effectRef"))
+        if effect_ref is not None:
+            effect_ref.set("idx", "0")
+    if radius_pt is not None and shape_type == MSO_SHAPE.ROUNDED_RECTANGLE and min(w, h) > 0:
+        try:
+            shape.adjustments[0] = min(0.5, max(0.0, radius_pt / min(w, h)))
+        except Exception:
+            pass
+    if fill_hex:
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill_hex)
+    else:
+        shape.fill.background()
+    if border_hex and border_w > 0:
+        shape.line.color.rgb = _hex_to_rgb(border_hex)
+        shape.line.width = Pt(border_w)
+    else:
+        shape.line.fill.background()
+    return shape
+
+
+def _hex_luminance(hex_color: str) -> float:
+    clean = (hex_color or "").strip().lstrip("#")
+    if len(clean) != 6:
+        return 0.0
+    r = int(clean[0:2], 16) / 255.0
+    g = int(clean[2:4], 16) / 255.0
+    b = int(clean[4:6], 16) / 255.0
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _export_custom_diagram(
+    pptx_slide,
+    el: CanvasElement,
+    theme: ThemeSpec,
+    slide_bg_hex: str,
+) -> None:
+    """Write a structured timeline or process diagram as 100% native editable PPTX shapes."""
+    steps = list(el.diagram_steps or [])
+    if len(steps) < 2:
+        return
+    dtype = el.diagram_type or "timeline"
+    n = len(steps)
+    bx, by, bw, bh = float(el.x), float(el.y), float(el.w), float(el.h)
+
+    accent_hex = theme.accent_hex
+    accent_fg_hex = "#FFFFFF" if _hex_luminance(accent_hex) < 0.62 else "#141416"
+    surface_hex = theme.surface_hex
+    divider_hex = theme.divider_hex
+    title_rgb = _hex_to_rgb(theme.title_hex)
+    body_rgb = _hex_to_rgb(theme.body_hex)
+    accent_rgb = _hex_to_rgb(accent_hex)
+    accent_fg_rgb = _hex_to_rgb(accent_fg_hex)
+    divider_rgb = _hex_to_rgb(theme.divider_hex)
+
+    def _add_card_text(
+        tx: float,
+        ty: float,
+        tw: float,
+        th: float,
+        title_str: str,
+        desc_str: str,
+        title_pt: int,
+        desc_pt: int,
+    ) -> None:
+        tb = pptx_slide.shapes.add_textbox(Pt(tx), Pt(ty), Pt(tw), Pt(th))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        tf.auto_size = MSO_AUTO_SIZE.NONE
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+        tf.margin_left = Pt(0)
+        tf.margin_right = Pt(0)
+        tf.margin_top = Pt(0)
+        tf.margin_bottom = Pt(0)
+
+        p_title = tf.paragraphs[0]
+        p_title.alignment = PP_ALIGN.LEFT
+        p_title.space_after = Pt(6) if desc_str else Pt(0)
+        _fill_paragraph(
+            p_title,
+            title_str,
+            title_pt,
+            int(round(title_pt * 1.28)),
+            title_rgb,
+            bold=True,
+        )
+        if desc_str:
+            p_desc = tf.add_paragraph()
+            p_desc.alignment = PP_ALIGN.LEFT
+            _fill_paragraph(
+                p_desc,
+                desc_str,
+                desc_pt,
+                int(round(desc_pt * 1.38)),
+                body_rgb,
+                bold=False,
+            )
+
+    if dtype == "process":
+        arrow_gap = 22.0 if n <= 4 else 16.0
+        col_w = (bw - arrow_gap * (n - 1)) / n
+        title_pt = 14 if col_w >= 145 else 13
+        desc_pt = 12 if col_w >= 155 else 11
+        pad_x = 12.0 if col_w >= 135 else 9.0
+        pad_y = 12.0
+
+        for idx, step in enumerate(steps):
+            cx = bx + idx * (col_w + arrow_gap)
+            # Step card (tonal surface with subtle divider hairline)
+            _add_clean_autoshape(
+                pptx_slide,
+                MSO_SHAPE.ROUNDED_RECTANGLE,
+                cx,
+                by,
+                col_w,
+                bh,
+                fill_hex=surface_hex,
+                border_hex=divider_hex,
+                border_w=0.75,
+                radius_pt=12.0,
+            )
+            # Number / phase pill badge
+            badge_txt = (step.label or "").strip() or f"{idx + 1:02d}"
+            est_w = sum(11.0 if ord(ch) > 127 else 7.2 for ch in badge_txt) + 16.0
+            badge_w = min(max(34.0, est_w), max(34.0, col_w - pad_x * 2))
+            badge_h = 22.0
+            pill = _add_clean_autoshape(
+                pptx_slide,
+                MSO_SHAPE.ROUNDED_RECTANGLE,
+                cx + pad_x,
+                by + pad_y,
+                badge_w,
+                badge_h,
+                fill_hex=accent_hex,
+                radius_pt=11.0,
+            )
+            ptf = pill.text_frame
+            ptf.word_wrap = False
+            ptf.auto_size = MSO_AUTO_SIZE.NONE
+            ptf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            ptf.margin_left = Pt(4)
+            ptf.margin_right = Pt(4)
+            ptf.margin_top = Pt(4)
+            ptf.margin_bottom = Pt(2)
+            pp = ptf.paragraphs[0]
+            pp.alignment = PP_ALIGN.CENTER
+            _fill_paragraph(pp, badge_txt, 10, 12, accent_fg_rgb, bold=True)
+
+            # Title + Description
+            text_y = by + pad_y + badge_h + 10.0
+            text_h = max(32.0, by + bh - text_y - pad_y)
+            _add_card_text(
+                cx + pad_x,
+                text_y,
+                max(36.0, col_w - pad_x * 2),
+                text_h,
+                (step.title or "").strip(),
+                (step.desc or "").strip(),
+                title_pt,
+                desc_pt,
+            )
+
+            # Connector arrow to next step
+            if idx < n - 1:
+                aw = max(8.0, arrow_gap - 8.0)
+                ah = 13.0
+                ax = cx + col_w + (arrow_gap - aw) / 2.0
+                ay = by + (bh - ah) / 2.0
+                _add_clean_autoshape(
+                    pptx_slide,
+                    MSO_SHAPE.RIGHT_ARROW,
+                    ax,
+                    ay,
+                    aw,
+                    ah,
+                    fill_hex=accent_hex,
+                )
+        return
+
+    # ── Timeline mode ("timeline") ──
+    gap = 14.0 if n <= 4 else 10.0
+    col_w = (bw - gap * (n - 1)) / n
+    title_pt = 14 if col_w >= 145 else 13
+    desc_pt = 12 if col_w >= 155 else 11
+    pad_x = 12.0 if col_w >= 135 else 9.0
+    pad_y = 11.0
+
+    track_y = by + 34.0
+    node_d = 16.0
+    card_y = track_y + 18.0
+    card_h = max(56.0, by + bh - card_y)
+
+    # Horizontal track line connecting node centers
+    first_cx = bx + col_w / 2.0
+    last_cx = bx + bw - col_w / 2.0
+    _add_line(
+        pptx_slide,
+        first_cx,
+        track_y,
+        last_cx,
+        track_y,
+        divider_rgb,
+        width_pt=2.0,
+    )
+
+    for idx, step in enumerate(steps):
+        col_x = bx + idx * (col_w + gap)
+        center_x = col_x + col_w / 2.0
+
+        # Milestone label above track
+        lbl_txt = (step.label or "").strip() or f"0{idx + 1}"
+        lbl_box = pptx_slide.shapes.add_textbox(
+            Pt(col_x), Pt(by), Pt(col_w), Pt(22.0)
+        )
+        ltf = lbl_box.text_frame
+        ltf.word_wrap = False
+        ltf.auto_size = MSO_AUTO_SIZE.NONE
+        ltf.margin_left = Pt(2)
+        ltf.margin_right = Pt(2)
+        ltf.margin_top = Pt(2)
+        ltf.margin_bottom = Pt(0)
+        lp = ltf.paragraphs[0]
+        lp.alignment = PP_ALIGN.CENTER
+        _fill_paragraph(lp, lbl_txt, 11, 14, accent_rgb, bold=True)
+
+        # Accent circle node sitting on the track
+        _add_clean_autoshape(
+            pptx_slide,
+            MSO_SHAPE.OVAL,
+            center_x - node_d / 2.0,
+            track_y - node_d / 2.0,
+            node_d,
+            node_d,
+            fill_hex=accent_hex,
+            border_hex=slide_bg_hex,
+            border_w=2.0,
+        )
+
+        # Tonal content card below node
+        _add_clean_autoshape(
+            pptx_slide,
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            col_x,
+            card_y,
+            col_w,
+            card_h,
+            fill_hex=surface_hex,
+            border_hex=divider_hex,
+            border_w=0.75,
+            radius_pt=10.0,
+        )
+        _add_card_text(
+            col_x + pad_x,
+            card_y + pad_y,
+            max(36.0, col_w - pad_x * 2),
+            max(32.0, card_h - pad_y * 2),
+            (step.title or "").strip(),
+            (step.desc or "").strip(),
+            title_pt,
+            desc_pt,
+        )
 
 
 def _measure_and_resolve(
@@ -1287,6 +1609,8 @@ def export_pptx(
 
     if fonts is None:
         fonts = load_fonts()
+
+    from draftboard.user_library import apply_brand_to_theme
 
     theme = apply_brand_to_theme(get_theme(artifact.template_id), brand)
 

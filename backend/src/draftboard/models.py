@@ -50,12 +50,21 @@ class ChartSeries(BaseModel):
     )
 
 
+class DiagramStep(BaseModel):
+    label: str = Field(
+        "",
+        description="Short step tag / date / phase label, e.g. 'Q1', '01', '阶段一'",
+    )
+    title: str = Field(description="Concise step heading")
+    desc: str = Field("", description="Optional 1-2 line description for this step")
+
+
 class CanvasElement(BaseModel):
     """Native editable freeform canvas primitive in 960x540 pt coordinates."""
 
     id: str = Field(description="Unique element ID within the slide")
-    kind: Literal["text", "card", "line", "image", "table", "chart"] = Field(
-        description="Primitive kind: text, card (rounded rect), line, image, table, or chart"
+    kind: Literal["text", "card", "line", "image", "table", "chart", "diagram"] = Field(
+        description="Primitive kind: text, card (rounded rect), line, image, table, chart, or diagram"
     )
     x: float = Field(description="Left coordinate in pt (0..960)")
     y: float = Field(description="Top coordinate in pt (0..540)")
@@ -131,8 +140,9 @@ class CanvasElement(BaseModel):
     )
 
     # Chart fields (kind='chart')
-    chart_type: Optional[Literal["bar", "hbar", "line", "donut"]] = Field(
-        None, description="Chart type: bar (vertical column), hbar (horizontal bar), line, or donut"
+    chart_type: Optional[Literal["bar", "stacked_bar", "hbar", "line", "donut"]] = Field(
+        None,
+        description="Chart type: bar (vertical column), stacked_bar (stacked column), hbar (horizontal bar), line, or donut",
     )
     chart_title: Optional[str] = Field(
         None, description="Optional concise title inside the chart box"
@@ -148,6 +158,14 @@ class CanvasElement(BaseModel):
     )
     value_suffix: Optional[str] = Field(
         None, description="Optional unit suffix for data labels, e.g. '%', '亿', 'ms'"
+    )
+
+    # Diagram fields (kind='diagram')
+    diagram_type: Optional[Literal["timeline", "process"]] = Field(
+        None, description="Diagram layout: timeline (horizontal milestones) or process (step cards with arrows)"
+    )
+    diagram_steps: Optional[list[DiagramStep]] = Field(
+        None, description="2..6 structured steps for timeline/process diagram"
     )
 
 

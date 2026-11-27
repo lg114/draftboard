@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from pptx import Presentation
 from pptx.enum.chart import XL_CHART_TYPE
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 
 import draftboard.api as api_module
 import draftboard.storage as storage_module
@@ -711,3 +711,214 @@ def test_native_table_and_all_four_charts_export_and_pdf(tmp_path, monkeypatch, 
     ]
     assert pdf_files and pdf_files[-1].stat().st_size > 2000
     assert len(png_files) == 4 and all(p.stat().st_size > 1000 for p in png_files)
+
+
+def test_stacked_bar_and_native_diagrams_end_to_end(tmp_path, monkeypatch, font_files):
+    storage, outline = _seed_project(tmp_path, monkeypatch, font_files, pid="viz-diagram-deck")
+    state = StudioTurnState(
+        project_id="viz-diagram-deck",
+        active_theme_id="keynote_light",
+        auto_fit=True,
+        before_outline_version=outline.outline_version,
+    )
+    tools = build_studio_tools(state)
+
+    # 1. Invalid diagram (only 1 step) must be rejected cleanly
+    bad_diag = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 2,
+            "background": "theme:bg",
+            "elements": [
+                {
+                    "id": "bad_tl",
+                    "kind": "diagram",
+                    "x": 48,
+                    "y": 120,
+                    "w": 864,
+                    "h": 240,
+                    "diagram_type": "timeline",
+                    "diagram_steps": [{"label": "Q1", "title": "唯一阶段", "desc": "不够两步"}],
+                }
+            ],
+        },
+    )
+    assert isinstance(bad_diag, str) and "[INVALID_DIAGRAM]" in bad_diag
+
+    # 2. Slide 2: Stacked bar chart (revenue breakdown)
+    r2 = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 2,
+            "background": "theme:bg",
+            "title": "季度营收构成分析",
+            "elements": [
+                {
+                    "id": "s2_hdr",
+                    "kind": "text",
+                    "x": 48,
+                    "y": 32,
+                    "w": 864,
+                    "h": 46,
+                    "text": "季度营收构成分析",
+                    "font_size": 28,
+                    "bold": True,
+                    "color": "theme:title",
+                },
+                {
+                    "id": "chart_stacked",
+                    "kind": "chart",
+                    "x": 64,
+                    "y": 100,
+                    "w": 832,
+                    "h": 376,
+                    "chart_type": "stacked_bar",
+                    "chart_title": "分业务线季度收入（万元）",
+                    "chart_categories": ["Q1", "Q2", "Q3", "Q4"],
+                    "chart_series": [
+                        {"name": "订阅收入", "values": [32, 41, 52, 66]},
+                        {"name": "企业定制", "values": [18, 22, 26, 31]},
+                        {"name": "增值服务", "values": [9, 13, 16, 21]},
+                    ],
+                    "value_suffix": "万",
+                },
+            ],
+        },
+    )
+    assert r2["ok"] is True
+
+    # 3. Slide 3: Native Timeline Diagram
+    r3 = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 3,
+            "background": "theme:bg",
+            "title": "年度交付里程碑",
+            "elements": [
+                {
+                    "id": "s3_hdr",
+                    "kind": "text",
+                    "x": 48,
+                    "y": 32,
+                    "w": 864,
+                    "h": 46,
+                    "text": "年度交付里程碑",
+                    "font_size": 28,
+                    "bold": True,
+                    "color": "theme:title",
+                },
+                {
+                    "id": "tl_main",
+                    "kind": "diagram",
+                    "x": 48,
+                    "y": 132,
+                    "w": 864,
+                    "h": 270,
+                    "diagram_type": "timeline",
+                    "diagram_steps": [
+                        {"label": "Q1", "title": "需求调研", "desc": "完成重点客户访谈与指标定义"},
+                        {"label": "Q2", "title": "架构升级", "desc": "核心链路拆分与性能压测"},
+                        {"label": "Q3", "title": "规模推广", "desc": "覆盖全部重点业务线"},
+                        {"label": "Q4", "title": "复盘沉淀", "desc": "形成标准化交付方法论"},
+                    ],
+                },
+            ],
+        },
+    )
+    assert r3["ok"] is True
+
+    # 4. Slide 4: Native Process Diagram
+    r4 = _invoke_tool(
+        tools,
+        "design_custom_slide",
+        {
+            "slide_number": 4,
+            "background": "theme:bg",
+            "title": "端到端交付流程",
+            "elements": [
+                {
+                    "id": "s4_hdr",
+                    "kind": "text",
+                    "x": 48,
+                    "y": 32,
+                    "w": 864,
+                    "h": 46,
+                    "text": "端到端交付流程",
+                    "font_size": 28,
+                    "bold": True,
+                    "color": "theme:title",
+                },
+                {
+                    "id": "proc_main",
+                    "kind": "diagram",
+                    "x": 48,
+                    "y": 144,
+                    "w": 864,
+                    "h": 248,
+                    "diagram_type": "process",
+                    "diagram_steps": [
+                        {"label": "01", "title": "素材导入", "desc": "接入文档与数据表"},
+                        {"label": "02", "title": "结构编排", "desc": "自动匹配高密度版式"},
+                        {"label": "03", "title": "可视化交付", "desc": "导出原生可编辑 PPTX"},
+                    ],
+                },
+            ],
+        },
+    )
+    assert r4["ok"] is True
+
+    # 5. Export PPTX + PDF + PNG and verify native editable PowerPoint primitives
+    exp = _invoke_tool(tools, "export_deck_now", {})
+    assert exp["ok"] is True
+    pptx_path = list(storage.root.rglob("*.pptx"))[-1]
+    prs = Presentation(str(pptx_path))
+
+    # Slide 2: COLUMN_STACKED native chart
+    s2_charts = [sh.chart for sh in prs.slides[1].shapes if sh.has_chart]
+    assert len(s2_charts) == 1
+    assert s2_charts[0].chart_type == XL_CHART_TYPE.COLUMN_STACKED
+    assert len(s2_charts[0].plots[0].series) == 3
+
+    # Slide 3: Timeline exported as native OVAL nodes, LINE track, ROUNDED_RECTANGLE cards, TEXT_BOXes (no raster image)
+    s3_shapes = list(prs.slides[2].shapes)
+    assert all(sh.shape_type != MSO_SHAPE_TYPE.PICTURE for sh in s3_shapes)
+    s3_auto_types = [
+        sh.auto_shape_type for sh in s3_shapes if sh.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE
+    ]
+    assert s3_auto_types.count(MSO_SHAPE.OVAL) == 4
+    assert s3_auto_types.count(MSO_SHAPE.ROUNDED_RECTANGLE) == 4
+    assert any(sh.shape_type == MSO_SHAPE_TYPE.LINE for sh in s3_shapes)
+    s3_texts = "\n".join(sh.text_frame.text for sh in s3_shapes if sh.has_text_frame)
+    assert "需求调研" in s3_texts and "Q4" in s3_texts
+
+    # Slide 4: Process exported as native ROUNDED_RECTANGLE cards + pills + RIGHT_ARROW connectors (no raster image)
+    s4_shapes = list(prs.slides[3].shapes)
+    assert all(sh.shape_type != MSO_SHAPE_TYPE.PICTURE for sh in s4_shapes)
+    s4_auto_types = [
+        sh.auto_shape_type for sh in s4_shapes if sh.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE
+    ]
+    assert s4_auto_types.count(MSO_SHAPE.RIGHT_ARROW) == 2
+    assert s4_auto_types.count(MSO_SHAPE.ROUNDED_RECTANGLE) == 6  # 3 cards + 3 badge pills
+    s4_texts = "\n".join(sh.text_frame.text for sh in s4_shapes if sh.has_text_frame)
+    assert "素材导入" in s4_texts and "03" in s4_texts
+
+    # 6. Verify vector PDF + PNGs rendered cleanly
+    pdf_files = list(storage.root.rglob("deck.pdf"))
+    png_files = [
+        p
+        for p in storage.root.rglob("*.png")
+        if p.parent.name != "assets" and ".snapshot" not in p.as_posix()
+    ]
+    assert pdf_files and pdf_files[-1].stat().st_size > 2000
+    assert len(png_files) == 4 and all(p.stat().st_size > 1000 for p in png_files)
+
+    # 7. Verify Markdown speaker script includes diagram steps cleanly
+    client = TestClient(api_module.app)
+    md_resp = client.get("/api/projects/viz-diagram-deck/download/notes")
+    assert md_resp.status_code == 200
+    md_text = md_resp.text
+    assert "时间轴" in md_text and "需求调研" in md_text
+    assert "流程步骤" in md_text and "素材导入" in md_text

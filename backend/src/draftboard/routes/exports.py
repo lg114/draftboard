@@ -379,6 +379,25 @@ def download_speaker_notes(project_id: str, version: Optional[str] = None):
                             if pairs:
                                 c_lines.append(f"  - {sname}：" + "，".join(pairs))
                         custom_blocks.append("\n".join(c_lines))
+                elif kind == "diagram":
+                    dtype = el.get("diagram_type") or "timeline"
+                    steps = el.get("diagram_steps") or []
+                    if steps:
+                        heading = "时间轴" if dtype == "timeline" else "流程步骤"
+                        d_lines = [f"- {heading}："]
+                        for si, st in enumerate(steps, start=1):
+                            if not isinstance(st, dict):
+                                continue
+                            lbl = str(st.get("label") or f"{si:02d}").strip()
+                            stitle = str(st.get("title") or "").strip()
+                            sdesc = str(st.get("desc") or "").strip()
+                            if stitle:
+                                item_line = f"  - **{lbl} · {stitle}**"
+                                if sdesc:
+                                    item_line += f"：{sdesc}"
+                                d_lines.append(item_line)
+                        if len(d_lines) > 1:
+                            custom_blocks.append("\n".join(d_lines))
                 elif kind == "image":
                     cimg = (el.get("image_asset_id") or "").strip()
                     if cimg:
