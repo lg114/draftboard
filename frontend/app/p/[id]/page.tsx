@@ -124,6 +124,12 @@ export default function ProjectWorkspacePage() {
       outline={hasActiveOutline ? outline : null}
       selectedIndex={hasActiveOutline ? ws.selectedIndex : 0}
       selectedElementIds={hasActiveOutline ? ws.selectedCustomElementIds : []}
+      onRemoveSelectedElement={(elId) =>
+        ws.handleSelectedCustomElementsChange(
+          ws.selectedCustomElementIds.filter((id) => id !== elId)
+        )
+      }
+      onClearSelectedElements={() => ws.handleSelectedCustomElementsChange([])}
       materials={ws.materials}
       materialsCount={ws.materials.length}
       themes={ws.themes}
@@ -452,6 +458,7 @@ export default function ProjectWorkspacePage() {
             onReorderCustomElement={(elId, dir) =>
               outlineEditor.reorderCustomElement(ws.selectedIndex, elId, dir)
             }
+            selectedElementIds={ws.selectedCustomElementIds}
             onSelectedCustomElementsChange={ws.handleSelectedCustomElementsChange}
             onDropFilesOnCanvas={ws.handleDropOrPasteFilesOnStage}
             onNotify={(msg) => ws.flashToast(msg)}

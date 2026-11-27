@@ -82,6 +82,7 @@ interface SlideStageCanvasProps {
   onDuplicateCustomElement?: (elementId: string) => string | null;
   onBatchDuplicateCustomElements?: (elementIds: string[]) => string[];
   onReorderCustomElement?: (elementId: string, dir: "front" | "back") => void;
+  selectedElementIds?: string[];
   onSelectedCustomElementsChange?: (elementIds: string[]) => void;
   onDropFilesOnCanvas?: (
     files: FileList | File[],
@@ -131,6 +132,7 @@ export function SlideStageCanvas({
   onDuplicateCustomElement,
   onBatchDuplicateCustomElements,
   onReorderCustomElement,
+  selectedElementIds: controlledSelectedElIds,
   onSelectedCustomElementsChange,
   onDropFilesOnCanvas,
   onNotify,
@@ -143,7 +145,20 @@ export function SlideStageCanvas({
   const [isPanning, setIsPanning] = useState(false);
   const [isStageDragging, setIsStageDragging] = useState(false);
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
-  const [selectedElIds, setSelectedElIds] = useState<string[]>([]);
+  const [internalSelectedElIds, setInternalSelectedElIds] = useState<string[]>(
+    []
+  );
+  const selectedElIds = controlledSelectedElIds ?? internalSelectedElIds;
+  const setSelectedElIds = useCallback(
+    (next: string[]) => {
+      if (onSelectedCustomElementsChange) {
+        onSelectedCustomElementsChange(next);
+      } else {
+        setInternalSelectedElIds(next);
+      }
+    },
+    [onSelectedCustomElementsChange]
+  );
   const [editingCustomTextId, setEditingCustomTextId] = useState<string | null>(
     null
   );
@@ -427,10 +442,6 @@ export function SlideStageCanvas({
     }
     setAddPopoverOpen(false);
   };
-
-  useEffect(() => {
-    onSelectedCustomElementsChange?.(selectedElIds);
-  }, [selectedElIds, onSelectedCustomElementsChange]);
 
   // Cross-slide element clipboard: Ctrl/Cmd+C copies selected free-canvas elements;
   // Ctrl/Cmd+V (paste event when OS clipboard has no image) pastes across any slide.

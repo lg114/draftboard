@@ -15,6 +15,7 @@ import {
   Settings,
   Square,
   Upload,
+  X,
 } from "lucide-react";
 import type {
   ChatDeckChanges,
@@ -33,6 +34,8 @@ interface AgentChatPanelProps {
   outline: Outline | null;
   selectedIndex: number;
   selectedElementIds?: string[];
+  onRemoveSelectedElement?: (elementId: string) => void;
+  onClearSelectedElements?: () => void;
   materials?: Material[];
   materialsCount: number;
   themes: ThemeOption[];
@@ -532,6 +535,8 @@ export function AgentChatPanel({
   outline,
   selectedIndex,
   selectedElementIds = [],
+  onRemoveSelectedElement,
+  onClearSelectedElements,
   materials = [],
   materialsCount,
   themes,
@@ -564,8 +569,8 @@ export function AgentChatPanel({
   const selectedElements = selectedElementIds.length
     ? currentSlideElements.filter((el) => selectedElementIds.includes(el.id))
     : [];
-  const selectedContextLabel = (() => {
-    if (selectedElements.length === 0) return null;
+  const selectedElementChips = (() => {
+    if (selectedElements.length === 0) return [];
     const kindLabels: Record<string, string> = {
       text: "文本框",
       card: "卡片",
@@ -575,8 +580,7 @@ export function AgentChatPanel({
       chart: "图表",
       diagram: "图示",
     };
-    if (selectedElements.length === 1) {
-      const el = selectedElements[0];
+    return selectedElements.map((el) => {
       const kindCn = kindLabels[el.kind] || el.kind;
       const snippet =
         el.kind === "text"
@@ -585,12 +589,16 @@ export function AgentChatPanel({
           ? (el.chart_title || "").trim().slice(0, 12)
           : el.kind === "table"
           ? (el.headers?.[0] || "").trim().slice(0, 10)
+          : el.kind === "diagram"
+          ? (el.diagram_steps?.[0]?.title || "").trim().slice(0, 10)
           : el.kind === "image"
           ? (el.image_asset_id || "").trim().slice(0, 12)
           : "";
-      return snippet ? `${kindCn}「${snippet}」` : kindCn;
-    }
-    return `${selectedElements.length} 个元素`;
+      return {
+        id: el.id,
+        label: snippet ? `${kindCn}「${snippet}」` : kindCn,
+      };
+    });
   })();
 
   useEffect(() => {
@@ -705,17 +713,8 @@ export function AgentChatPanel({
       {/* Scrollable Editorial Conversation Thread (matching mockup: 当前第 N 页 + 你 / 助手) */}
       <div className="flex-1 min-h-0 overflow-y-auto clean-scroll px-4 py-3.5 space-y-5">
         {totalSlides > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-ui-text-muted">
-            <span>当前第 {selectedIndex + 1} 页</span>
-            {selectedContextLabel && (
-              <span
-                title="AI 助手会自动结合你当前画布上选中的元素进行精准修改"
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-ui-bg-selected text-ui-accent-text text-[12px] font-medium max-w-full truncate"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-ui-accent shrink-0" />
-                <span className="truncate">已选 {selectedContextLabel}</span>
-              </span>
-            )}
+          <div className="text-[12.5px] text-ui-text-muted">
+            当前第 {selectedIndex + 1} 页
           </div>
         )}
 
@@ -873,6 +872,52 @@ export function AgentChatPanel({
         )}
 
         <div className="rounded-xl bg-ui-surface-input focus-within:ring-1 focus-within:ring-ui-focus transition-shadow duration-150 px-3 pt-2.5 pb-2">
+          {selectedElementChips.length > 0 && (
+            <div
+              aria-label="当前已选画布元素上下文"
+              className="flex flex-wrap items-center gap-1.5 pb-2 mb-1.5 border-b border-ui-border-subtle/70"
+            >
+              <span className="text-[11.5px] text-ui-text-muted shrink-0">
+                已选
+              </span>
+              {selectedElementChips.slice(0, 4).map((chip) => (
+                <span
+                  key={chip.id}
+                  title={`发送消息时 AI 将优先针对该元素修改：${chip.label}`}
+                  className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-ui-bg-selected text-ui-accent-text text-[12px] font-medium max-w-[190px]"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-ui-accent shrink-0" />
+                  <span className="truncate">{chip.label}</span>
+                  {onRemoveSelectedElement && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveSelectedElement(chip.id)}
+                      aria-label={`取消选中 ${chip.label}`}
+                      title="取消选中此元素"
+                      className="p-0.5 rounded hover:bg-ui-control-active text-ui-accent-text/75 hover:text-ui-text cursor-pointer transition-colors shrink-0"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {selectedElementChips.length > 4 && (
+                <span className="px-1.5 py-0.5 rounded-md bg-ui-bg-selected text-ui-text-muted text-[11.5px] tabular-nums">
+                  +{selectedElementChips.length - 4}
+                </span>
+              )}
+              {selectedElementChips.length > 1 && onClearSelectedElements && (
+                <button
+                  type="button"
+                  onClick={onClearSelectedElements}
+                  className="ml-auto text-[11.5px] text-ui-text-muted hover:text-ui-text transition-colors cursor-pointer"
+                >
+                  清空
+                </button>
+              )}
+            </div>
+          )}
+
           <textarea
             ref={inputRef}
             rows={1}
@@ -936,6 +981,8 @@ export function AgentChatPanel({
             placeholder={
               !llmConfigured
                 ? "请先配置大模型…"
+                : selectedElementChips.length > 0
+                ? "针对已选元素描述你想修改的内容…"
                 : "描述你想修改的内容…"
             }
             className="w-full bg-transparent text-[13.5px] text-ui-text placeholder:text-ui-text-muted outline-none resize-none leading-relaxed max-h-[150px] disabled:text-ui-text-disabled"
