@@ -140,7 +140,7 @@ function InlineCellInput({
         lineHeight: 1.25,
         color,
         textAlign: align,
-        caretColor: SELECTION_COLOR,
+        caretColor: color || "currentColor",
       }}
     />
   );
@@ -216,7 +216,7 @@ function InlineDiagramTextarea({
         color,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
-        caretColor: SELECTION_COLOR,
+        caretColor: color || "currentColor",
       }}
     />
   );
@@ -1364,6 +1364,7 @@ interface DragSession {
   mode: "move" | "resize" | "line-start" | "line-end";
   clickedId: string;
   collapseOnClick: boolean;
+  enterTextEditOnClick: boolean;
   members: OrigMemberState[];
   groupBounds: BoxRect;
   startClientX: number;
@@ -1402,13 +1403,14 @@ function InlineCustomTextarea({
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    node.focus({ preventScroll: true });
-    const val = node.value;
-    if (val === "新文本框（双击编辑）") {
-      node.select();
-    } else {
+    const placeCaret = () => {
+      node.focus({ preventScroll: true });
+      const val = node.value;
       node.setSelectionRange(val.length, val.length);
-    }
+    };
+    placeCaret();
+    const raf = window.requestAnimationFrame(placeCaret);
+    return () => window.cancelAnimationFrame(raf);
   }, []);
 
   const value = normalizeEscapedNewlines(el.text || "");
@@ -1462,7 +1464,7 @@ function InlineCustomTextarea({
         overflow: "auto",
         userSelect: "text",
         WebkitUserSelect: "text",
-        caretColor: SELECTION_COLOR,
+        caretColor: color || "currentColor",
         display: "block",
       }}
     />
@@ -1761,6 +1763,8 @@ export function CustomSlideLayer({
       if (!d.moved) {
         if (d.collapseOnClick) {
           onSelectElements?.([d.clickedId]);
+        } else if (d.enterTextEditOnClick && onUpdateElementText) {
+          onStartEditText?.(d.clickedId);
         }
         return;
       }
@@ -1800,6 +1804,8 @@ export function CustomSlideLayer({
     onUpdateElement,
     onBatchUpdateElements,
     onSelectElements,
+    onStartEditText,
+    onUpdateElementText,
   ]);
 
   const startDrag = (
@@ -1836,6 +1842,11 @@ export function CustomSlideLayer({
       mode === "move" &&
       selectedElementIds.length > 1 &&
       selectedSet.has(el.id);
+    const isAlreadySingleText =
+      mode === "move" &&
+      el.kind === "text" &&
+      selectedElementIds.length === 1 &&
+      selectedElementIds[0] === el.id;
 
     let dragMembers: CanvasElement[];
     if (isAlreadyInMulti) {
@@ -1854,6 +1865,7 @@ export function CustomSlideLayer({
       mode,
       clickedId: el.id,
       collapseOnClick: isAlreadyInMulti,
+      enterTextEditOnClick: isAlreadySingleText,
       members: dragMembers.map((m) => ({
         id: m.id,
         x: m.x,
@@ -2371,7 +2383,9 @@ export function CustomSlideLayer({
             key={key}
             title={
               interactive && !isEditingThisText
-                ? "拖拽移动 · 双击直接编辑文字 · Shift+点击多选"
+                ? isSelected
+                  ? "再次点击或双击直接编辑文字 · 拖拽移动"
+                  : "拖拽移动 · 双击直接编辑文字 · Shift+点击多选"
                 : undefined
             }
             onClick={(e) => {
@@ -2408,6 +2422,8 @@ export function CustomSlideLayer({
               wordBreak: "break-word",
               overflow: isSelected || isEditingThisText ? "visible" : "hidden",
               cursor: isEditingThisText
+                ? "text"
+                : interactive && isSelected && isSingleSelected
                 ? "text"
                 : interactive
                 ? "move"

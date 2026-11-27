@@ -119,8 +119,13 @@ function InlineStandardTextarea({
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    node.focus({ preventScroll: true });
-    node.setSelectionRange(node.value.length, node.value.length);
+    const placeCaret = () => {
+      node.focus({ preventScroll: true });
+      node.setSelectionRange(node.value.length, node.value.length);
+    };
+    placeCaret();
+    const raf = window.requestAnimationFrame(placeCaret);
+    return () => window.cancelAnimationFrame(raf);
   }, []);
 
   return (
@@ -170,7 +175,7 @@ function InlineStandardTextarea({
         boxSizing: "border-box",
         fontFamily: "inherit",
         overflow: "auto",
-        caretColor: INLINE_EDIT_RING,
+        caretColor: style.color || "currentColor",
         userSelect: "text",
         WebkitUserSelect: "text",
         zIndex: 25,
@@ -196,7 +201,6 @@ export function StandardSlideView({
 }: StandardSlideViewProps) {
   const [editingField, setEditingField] =
     useState<StandardEditableField | null>(initialEditField);
-  const singleClickTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setEditingField(null);
@@ -209,14 +213,6 @@ export function StandardSlideView({
     }
   }, [interactive, onUpdateField, initialEditField, onClearInitialEditField]);
 
-  useEffect(() => {
-    return () => {
-      if (singleClickTimerRef.current !== null) {
-        window.clearTimeout(singleClickTimerRef.current);
-      }
-    };
-  }, []);
-
   const isHero = layout === "cover" || layout === "closing";
   const slideBg = isHero ? sw.cover_bg : sw.bg;
   const titleCol = isHero ? sw.cover_title : sw.title;
@@ -228,29 +224,20 @@ export function StandardSlideView({
   const slotProps = (fieldId: string, field: StandardEditableField) => {
     if (!canFocus && !canInlineEdit) return {};
     return {
-      title: canInlineEdit ? "双击直接在画布编辑文字" : undefined,
+      title: canInlineEdit ? "点击直接在画布编辑文字" : undefined,
       onClick: (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!canFocus) return;
-        if (!canInlineEdit) {
-          onFocusField!(fieldId);
+        if (canInlineEdit) {
+          setEditingField(field);
           return;
         }
-        if (singleClickTimerRef.current !== null) {
-          window.clearTimeout(singleClickTimerRef.current);
-        }
-        singleClickTimerRef.current = window.setTimeout(() => {
-          singleClickTimerRef.current = null;
+        if (canFocus) {
           onFocusField!(fieldId);
-        }, 220);
+        }
       },
       onDoubleClick: (e: React.MouseEvent) => {
         if (!canInlineEdit) return;
         e.stopPropagation();
-        if (singleClickTimerRef.current !== null) {
-          window.clearTimeout(singleClickTimerRef.current);
-          singleClickTimerRef.current = null;
-        }
         setEditingField(field);
       },
     };
