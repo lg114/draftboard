@@ -23,6 +23,7 @@ interface SelectedElementBarProps {
   imageAssets: Material[];
   onUpdate: (elementId: string, patch: Partial<CanvasElement>) => void;
   onFocusField: (fieldId: string) => void;
+  onInlineEditText?: (elementId: string) => void;
   onReorder?: (elementId: string, dir: "front" | "back") => void;
   onDuplicate?: (elementId: string) => void;
   onDelete?: (elementId: string) => void;
@@ -45,6 +46,7 @@ export function SelectedElementBar({
   imageAssets,
   onUpdate,
   onFocusField,
+  onInlineEditText,
   onReorder,
   onDuplicate,
   onDelete,
@@ -174,7 +176,14 @@ export function SelectedElementBar({
 
           <button
             type="button"
-            onClick={() => onFocusField(`custom-el-${selectedEl.id}`)}
+            onClick={() => {
+              if (onInlineEditText) {
+                onInlineEditText(selectedEl.id);
+              } else {
+                onFocusField(`custom-el-${selectedEl.id}`);
+              }
+            }}
+            title="直接在画布内编辑文案（也可双击文本框）"
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-ui-bg hover:bg-ui-control-hover text-ui-text-secondary hover:text-ui-text font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <Pencil className="w-3.5 h-3.5 text-ui-icon" />

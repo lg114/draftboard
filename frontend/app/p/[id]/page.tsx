@@ -410,17 +410,40 @@ export default function ProjectWorkspacePage() {
             }}
             onSelectIndex={ws.setSelectedIndex}
             onFocusField={ws.focusInspectorField}
+            onPatchStandardField={(field, val) =>
+              outlineEditor.patchItem(ws.selectedIndex, { [field]: val })
+            }
+            onUpdateCustomElementText={(elId, nextText) =>
+              outlineEditor.updateCustomElementText(
+                ws.selectedIndex,
+                elId,
+                nextText
+              )
+            }
             onUpdateCustomElement={(elId, patch) =>
               outlineEditor.updateCustomElement(ws.selectedIndex, elId, patch)
             }
+            onBatchUpdateCustomElements={(patches, coalesceKey) =>
+              outlineEditor.batchUpdateCustomElements(
+                ws.selectedIndex,
+                patches,
+                coalesceKey
+              )
+            }
             onDeleteCustomElement={(elId) =>
               outlineEditor.deleteCustomElement(ws.selectedIndex, elId)
+            }
+            onBatchDeleteCustomElements={(elIds) =>
+              outlineEditor.batchDeleteCustomElements(ws.selectedIndex, elIds)
             }
             onAddCustomElement={(el) =>
               outlineEditor.addCustomElement(ws.selectedIndex, el)
             }
             onDuplicateCustomElement={(elId) =>
               outlineEditor.duplicateCustomElement(ws.selectedIndex, elId)
+            }
+            onBatchDuplicateCustomElements={(elIds) =>
+              outlineEditor.batchDuplicateCustomElements(ws.selectedIndex, elIds)
             }
             onReorderCustomElement={(elId, dir) =>
               outlineEditor.reorderCustomElement(ws.selectedIndex, elId, dir)

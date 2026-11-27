@@ -397,6 +397,136 @@ export function useOutlineEditor({
     [mutateOutline]
   );
 
+  const batchUpdateCustomElements = useCallback(
+    (
+      index: number,
+      patches: Record<string, Partial<CanvasElement>>,
+      coalesceKey?: string
+    ) => {
+      const ids = Object.keys(patches);
+      if (ids.length === 0) return;
+      mutateOutline(
+        (prev) => {
+          if (!prev.items[index]) return null;
+          const items = [...prev.items];
+          const item = items[index];
+          const elems = item.custom_elements;
+          if (!elems || elems.length === 0) return null;
+          let changed = false;
+          const nextElements = elems.map((el) => {
+            const p = patches[el.id];
+            if (!p) return el;
+            changed = true;
+            return { ...el, ...p };
+          });
+          if (!changed) return null;
+          items[index] = { ...item, custom_elements: nextElements };
+          return { ...prev, items };
+        },
+        coalesceKey ? { coalesceKey } : undefined
+      );
+    },
+    [mutateOutline]
+  );
+
+  const batchDeleteCustomElements = useCallback(
+    (index: number, elementIds: string[]) => {
+      const idSet = new Set(elementIds);
+      if (idSet.size === 0) return;
+      mutateOutline((prev) => {
+        if (!prev.items[index]) return null;
+        const items = [...prev.items];
+        const item = items[index];
+        const elems = item.custom_elements;
+        if (!elems || elems.length === 0) return null;
+        const nextElements = elems.filter((el) => !idSet.has(el.id));
+        if (nextElements.length === elems.length) return null;
+        items[index] = {
+          ...item,
+          custom_elements: nextElements.length > 0 ? nextElements : null,
+          custom_bg: nextElements.length > 0 ? item.custom_bg : null,
+        };
+        return { ...prev, items };
+      });
+      flashToast(
+        idSet.size > 1
+          ? `已删除 ${idSet.size} 个选中元素`
+          : "已删除选中元素",
+        4200,
+        {
+          label: "撤销",
+          onClick: () => handleUndoRef.current(),
+        }
+      );
+    },
+    [mutateOutline, flashToast]
+  );
+
+  const batchDuplicateCustomElements = useCallback(
+    (index: number, elementIds: string[]): string[] => {
+      const idSet = new Set(elementIds);
+      if (idSet.size === 0) return [];
+      const cur = outlineRef.current?.items[index];
+      const elems = cur?.custom_elements;
+      if (!elems) return [];
+      const selectedPairs = elems
+        .map((el, idx) => ({ el, idx }))
+        .filter(({ el }) => idSet.has(el.id));
+      if (selectedPairs.length === 0) return [];
+
+      // Keep collective offset clamped within 960x540 so group relative geometry stays intact
+      let maxAllowedDx = 18;
+      let maxAllowedDy = 18;
+      for (const { el } of selectedPairs) {
+        if (el.kind === "line") {
+          const maxX = Math.min(960, 960 - el.w);
+          const maxY = Math.min(540, 540 - el.h);
+          maxAllowedDx = Math.min(maxAllowedDx, maxX - el.x);
+          maxAllowedDy = Math.min(maxAllowedDy, maxY - el.y);
+        } else {
+          maxAllowedDx = Math.min(maxAllowedDx, 960 - el.w - el.x);
+          maxAllowedDy = Math.min(maxAllowedDy, 540 - el.h - el.y);
+        }
+      }
+      const shiftX = Math.max(0, Math.round(maxAllowedDx));
+      const shiftY = Math.max(0, Math.round(maxAllowedDy));
+
+      const stamp = Date.now().toString(36);
+      const clones: CanvasElement[] = selectedPairs.map(({ el }, i) => {
+        const clone: CanvasElement = structuredClone(el);
+        clone.id = `el_${el.kind}_${stamp}_${i}_${Math.random()
+          .toString(36)
+          .slice(2, 5)}`;
+        clone.x = Math.round(clone.x + shiftX);
+        clone.y = Math.round(clone.y + shiftY);
+        return clone;
+      });
+      const insertAfterIdx = selectedPairs[selectedPairs.length - 1].idx;
+
+      mutateOutline((prev) => {
+        if (!prev.items[index]) return null;
+        const items = [...prev.items];
+        const item = items[index];
+        const curElems = item.custom_elements || [];
+        const nextElements = [...curElems];
+        nextElements.splice(
+          Math.min(insertAfterIdx + 1, nextElements.length),
+          0,
+          ...clones
+        );
+        items[index] = { ...item, custom_elements: nextElements };
+        return { ...prev, items };
+      });
+      flashToast(
+        clones.length > 1
+          ? `已复制 ${clones.length} 个选中元素`
+          : "已复制选中元素"
+      );
+      return clones.map((c) => c.id);
+    },
+    [mutateOutline, flashToast]
+  );
+
   const deleteCustomElement = useCallback(
     (index: number, elementId: string) => {
       mutateOutline((prev) => {
@@ -939,6 +1069,9 @@ export function useOutlineEditor({
     handleSelectLayout,
     updateCustomElementText,
     updateCustomElement,
+    batchUpdateCustomElements,
+    batchDeleteCustomElements,
+    batchDuplicateCustomElements,
     deleteCustomElement,
     addCustomElement,
     duplicateCustomElement,

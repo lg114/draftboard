@@ -26,8 +26,19 @@ import { useDismiss } from "../../lib/useDismiss";
 import { usePresence } from "../../lib/usePresence";
 import { CustomSlideLayer } from "./CustomSlideLayer";
 import { inferEffectiveLayout, needsContrastHairline } from "./layoutUtils";
+import { MultiSelectBar } from "./stage/MultiSelectBar";
 import { SelectedElementBar } from "./stage/SelectedElementBar";
-import { BrandOverlay, StandardSlideView } from "./stage/StandardSlideView";
+import {
+  type AlignMode,
+  type DistributeAxis,
+  computeAlignPatches,
+  computeDistributePatches,
+} from "./stage/snapGuides";
+import {
+  type StandardEditableField,
+  BrandOverlay,
+  StandardSlideView,
+} from "./stage/StandardSlideView";
 
 interface SlideStageCanvasProps {
   pid: string;
@@ -53,13 +64,21 @@ interface SlideStageCanvasProps {
   onRevertFromDiff?: () => void;
   onSelectIndex: (idx: number) => void;
   onFocusField: (fieldId: string) => void;
+  onPatchStandardField?: (field: StandardEditableField, value: string) => void;
+  onUpdateCustomElementText?: (elementId: string, nextText: string) => void;
   onUpdateCustomElement?: (
     elementId: string,
     patch: Partial<CanvasElement>
   ) => void;
+  onBatchUpdateCustomElements?: (
+    patches: Record<string, Partial<CanvasElement>>,
+    coalesceKey?: string
+  ) => void;
   onDeleteCustomElement?: (elementId: string) => void;
+  onBatchDeleteCustomElements?: (elementIds: string[]) => void;
   onAddCustomElement?: (element: CanvasElement) => void;
   onDuplicateCustomElement?: (elementId: string) => string | null;
+  onBatchDuplicateCustomElements?: (elementIds: string[]) => string[];
   onReorderCustomElement?: (elementId: string, dir: "front" | "back") => void;
   onSelectedCustomElementChange?: (elementId: string | null) => void;
 }
@@ -94,10 +113,15 @@ export function SlideStageCanvas({
   onRevertFromDiff,
   onSelectIndex,
   onFocusField,
+  onPatchStandardField,
+  onUpdateCustomElementText,
   onUpdateCustomElement,
+  onBatchUpdateCustomElements,
   onDeleteCustomElement,
+  onBatchDeleteCustomElements,
   onAddCustomElement,
   onDuplicateCustomElement,
+  onBatchDuplicateCustomElements,
   onReorderCustomElement,
   onSelectedCustomElementChange,
 }: SlideStageCanvasProps) {
@@ -108,7 +132,13 @@ export function SlideStageCanvas({
   const [spacePressed, setSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
-  const [selectedElId, setSelectedElId] = useState<string | null>(null);
+  const [selectedElIds, setSelectedElIds] = useState<string[]>([]);
+  const [editingCustomTextId, setEditingCustomTextId] = useState<string | null>(
+    null
+  );
+  const [forceLiveStandard, setForceLiveStandard] = useState(false);
+  const [pendingStandardField, setPendingStandardField] =
+    useState<StandardEditableField | null>(null);
 
   const pendingZoomAnchorRef = useRef<{
     u: number;
@@ -130,7 +160,10 @@ export function SlideStageCanvas({
   useDismiss(addPopoverOpen, () => setAddPopoverOpen(false), [addWrapRef]);
 
   useEffect(() => {
-    setSelectedElId(null);
+    setSelectedElIds([]);
+    setEditingCustomTextId(null);
+    setForceLiveStandard(false);
+    setPendingStandardField(null);
     setAddPopoverOpen(false);
   }, [selectedIndex, version, isAgentBusy]);
 
@@ -237,13 +270,14 @@ export function SlideStageCanvas({
   const isCustomCanvas = Boolean(
     item?.custom_elements && item.custom_elements.length > 0
   );
-  const selectedEl: CanvasElement | null = isCustomCanvas
-    ? item?.custom_elements?.find((el) => el.id === selectedElId) ?? null
-    : null;
+  const selectedEls: CanvasElement[] = isCustomCanvas
+    ? (item?.custom_elements ?? []).filter((el) =>
+        selectedElIds.includes(el.id)
+      )
+    : [];
+  const selectedEl: CanvasElement | null =
+    selectedEls.length === 1 ? selectedEls[0] : null;
   const imageAssets = materials.filter((m) => m.asset_type === "image");
-  const firstCustomTextId = isCustomCanvas
-    ? item?.custom_elements?.find((el) => el.kind === "text")?.id
-    : undefined;
   const layout = item
     ? inferEffectiveLayout(item.layout, selectedIndex, total)
     : "content";
@@ -254,7 +288,8 @@ export function SlideStageCanvas({
   );
   const isSyncedArtifact =
     !diffPreviewActive && exportInSync && hasRenderedPage;
-  const showRenderedImage = isSyncedArtifact && !isCustomCanvas;
+  const showRenderedImage =
+    isSyncedArtifact && !isCustomCanvas && !forceLiveStandard;
 
   const handleQuickAddElement = (
     kind: "text" | "card" | "line" | "image" | "timeline" | "process" | "stacked_bar"
@@ -370,7 +405,10 @@ export function SlideStageCanvas({
       };
     }
     onAddCustomElement(nextEl);
-    setSelectedElId(id);
+    setSelectedElIds([id]);
+    if (kind === "text" && onUpdateCustomElementText) {
+      setEditingCustomTextId(id);
+    }
     setAddPopoverOpen(false);
   };
 
@@ -378,14 +416,84 @@ export function SlideStageCanvas({
     onSelectedCustomElementChange?.(selectedEl ? selectedEl.id : null);
   }, [selectedEl, onSelectedCustomElementChange]);
 
-  useEffect(() => {
-    if (!selectedEl || diffPreviewActive || isAgentBusy) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.isComposing) return;
-      if (e.key === "Escape") {
-        setSelectedElId(null);
-        return;
+  const handleAlignSelected = useCallback(
+    (mode: AlignMode) => {
+      if (!item?.custom_elements || selectedEls.length < 2) return;
+      const patches = computeAlignPatches(
+        item.custom_elements,
+        selectedEls.map((e) => e.id),
+        mode
+      );
+      if (Object.keys(patches).length === 0) return;
+      if (onBatchUpdateCustomElements) {
+        onBatchUpdateCustomElements(patches);
+      } else if (onUpdateCustomElement) {
+        for (const [elId, patch] of Object.entries(patches)) {
+          onUpdateCustomElement(elId, patch);
+        }
       }
+    },
+    [item, selectedEls, onBatchUpdateCustomElements, onUpdateCustomElement]
+  );
+
+  const handleDistributeSelected = useCallback(
+    (axis: DistributeAxis) => {
+      if (!item?.custom_elements || selectedEls.length < 3) return;
+      const patches = computeDistributePatches(
+        item.custom_elements,
+        selectedEls.map((e) => e.id),
+        axis
+      );
+      if (Object.keys(patches).length === 0) return;
+      if (onBatchUpdateCustomElements) {
+        onBatchUpdateCustomElements(patches);
+      } else if (onUpdateCustomElement) {
+        for (const [elId, patch] of Object.entries(patches)) {
+          onUpdateCustomElement(elId, patch);
+        }
+      }
+    },
+    [item, selectedEls, onBatchUpdateCustomElements, onUpdateCustomElement]
+  );
+
+  const handleDuplicateSelected = useCallback(() => {
+    if (selectedEls.length === 0) return;
+    if (selectedEls.length === 1 && onDuplicateCustomElement) {
+      const createdId = onDuplicateCustomElement(selectedEls[0].id);
+      if (createdId) setSelectedElIds([createdId]);
+      return;
+    }
+    if (onBatchDuplicateCustomElements) {
+      const createdIds = onBatchDuplicateCustomElements(
+        selectedEls.map((e) => e.id)
+      );
+      if (createdIds.length > 0) setSelectedElIds(createdIds);
+    }
+  }, [
+    selectedEls,
+    onDuplicateCustomElement,
+    onBatchDuplicateCustomElements,
+  ]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedEls.length === 0) return;
+    if (selectedEls.length === 1 && onDeleteCustomElement) {
+      onDeleteCustomElement(selectedEls[0].id);
+      setSelectedElIds([]);
+      setEditingCustomTextId(null);
+      return;
+    }
+    if (onBatchDeleteCustomElements) {
+      onBatchDeleteCustomElements(selectedEls.map((e) => e.id));
+      setSelectedElIds([]);
+      setEditingCustomTextId(null);
+    }
+  }, [selectedEls, onDeleteCustomElement, onBatchDeleteCustomElements]);
+
+  useEffect(() => {
+    if (!isCustomCanvas || diffPreviewActive || isAgentBusy) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return;
       const target = e.target as HTMLElement | null;
       const inEditable = Boolean(
         target &&
@@ -396,27 +504,60 @@ export function SlideStageCanvas({
       );
       if (inEditable) return;
 
+      // Ctrl/Cmd + A selects all elements on the current free canvas
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        const allIds = (item?.custom_elements ?? []).map((el) => el.id);
+        if (allIds.length > 0) {
+          e.preventDefault();
+          setSelectedElIds(allIds);
+        }
+        return;
+      }
+
+      if (selectedEls.length === 0) return;
+
+      if (e.key === "Escape") {
+        if (editingCustomTextId) {
+          setEditingCustomTextId(null);
+        } else {
+          setSelectedElIds([]);
+        }
+        return;
+      }
+
+      // Enter on a single selected text element enters inline canvas editing
       if (
-        (e.metaKey || e.ctrlKey) &&
-        e.key.toLowerCase() === "d" &&
-        onDuplicateCustomElement
+        e.key === "Enter" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        selectedEl &&
+        selectedEl.kind === "text" &&
+        onUpdateCustomElementText
       ) {
         e.preventDefault();
-        const createdId = onDuplicateCustomElement(selectedEl.id);
-        if (createdId) setSelectedElId(createdId);
+        setEditingCustomTextId(selectedEl.id);
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+        if (onDuplicateCustomElement || onBatchDuplicateCustomElements) {
+          e.preventDefault();
+          handleDuplicateSelected();
+        }
         return;
       }
 
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        onDeleteCustomElement &&
         !e.metaKey &&
         !e.ctrlKey &&
         !e.altKey
       ) {
-        e.preventDefault();
-        onDeleteCustomElement(selectedEl.id);
-        setSelectedElId(null);
+        if (onDeleteCustomElement || onBatchDeleteCustomElements) {
+          e.preventDefault();
+          handleDeleteSelected();
+        }
         return;
       }
 
@@ -425,7 +566,7 @@ export function SlideStageCanvas({
           e.key === "ArrowRight" ||
           e.key === "ArrowUp" ||
           e.key === "ArrowDown") &&
-        onUpdateCustomElement &&
+        (onUpdateCustomElement || onBatchUpdateCustomElements) &&
         !e.metaKey &&
         !e.ctrlKey &&
         !e.altKey
@@ -436,37 +577,67 @@ export function SlideStageCanvas({
           e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy =
           e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-        let nx: number;
-        let ny: number;
-        if (selectedEl.kind === "line") {
-          const minX = Math.min(0, -selectedEl.w);
-          const maxX = Math.min(960, 960 - selectedEl.w);
-          const minY = Math.min(0, -selectedEl.h);
-          const maxY = Math.min(540, 540 - selectedEl.h);
-          nx = Math.round(Math.max(minX, Math.min(maxX, selectedEl.x + dx)));
-          ny = Math.round(Math.max(minY, Math.min(maxY, selectedEl.y + dy)));
-        } else {
-          nx = Math.round(
-            Math.max(0, Math.min(960 - selectedEl.w, selectedEl.x + dx))
-          );
-          ny = Math.round(
-            Math.max(0, Math.min(540 - selectedEl.h, selectedEl.y + dy))
-          );
+
+        let minDx = -Infinity;
+        let maxDx = Infinity;
+        let minDy = -Infinity;
+        let maxDy = Infinity;
+        for (const el of selectedEls) {
+          if (el.kind === "line") {
+            minDx = Math.max(minDx, Math.min(0, -el.w) - el.x);
+            maxDx = Math.min(maxDx, Math.min(960, 960 - el.w) - el.x);
+            minDy = Math.max(minDy, Math.min(0, -el.h) - el.y);
+            maxDy = Math.min(maxDy, Math.min(540, 540 - el.h) - el.y);
+          } else {
+            minDx = Math.max(minDx, -el.x);
+            maxDx = Math.min(maxDx, 960 - el.w - el.x);
+            minDy = Math.max(minDy, -el.y);
+            maxDy = Math.min(maxDy, 540 - el.h - el.y);
+          }
         }
-        if (nx !== selectedEl.x || ny !== selectedEl.y) {
-          onUpdateCustomElement(selectedEl.id, { x: nx, y: ny });
+        const effDx = Math.round(Math.max(minDx, Math.min(maxDx, dx)));
+        const effDy = Math.round(Math.max(minDy, Math.min(maxDy, dy)));
+        if (effDx === 0 && effDy === 0) return;
+
+        if (selectedEls.length === 1 && onUpdateCustomElement) {
+          const el = selectedEls[0];
+          onUpdateCustomElement(el.id, {
+            x: el.x + effDx,
+            y: el.y + effDy,
+          });
+        } else if (onBatchUpdateCustomElements) {
+          const patches: Record<string, Partial<CanvasElement>> = {};
+          for (const el of selectedEls) {
+            patches[el.id] = { x: el.x + effDx, y: el.y + effDy };
+          }
+          const key = `nudge:${selectedIndex}:${selectedEls
+            .map((e) => e.id)
+            .sort()
+            .join(",")}`;
+          onBatchUpdateCustomElements(patches, key);
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
+    isCustomCanvas,
+    item,
+    selectedIndex,
+    selectedEls,
     selectedEl,
+    editingCustomTextId,
     diffPreviewActive,
     isAgentBusy,
     onDeleteCustomElement,
+    onBatchDeleteCustomElements,
     onDuplicateCustomElement,
+    onBatchDuplicateCustomElements,
     onUpdateCustomElement,
+    onBatchUpdateCustomElements,
+    onUpdateCustomElementText,
+    handleDuplicateSelected,
+    handleDeleteSelected,
   ]);
 
   const firstIssueSlide = Array.from(issueSlideIndices).sort(
@@ -794,7 +965,10 @@ export function SlideStageCanvas({
         <div
           ref={viewportRef}
           onClick={() => {
-            if (selectedElId && !isPanning) setSelectedElId(null);
+            if (!isPanning) {
+              if (selectedElIds.length > 0) setSelectedElIds([]);
+              if (editingCustomTextId) setEditingCustomTextId(null);
+            }
           }}
           onPointerDown={(e) => {
             const vp = viewportRef.current;
@@ -873,13 +1047,27 @@ export function SlideStageCanvas({
             >
               {showRenderedImage && preview?.pages[selectedIndex] ? (
                 <div
-                  onClick={() => {
-                    if (isAgentBusy) return;
-                    onFocusField(
-                      firstCustomTextId
-                        ? `custom-el-${firstCustomTextId}`
-                        : "input-title"
-                    );
+                  onDoubleClick={(e) => {
+                    if (isAgentBusy || diffPreviewActive || !onPatchStandardField)
+                      return;
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX =
+                      rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+                    const relY =
+                      rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+                    let targetField: StandardEditableField = "summary";
+                    if (layout === "cover") {
+                      targetField = relY < 0.52 ? "title" : "summary";
+                    } else if (layout === "closing") {
+                      targetField = relY < 0.45 ? "title" : "summary";
+                    } else if (relY < 0.22) {
+                      targetField = "title";
+                    } else if (layout === "two_column" && relX > 0.5) {
+                      targetField = "column_right";
+                    }
+                    setPendingStandardField(targetField);
+                    setForceLiveStandard(true);
                   }}
                   style={{ backgroundColor: slideBg }}
                   className={`absolute inset-0 flex items-center justify-center ${
@@ -888,7 +1076,7 @@ export function SlideStageCanvas({
                   title={
                     isAgentBusy
                       ? "AI 助手处理中，暂锁编辑"
-                      : "点击右侧属性编辑内容（当前展示已导出的渲染图）"
+                      : "双击直接在画布内编辑文字（当前展示已导出的渲染图）"
                   }
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -907,17 +1095,30 @@ export function SlideStageCanvas({
                     theme={activeTheme}
                     scale={scale}
                     interactive={!diffPreviewActive && !isAgentBusy}
-                    selectedElementId={
-                      diffPreviewActive || isAgentBusy ? null : selectedElId
+                    selectedElementIds={
+                      diffPreviewActive || isAgentBusy ? [] : selectedElIds
                     }
-                    onSelectElement={setSelectedElId}
-                    onSelectTextElement={(elId) => {
-                      if (!isAgentBusy) onFocusField(`custom-el-${elId}`);
-                    }}
+                    onSelectElements={setSelectedElIds}
+                    editingTextId={
+                      diffPreviewActive || isAgentBusy
+                        ? null
+                        : editingCustomTextId
+                    }
+                    onStartEditText={setEditingCustomTextId}
+                    onUpdateElementText={
+                      diffPreviewActive || isAgentBusy
+                        ? undefined
+                        : onUpdateCustomElementText
+                    }
                     onUpdateElement={
                       diffPreviewActive || isAgentBusy
                         ? undefined
                         : onUpdateCustomElement
+                    }
+                    onBatchUpdateElements={
+                      diffPreviewActive || isAgentBusy
+                        ? undefined
+                        : onBatchUpdateCustomElements
                     }
                   />
                   {brand && (
@@ -943,6 +1144,13 @@ export function SlideStageCanvas({
                   onFocusField={
                     diffPreviewActive || isAgentBusy ? undefined : onFocusField
                   }
+                  onUpdateField={
+                    diffPreviewActive || isAgentBusy
+                      ? undefined
+                      : onPatchStandardField
+                  }
+                  initialEditField={pendingStandardField}
+                  onClearInitialEditField={() => setPendingStandardField(null)}
                 />
               ) : null}
             </div>
@@ -952,36 +1160,70 @@ export function SlideStageCanvas({
           );
         })()}
 
-        {/* Contextual Floating Bar ONLY when a free-canvas element is selected */}
-        {selectedEl && !isAgentBusy && onUpdateCustomElement && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-24px)]">
-            <SelectedElementBar
-              selectedEl={selectedEl}
-              sw={sw}
-              imageAssets={imageAssets}
-              onUpdate={onUpdateCustomElement}
-              onFocusField={onFocusField}
-              onReorder={onReorderCustomElement}
-              onDuplicate={
-                onDuplicateCustomElement
-                  ? (elId) => {
-                      const createdId = onDuplicateCustomElement(elId);
-                      if (createdId) setSelectedElId(createdId);
-                    }
-                  : undefined
-              }
-              onDelete={
-                onDeleteCustomElement
-                  ? (elId) => {
-                      onDeleteCustomElement(elId);
-                      setSelectedElId(null);
-                    }
-                  : undefined
-              }
-              onClose={() => setSelectedElId(null)}
-            />
-          </div>
-        )}
+        {/* Contextual Floating Bar for single or multi-selected free-canvas elements */}
+        {!isAgentBusy &&
+          !diffPreviewActive &&
+          selectedEl &&
+          onUpdateCustomElement && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-24px)]">
+              <SelectedElementBar
+                selectedEl={selectedEl}
+                sw={sw}
+                imageAssets={imageAssets}
+                onUpdate={onUpdateCustomElement}
+                onFocusField={onFocusField}
+                onInlineEditText={
+                  onUpdateCustomElementText
+                    ? (elId) => setEditingCustomTextId(elId)
+                    : undefined
+                }
+                onReorder={onReorderCustomElement}
+                onDuplicate={
+                  onDuplicateCustomElement
+                    ? (elId) => {
+                        const createdId = onDuplicateCustomElement(elId);
+                        if (createdId) setSelectedElIds([createdId]);
+                      }
+                    : undefined
+                }
+                onDelete={
+                  onDeleteCustomElement
+                    ? (elId) => {
+                        onDeleteCustomElement(elId);
+                        setSelectedElIds([]);
+                        setEditingCustomTextId(null);
+                      }
+                    : undefined
+                }
+                onClose={() => {
+                  setSelectedElIds([]);
+                  setEditingCustomTextId(null);
+                }}
+              />
+            </div>
+          )}
+
+        {!isAgentBusy &&
+          !diffPreviewActive &&
+          selectedEls.length > 1 &&
+          (onBatchUpdateCustomElements || onUpdateCustomElement) && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-24px)]">
+              <MultiSelectBar
+                count={selectedEls.length}
+                onAlign={handleAlignSelected}
+                onDistribute={handleDistributeSelected}
+                onDuplicate={
+                  onBatchDuplicateCustomElements
+                    ? handleDuplicateSelected
+                    : undefined
+                }
+                onDelete={
+                  onBatchDeleteCustomElements ? handleDeleteSelected : undefined
+                }
+                onClose={() => setSelectedElIds([])}
+              />
+            </div>
+          )}
       </div>
     </main>
   );

@@ -3,6 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { CanvasElement, ThemeOption, ThemeSwatches } from "../../lib/api";
 import { normalizeEscapedNewlines } from "./layoutUtils";
+import {
+  type BoxRect,
+  type SnapLine,
+  type SpacingGuide,
+  CANVAS_H,
+  CANVAS_W,
+  computeGroupBounds,
+  computeSmartSnap,
+  getElementBounds,
+  rectsIntersect,
+} from "./stage/snapGuides";
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const NUMERIC_CELL_RE = /^[+\-¥$€£]?\d[\d,.]*\s*[%倍×xX亿万kKmMbBms]*$/;
@@ -938,92 +949,139 @@ interface CustomSlideLayerProps {
   theme: ThemeOption;
   scale: number;
   interactive?: boolean;
-  selectedElementId?: string | null;
-  onSelectElement?: (elementId: string | null) => void;
-  onSelectTextElement?: (elementId: string) => void;
+  selectedElementIds?: string[];
+  onSelectElements?: (elementIds: string[]) => void;
+  editingTextId?: string | null;
+  onStartEditText?: (elementId: string | null) => void;
+  onUpdateElementText?: (elementId: string, nextText: string) => void;
   onUpdateElement?: (elementId: string, patch: Partial<CanvasElement>) => void;
+  onBatchUpdateElements?: (
+    patches: Record<string, Partial<CanvasElement>>
+  ) => void;
+}
+
+interface OrigMemberState {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: CanvasElement["kind"];
 }
 
 interface DragSession {
-  elementId: string;
   mode: "move" | "resize" | "line-start" | "line-end";
+  clickedId: string;
+  collapseOnClick: boolean;
+  members: OrigMemberState[];
+  groupBounds: BoxRect;
   startClientX: number;
   startClientY: number;
-  origX: number;
-  origY: number;
-  origW: number;
-  origH: number;
-  kind: CanvasElement["kind"];
   moved: boolean;
 }
 
-const SNAP_THRESHOLD = 6;
+interface MarqueeSession {
+  startX: number;
+  startY: number;
+  additive: boolean;
+  baseSelection: string[];
+  moved: boolean;
+}
 
-function computeSnap(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  siblings: CanvasElement[]
-): { x: number; y: number; guideX: number | null; guideY: number | null } {
-  const xTargets = [48, 480, 912];
-  const yTargets = [36, 270, 504];
-  for (const s of siblings) {
-    if (s.kind === "line") continue;
-    xTargets.push(s.x, s.x + s.w / 2, s.x + s.w);
-    yTargets.push(s.y, s.y + s.h / 2, s.y + s.h);
-  }
+const GUIDE_COLOR = "#F43F5E";
+const SELECTION_COLOR = "#3D63DD";
 
-  let bestX = x;
-  let guideX: number | null = null;
-  let bestDx = SNAP_THRESHOLD + 1;
-  const xAnchors: Array<[number, number]> = [
-    [x, 0],
-    [x + w / 2, w / 2],
-    [x + w, w],
-  ];
-  for (const [val, offset] of xAnchors) {
-    for (const target of xTargets) {
-      const d = Math.abs(val - target);
-      if (d < bestDx) {
-        bestDx = d;
-        bestX = target - offset;
-        guideX = target;
-      }
+function InlineCustomTextarea({
+  el,
+  fontSize,
+  lineHeight,
+  color,
+  onChange,
+  onDone,
+}: {
+  el: CanvasElement;
+  fontSize: number;
+  lineHeight: number;
+  color: string;
+  onChange: (nextText: string) => void;
+  onDone: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.focus({ preventScroll: true });
+    const val = node.value;
+    if (val === "新文本框（双击编辑）") {
+      node.select();
+    } else {
+      node.setSelectionRange(val.length, val.length);
     }
-  }
+  }, []);
 
-  let bestY = y;
-  let guideY: number | null = null;
-  let bestDy = SNAP_THRESHOLD + 1;
-  const yAnchors: Array<[number, number]> = [
-    [y, 0],
-    [y + h / 2, h / 2],
-    [y + h, h],
-  ];
-  for (const [val, offset] of yAnchors) {
-    for (const target of yTargets) {
-      const d = Math.abs(val - target);
-      if (d < bestDy) {
-        bestDy = d;
-        bestY = target - offset;
-        guideY = target;
-      }
-    }
-  }
+  const value = normalizeEscapedNewlines(el.text || "");
 
-  return {
-    x: Math.round(Math.max(0, Math.min(960 - w, bestX))),
-    y: Math.round(Math.max(0, Math.min(540 - h, bestY))),
-    guideX,
-    guideY,
-  };
+  return (
+    <textarea
+      ref={ref}
+      aria-label="编辑画布文本框内容"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onBlur={() => onDone()}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+      }}
+      style={{
+        width: "100%",
+        height: "100%",
+        minHeight: el.h,
+        margin: 0,
+        padding: "2px 4px",
+        border: "none",
+        outline: "none",
+        background: "transparent",
+        resize: "none",
+        boxSizing: "border-box",
+        fontFamily: "inherit",
+        fontSize,
+        lineHeight: `${lineHeight}px`,
+        fontWeight: el.bold ? 700 : 400,
+        letterSpacing: fontSize >= 28 ? "-0.02em" : undefined,
+        color,
+        textAlign: el.align ?? "left",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        overflow: "auto",
+        userSelect: "text",
+        WebkitUserSelect: "text",
+        caretColor: SELECTION_COLOR,
+        display: "block",
+      }}
+    />
+  );
 }
 
 /**
  * Pure 960x540 proportional renderer for freeform custom canvas slides.
- * Supports all 6 native primitives (card, line, image, text, table, chart)
- * plus direct selection, magnetic drag-to-move, and corner resize when interactive.
+ * Supports all 7 native primitives (card, line, image, text, table, chart, diagram),
+ * multi-select (Shift+click & marquee box), smart snap guides + equal-spacing indicators,
+ * direct inline double-click text editing, and corner/endpoint resize when interactive.
  */
 export function CustomSlideLayer({
   pid,
@@ -1032,38 +1090,72 @@ export function CustomSlideLayer({
   theme,
   scale,
   interactive = false,
-  selectedElementId = null,
-  onSelectElement,
-  onSelectTextElement,
+  selectedElementIds = [],
+  onSelectElements,
+  editingTextId = null,
+  onStartEditText,
+  onUpdateElementText,
   onUpdateElement,
+  onBatchUpdateElements,
 }: CustomSlideLayerProps) {
   const sw = theme.swatches;
   const bg = resolveCanvasColor(customBg, sw, sw.bg) || sw.bg;
 
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragSession | null>(null);
-  const liveBoxRef = useRef<{
-    id: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  } | null>(null);
-  const [liveBox, setLiveBox] = useState<{
-    id: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  } | null>(null);
-  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({
-    x: null,
-    y: null,
-  });
+  const marqueeRef = useRef<MarqueeSession | null>(null);
+  const suppressBgClickRef = useRef(false);
+
+  const liveBoxesRef = useRef<Record<string, BoxRect> | null>(null);
+  const [liveBoxes, setLiveBoxes] = useState<Record<string, BoxRect> | null>(
+    null
+  );
+  const [snapOverlay, setSnapOverlay] = useState<{
+    lines: SnapLine[];
+    spacings: SpacingGuide[];
+  }>({ lines: [], spacings: [] });
+  const [marqueeRect, setMarqueeRect] = useState<BoxRect | null>(null);
+
+  const selectedSet = new Set(interactive ? selectedElementIds : []);
 
   useEffect(() => {
     if (!interactive) return;
 
+    const toCanvasPoint = (clientX: number, clientY: number) => {
+      const safeScale = scale > 0.05 ? scale : 0.75;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return { x: 0, y: 0 };
+      return {
+        x: Math.max(0, Math.min(CANVAS_W, (clientX - rect.left) / safeScale)),
+        y: Math.max(0, Math.min(CANVAS_H, (clientY - rect.top) / safeScale)),
+      };
+    };
+
     const onPointerMove = (e: PointerEvent) => {
+      // 1. Marquee drag selection on empty canvas
+      const m = marqueeRef.current;
+      if (m) {
+        const pt = toCanvasPoint(e.clientX, e.clientY);
+        const rx = Math.min(m.startX, pt.x);
+        const ry = Math.min(m.startY, pt.y);
+        const rw = Math.abs(pt.x - m.startX);
+        const rh = Math.abs(pt.y - m.startY);
+        if (!m.moved && Math.hypot(rw, rh) < 4) return;
+        m.moved = true;
+        const rect: BoxRect = { x: rx, y: ry, w: rw, h: rh };
+        setMarqueeRect(rect);
+
+        const hitIds = elements
+          .filter((el) => rectsIntersect(rect, getElementBounds(el)))
+          .map((el) => el.id);
+        const nextIds = m.additive
+          ? Array.from(new Set([...m.baseSelection, ...hitIds]))
+          : hitIds;
+        onSelectElements?.(nextIds);
+        return;
+      }
+
+      // 2. Element / group drag & resize
       const d = dragRef.current;
       if (!d) return;
       const safeScale = scale > 0.05 ? scale : 0.75;
@@ -1073,42 +1165,75 @@ export function CustomSlideLayer({
       d.moved = true;
 
       if (d.mode === "move") {
-        if (d.kind === "line") {
-          const minX = Math.min(0, -d.origW);
-          const maxX = Math.min(960, 960 - d.origW);
-          const minY = Math.min(0, -d.origH);
-          const maxY = Math.min(540, 540 - d.origH);
-          const nx = Math.round(Math.max(minX, Math.min(maxX, d.origX + dx)));
-          const ny = Math.round(Math.max(minY, Math.min(maxY, d.origY + dy)));
-          const nextBox = { id: d.elementId, x: nx, y: ny, w: d.origW, h: d.origH };
-          liveBoxRef.current = nextBox;
-          setLiveBox(nextBox);
-          setGuides({ x: null, y: null });
-          return;
+        const draggingIds = new Set(d.members.map((mem) => mem.id));
+        const allLines = d.members.every((mem) => mem.kind === "line");
+
+        let snapDx = 0;
+        let snapDy = 0;
+        let lines: SnapLine[] = [];
+        let spacings: SpacingGuide[] = [];
+
+        if (!allLines) {
+          const siblings = elements.filter((s) => !draggingIds.has(s.id));
+          const movedGroup: BoxRect = {
+            x: d.groupBounds.x + dx,
+            y: d.groupBounds.y + dy,
+            w: d.groupBounds.w,
+            h: d.groupBounds.h,
+          };
+          const snapped = computeSmartSnap(movedGroup, siblings, {
+            disableSnap: e.altKey,
+          });
+          snapDx = snapped.dx;
+          snapDy = snapped.dy;
+          lines = snapped.lines;
+          spacings = snapped.spacings;
         }
-        const siblings = elements.filter((s) => s.id !== d.elementId);
-        const snapped = computeSnap(
-          d.origX + dx,
-          d.origY + dy,
-          d.origW,
-          d.origH,
-          siblings
-        );
-        const nextBox = {
-          id: d.elementId,
-          x: snapped.x,
-          y: snapped.y,
-          w: d.origW,
-          h: d.origH,
-        };
-        liveBoxRef.current = nextBox;
-        setLiveBox(nextBox);
-        setGuides({ x: snapped.guideX, y: snapped.guideY });
-      } else if (d.mode === "line-start") {
-        const endX = d.origX + d.origW;
-        const endY = d.origY + d.origH;
-        let nx = Math.max(0, Math.min(960, d.origX + dx));
-        let ny = Math.max(0, Math.min(540, d.origY + dy));
+
+        // Clamp combined delta so every dragged member remains inside 960x540
+        let minDx = -Infinity;
+        let maxDx = Infinity;
+        let minDy = -Infinity;
+        let maxDy = Infinity;
+        for (const mem of d.members) {
+          if (mem.kind === "line") {
+            minDx = Math.max(minDx, Math.min(0, -mem.w) - mem.x);
+            maxDx = Math.min(maxDx, Math.min(CANVAS_W, CANVAS_W - mem.w) - mem.x);
+            minDy = Math.max(minDy, Math.min(0, -mem.h) - mem.y);
+            maxDy = Math.min(maxDy, Math.min(CANVAS_H, CANVAS_H - mem.h) - mem.y);
+          } else {
+            minDx = Math.max(minDx, -mem.x);
+            maxDx = Math.min(maxDx, CANVAS_W - mem.w - mem.x);
+            minDy = Math.max(minDy, -mem.y);
+            maxDy = Math.min(maxDy, CANVAS_H - mem.h - mem.y);
+          }
+        }
+        const effDx = Math.round(Math.max(minDx, Math.min(maxDx, dx + snapDx)));
+        const effDy = Math.round(Math.max(minDy, Math.min(maxDy, dy + snapDy)));
+
+        const nextBoxes: Record<string, BoxRect> = {};
+        for (const mem of d.members) {
+          nextBoxes[mem.id] = {
+            x: Math.round(mem.x + effDx),
+            y: Math.round(mem.y + effDy),
+            w: mem.w,
+            h: mem.h,
+          };
+        }
+        liveBoxesRef.current = nextBoxes;
+        setLiveBoxes(nextBoxes);
+        setSnapOverlay({ lines, spacings });
+        return;
+      }
+
+      const mem = d.members[0];
+      if (!mem) return;
+
+      if (d.mode === "line-start") {
+        const endX = mem.x + mem.w;
+        const endY = mem.y + mem.h;
+        let nx = Math.max(0, Math.min(CANVAS_W, mem.x + dx));
+        let ny = Math.max(0, Math.min(CANVAS_H, mem.y + dy));
         if (e.shiftKey) {
           if (Math.abs(endX - nx) >= Math.abs(endY - ny)) {
             ny = endY;
@@ -1122,84 +1247,118 @@ export function CustomSlideLayer({
           nw = nw >= 0 ? 12 : -12;
           nx = endX - nw;
         }
-        const nextBox = {
-          id: d.elementId,
-          x: Math.round(nx),
-          y: Math.round(ny),
-          w: Math.round(nw),
-          h: Math.round(nh),
+        const nextBoxes = {
+          [mem.id]: {
+            x: Math.round(nx),
+            y: Math.round(ny),
+            w: Math.round(nw),
+            h: Math.round(nh),
+          },
         };
-        liveBoxRef.current = nextBox;
-        setLiveBox(nextBox);
-        setGuides({ x: null, y: null });
+        liveBoxesRef.current = nextBoxes;
+        setLiveBoxes(nextBoxes);
+        setSnapOverlay({ lines: [], spacings: [] });
       } else if (d.mode === "line-end") {
-        let ex = Math.max(0, Math.min(960, d.origX + d.origW + dx));
-        let ey = Math.max(0, Math.min(540, d.origY + d.origH + dy));
+        let ex = Math.max(0, Math.min(CANVAS_W, mem.x + mem.w + dx));
+        let ey = Math.max(0, Math.min(CANVAS_H, mem.y + mem.h + dy));
         if (e.shiftKey) {
-          if (Math.abs(ex - d.origX) >= Math.abs(ey - d.origY)) {
-            ey = d.origY;
+          if (Math.abs(ex - mem.x) >= Math.abs(ey - mem.y)) {
+            ey = mem.y;
           } else {
-            ex = d.origX;
+            ex = mem.x;
           }
         }
-        let nw = ex - d.origX;
-        let nh = ey - d.origY;
+        let nw = ex - mem.x;
+        let nh = ey - mem.y;
         if (Math.hypot(nw, nh) < 12) {
           nw = nw >= 0 ? 12 : -12;
         }
-        const nextBox = {
-          id: d.elementId,
-          x: d.origX,
-          y: d.origY,
-          w: Math.round(nw),
-          h: Math.round(nh),
+        const nextBoxes = {
+          [mem.id]: {
+            x: mem.x,
+            y: mem.y,
+            w: Math.round(nw),
+            h: Math.round(nh),
+          },
         };
-        liveBoxRef.current = nextBox;
-        setLiveBox(nextBox);
-        setGuides({ x: null, y: null });
+        liveBoxesRef.current = nextBoxes;
+        setLiveBoxes(nextBoxes);
+        setSnapOverlay({ lines: [], spacings: [] });
       } else {
         const minW =
-          d.kind === "diagram"
+          mem.kind === "diagram"
             ? 320
-            : d.kind === "chart"
+            : mem.kind === "chart"
             ? 180
-            : d.kind === "table"
+            : mem.kind === "table"
             ? 160
             : 32;
         const minH =
-          d.kind === "diagram" || d.kind === "chart"
+          mem.kind === "diagram" || mem.kind === "chart"
             ? 120
-            : d.kind === "table"
+            : mem.kind === "table"
             ? 60
             : 24;
         const nw = Math.round(
-          Math.max(minW, Math.min(960 - d.origX, d.origW + dx))
+          Math.max(minW, Math.min(CANVAS_W - mem.x, mem.w + dx))
         );
         const nh = Math.round(
-          Math.max(minH, Math.min(540 - d.origY, d.origH + dy))
+          Math.max(minH, Math.min(CANVAS_H - mem.y, mem.h + dy))
         );
-        const nextBox = { id: d.elementId, x: d.origX, y: d.origY, w: nw, h: nh };
-        liveBoxRef.current = nextBox;
-        setLiveBox(nextBox);
-        setGuides({ x: null, y: null });
+        const nextBoxes = {
+          [mem.id]: { x: mem.x, y: mem.y, w: nw, h: nh },
+        };
+        liveBoxesRef.current = nextBoxes;
+        setLiveBoxes(nextBoxes);
+        setSnapOverlay({ lines: [], spacings: [] });
       }
     };
 
     const onPointerUp = () => {
+      const m = marqueeRef.current;
+      if (m) {
+        marqueeRef.current = null;
+        setMarqueeRect(null);
+        if (m.moved) {
+          suppressBgClickRef.current = true;
+        }
+        return;
+      }
+
       const d = dragRef.current;
       if (!d) return;
-      const finalBox = liveBoxRef.current;
+      const finalBoxes = liveBoxesRef.current;
       dragRef.current = null;
-      liveBoxRef.current = null;
-      setLiveBox(null);
-      setGuides({ x: null, y: null });
-      if (d.moved && finalBox && finalBox.id === d.elementId && onUpdateElement) {
-        onUpdateElement(d.elementId, {
-          x: finalBox.x,
-          y: finalBox.y,
-          w: finalBox.w,
-          h: finalBox.h,
-        });
+      liveBoxesRef.current = null;
+      setLiveBoxes(null);
+      setSnapOverlay({ lines: [], spacings: [] });
+
+      if (!d.moved) {
+        if (d.collapseOnClick) {
+          onSelectElements?.([d.clickedId]);
+        }
+        return;
+      }
+
+      if (!finalBoxes) return;
+      const ids = Object.keys(finalBoxes);
+      if (ids.length === 1 && onUpdateElement) {
+        const id = ids[0];
+        const b = finalBoxes[id];
+        onUpdateElement(id, { x: b.x, y: b.y, w: b.w, h: b.h });
+      } else if (ids.length > 1) {
+        const patches: Record<string, Partial<CanvasElement>> = {};
+        for (const id of ids) {
+          const b = finalBoxes[id];
+          patches[id] = { x: b.x, y: b.y, w: b.w, h: b.h };
+        }
+        if (onBatchUpdateElements) {
+          onBatchUpdateElements(patches);
+        } else if (onUpdateElement) {
+          for (const [id, patch] of Object.entries(patches)) {
+            onUpdateElement(id, patch);
+          }
+        }
       }
     };
 
@@ -1209,7 +1368,14 @@ export function CustomSlideLayer({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [interactive, scale, elements, onUpdateElement]);
+  }, [
+    interactive,
+    scale,
+    elements,
+    onUpdateElement,
+    onBatchUpdateElements,
+    onSelectElements,
+  ]);
 
   const startDrag = (
     e: React.PointerEvent,
@@ -1217,27 +1383,104 @@ export function CustomSlideLayer({
     mode: "move" | "resize" | "line-start" | "line-end"
   ) => {
     if (!interactive || e.button !== 0) return;
+    if (editingTextId === el.id) return;
     e.stopPropagation();
-    onSelectElement?.(el.id);
-    if (!onUpdateElement) return;
+
+    if (editingTextId) {
+      onStartEditText?.(null);
+    }
+
+    // Shift+click toggles membership cleanly without initiating a drag
+    if (mode === "move" && e.shiftKey) {
+      const next = selectedSet.has(el.id)
+        ? selectedElementIds.filter((id) => id !== el.id)
+        : [...selectedElementIds, el.id];
+      onSelectElements?.(next);
+      return;
+    }
+
+    const isAlreadyInMulti =
+      mode === "move" &&
+      selectedElementIds.length > 1 &&
+      selectedSet.has(el.id);
+
+    let dragMembers: CanvasElement[];
+    if (isAlreadyInMulti) {
+      dragMembers = elements.filter((item) => selectedSet.has(item.id));
+    } else {
+      onSelectElements?.([el.id]);
+      dragMembers = [el];
+    }
+
+    if (!onUpdateElement && !onBatchUpdateElements) return;
+
+    const groupBounds =
+      computeGroupBounds(dragMembers) ?? getElementBounds(el);
+
     dragRef.current = {
-      elementId: el.id,
       mode,
+      clickedId: el.id,
+      collapseOnClick: isAlreadyInMulti,
+      members: dragMembers.map((m) => ({
+        id: m.id,
+        x: m.x,
+        y: m.y,
+        w: m.w,
+        h: m.h,
+        kind: m.kind,
+      })),
+      groupBounds,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      origX: el.x,
-      origY: el.y,
-      origW: el.w,
-      origH: el.h,
-      kind: el.kind,
       moved: false,
     };
   };
 
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactive || e.button !== 0) return;
+    if (editingTextId) {
+      onStartEditText?.(null);
+    }
+    const safeScale = scale > 0.05 ? scale : 0.75;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    marqueeRef.current = {
+      startX: Math.max(0, Math.min(CANVAS_W, (e.clientX - rect.left) / safeScale)),
+      startY: Math.max(0, Math.min(CANVAS_H, (e.clientY - rect.top) / safeScale)),
+      additive: e.shiftKey,
+      baseSelection: [...selectedElementIds],
+      moved: false,
+    };
+  };
+
+  const resolvedElements = elements.map((rawEl) => {
+    const live = liveBoxes?.[rawEl.id];
+    return live
+      ? { ...rawEl, x: live.x, y: live.y, w: live.w, h: live.h }
+      : rawEl;
+  });
+
+  const multiGroupBounds =
+    interactive && selectedElementIds.length > 1
+      ? computeGroupBounds(
+          resolvedElements.filter((el) => selectedSet.has(el.id))
+        )
+      : null;
+
+  const isSingleSelected = selectedElementIds.length === 1;
+
   return (
     <div
+      ref={canvasRef}
+      onPointerDown={handleCanvasPointerDown}
       onClick={() => {
-        if (interactive) onSelectElement?.(null);
+        if (!interactive) return;
+        if (suppressBgClickRef.current) {
+          suppressBgClickRef.current = false;
+          return;
+        }
+        onStartEditText?.(null);
+        onSelectElements?.([]);
       }}
       className="w-[960px] h-[540px] origin-top-left absolute top-0 left-0 transition-colors duration-200 select-none"
       style={{
@@ -1245,13 +1488,11 @@ export function CustomSlideLayer({
         backgroundColor: bg,
       }}
     >
-      {elements.map((rawEl, idx) => {
-        const key = `${rawEl.id || "el"}-${idx}`;
-        const el =
-          liveBox && liveBox.id === rawEl.id
-            ? { ...rawEl, x: liveBox.x, y: liveBox.y, w: liveBox.w, h: liveBox.h }
-            : rawEl;
-        const isSelected = interactive && selectedElementId === el.id;
+      {resolvedElements.map((el, idx) => {
+        const key = `${el.id || "el"}-${idx}`;
+        const isSelected = interactive && selectedSet.has(el.id);
+        const isEditingThisText =
+          interactive && el.kind === "text" && editingTextId === el.id;
 
         if (el.kind === "line") {
           const lineCol =
@@ -1261,14 +1502,14 @@ export function CustomSlideLayer({
           return (
             <svg
               key={key}
-              width={960}
-              height={540}
-              viewBox="0 0 960 540"
+              width={CANVAS_W}
+              height={CANVAS_H}
+              viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
               style={{
                 position: "absolute",
                 inset: 0,
-                width: 960,
-                height: 540,
+                width: CANVAS_W,
+                height: CANVAS_H,
                 pointerEvents: "none",
                 overflow: "visible",
               }}
@@ -1282,10 +1523,7 @@ export function CustomSlideLayer({
                   stroke="transparent"
                   strokeWidth={Math.max(14, lw + 10)}
                   style={{ pointerEvents: "stroke", cursor: "move" }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectElement?.(el.id);
-                  }}
+                  onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => startDrag(e, el, "move")}
                 />
               )}
@@ -1298,7 +1536,20 @@ export function CustomSlideLayer({
                 strokeWidth={lw}
                 strokeLinecap="round"
               />
-              {isSelected && onUpdateElement && (
+              {isSelected && (
+                <line
+                  x1={el.x}
+                  y1={el.y}
+                  x2={el.x + el.w}
+                  y2={el.y + el.h}
+                  stroke={SELECTION_COLOR}
+                  strokeOpacity={0.45}
+                  strokeWidth={lw + 4}
+                  strokeLinecap="round"
+                  style={{ pointerEvents: "none" }}
+                />
+              )}
+              {isSelected && isSingleSelected && onUpdateElement && (
                 <>
                   <circle
                     cx={el.x}
@@ -1315,8 +1566,8 @@ export function CustomSlideLayer({
                     cx={el.x}
                     cy={el.y}
                     r={5}
-                    fill={sw.accent}
-                    stroke={sw.surface}
+                    fill={SELECTION_COLOR}
+                    stroke="#FFFFFF"
                     strokeWidth={1.75}
                     style={{ pointerEvents: "none" }}
                   />
@@ -1335,8 +1586,8 @@ export function CustomSlideLayer({
                     cx={el.x + el.w}
                     cy={el.y + el.h}
                     r={5}
-                    fill={sw.accent}
-                    stroke={sw.surface}
+                    fill={SELECTION_COLOR}
+                    stroke="#FFFFFF"
                     strokeWidth={1.75}
                     style={{ pointerEvents: "none" }}
                   />
@@ -1346,15 +1597,23 @@ export function CustomSlideLayer({
           );
         }
 
-        const selectionStyle: React.CSSProperties = isSelected
+        const selectionStyle: React.CSSProperties = isEditingThisText
           ? {
-              outline: `2px solid ${sw.accent}`,
+              outline: `2px solid ${SELECTION_COLOR}`,
+              outlineOffset: 2,
+              boxShadow: "0 0 0 4px rgba(61, 99, 221, 0.16)",
+              borderRadius: 4,
+              zIndex: 35,
+            }
+          : isSelected
+          ? {
+              outline: `1.5px solid ${SELECTION_COLOR}`,
               outlineOffset: 1,
             }
           : {};
 
         const resizeHandle =
-          isSelected && onUpdateElement ? (
+          isSelected && isSingleSelected && !isEditingThisText && onUpdateElement ? (
             <div
               onPointerDown={(e) => startDrag(e, el, "resize")}
               onClick={(e) => e.stopPropagation()}
@@ -1366,8 +1625,8 @@ export function CustomSlideLayer({
                 width: 11,
                 height: 11,
                 borderRadius: 3,
-                backgroundColor: sw.accent,
-                border: `2px solid ${sw.surface}`,
+                backgroundColor: SELECTION_COLOR,
+                border: "2px solid #FFFFFF",
                 cursor: "nwse-resize",
                 zIndex: 30,
               }}
@@ -1388,7 +1647,6 @@ export function CustomSlideLayer({
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
-                onSelectElement?.(el.id);
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1422,7 +1680,6 @@ export function CustomSlideLayer({
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
-                onSelectElement?.(el.id);
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1475,7 +1732,6 @@ export function CustomSlideLayer({
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
-                onSelectElement?.(el.id);
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1502,7 +1758,6 @@ export function CustomSlideLayer({
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
-                onSelectElement?.(el.id);
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1529,7 +1784,6 @@ export function CustomSlideLayer({
               onClick={(e) => {
                 if (!interactive) return;
                 e.stopPropagation();
-                onSelectElement?.(el.id);
               }}
               onPointerDown={(e) => startDrag(e, el, "move")}
               style={{
@@ -1567,25 +1821,34 @@ export function CustomSlideLayer({
         return (
           <div
             key={key}
+            title={
+              interactive && !isEditingThisText
+                ? "拖拽移动 · 双击直接编辑文字 · Shift+点击多选"
+                : undefined
+            }
             onClick={(e) => {
               if (!interactive) return;
               e.stopPropagation();
-              onSelectElement?.(el.id);
             }}
             onDoubleClick={(e) => {
-              if (!interactive) return;
+              if (!interactive || !onUpdateElementText) return;
               e.stopPropagation();
-              onSelectTextElement?.(el.id);
+              onSelectElements?.([el.id]);
+              onStartEditText?.(el.id);
             }}
             onPointerDown={(e) => startDrag(e, el, "move")}
-            className={interactive && !isSelected ? "clickable-slot" : undefined}
+            className={
+              interactive && !isSelected && !isEditingThisText
+                ? "clickable-slot"
+                : undefined
+            }
             style={{
               position: "absolute",
               left: el.x,
               top: el.y,
               width: el.w,
               height: el.h,
-              padding: "2px 4px",
+              padding: isEditingThisText ? 0 : "2px 4px",
               boxSizing: "border-box",
               fontSize,
               lineHeight: `${lineHeight}px`,
@@ -1595,47 +1858,219 @@ export function CustomSlideLayer({
               textAlign: el.align ?? "left",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
-              overflow: isSelected ? "visible" : "hidden",
-              cursor: interactive ? "move" : "default",
+              overflow: isSelected || isEditingThisText ? "visible" : "hidden",
+              cursor: isEditingThisText
+                ? "text"
+                : interactive
+                ? "move"
+                : "default",
               pointerEvents: interactive ? "auto" : "none",
               ...selectionStyle,
             }}
           >
-            {normalizeEscapedNewlines(el.text || "")}
+            {isEditingThisText && onUpdateElementText ? (
+              <InlineCustomTextarea
+                el={el}
+                fontSize={fontSize}
+                lineHeight={lineHeight}
+                color={color}
+                onChange={(nextText) => onUpdateElementText(el.id, nextText)}
+                onDone={() => onStartEditText?.(null)}
+              />
+            ) : (
+              normalizeEscapedNewlines(el.text || "")
+            )}
             {resizeHandle}
           </div>
         );
       })}
 
-      {/* Live magnetic snap alignment guides while dragging */}
-      {interactive && guides.x !== null && (
+      {/* Group selection frame when 2+ elements are selected */}
+      {multiGroupBounds && (
         <div
           style={{
             position: "absolute",
-            left: guides.x,
-            top: 0,
-            width: 1,
-            height: 540,
-            borderLeft: `1px dashed ${sw.accent}`,
+            left: multiGroupBounds.x - 3,
+            top: multiGroupBounds.y - 3,
+            width: multiGroupBounds.w + 6,
+            height: multiGroupBounds.h + 6,
+            border: `1px dashed ${SELECTION_COLOR}`,
+            borderRadius: 4,
+            backgroundColor: "rgba(61, 99, 221, 0.04)",
             pointerEvents: "none",
-            zIndex: 40,
+            zIndex: 38,
           }}
         />
       )}
-      {interactive && guides.y !== null && (
+
+      {/* Drag marquee selection box */}
+      {interactive && marqueeRect && (
         <div
           style={{
             position: "absolute",
-            left: 0,
-            top: guides.y,
-            width: 960,
-            height: 1,
-            borderTop: `1px dashed ${sw.accent}`,
+            left: marqueeRect.x,
+            top: marqueeRect.y,
+            width: marqueeRect.w,
+            height: marqueeRect.h,
+            border: `1px solid ${SELECTION_COLOR}`,
+            backgroundColor: "rgba(61, 99, 221, 0.14)",
+            borderRadius: 2,
             pointerEvents: "none",
-            zIndex: 40,
+            zIndex: 42,
           }}
         />
       )}
+
+      {/* Smart Snap Alignment Lines + Equal-Spacing Gap Indicators */}
+      {interactive &&
+        (snapOverlay.lines.length > 0 || snapOverlay.spacings.length > 0) && (
+          <svg
+            width={CANVAS_W}
+            height={CANVAS_H}
+            viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: CANVAS_W,
+              height: CANVAS_H,
+              pointerEvents: "none",
+              zIndex: 45,
+              overflow: "visible",
+            }}
+          >
+            {snapOverlay.lines.map((line, i) =>
+              line.axis === "x" ? (
+                <line
+                  key={`sx-${i}-${line.pos}`}
+                  x1={line.pos}
+                  y1={line.start}
+                  x2={line.pos}
+                  y2={line.end}
+                  stroke={GUIDE_COLOR}
+                  strokeWidth={1}
+                  strokeDasharray={line.isCanvas ? "4 3" : undefined}
+                />
+              ) : (
+                <line
+                  key={`sy-${i}-${line.pos}`}
+                  x1={line.start}
+                  y1={line.pos}
+                  x2={line.end}
+                  y2={line.pos}
+                  stroke={GUIDE_COLOR}
+                  strokeWidth={1}
+                  strokeDasharray={line.isCanvas ? "4 3" : undefined}
+                />
+              )
+            )}
+
+            {snapOverlay.spacings.map((sp, i) => {
+              const label = `${sp.gapPx}px`;
+              const pillW = Math.max(28, label.length * 6.5 + 8);
+              const pillH = 16;
+              if (sp.axis === "x") {
+                const midX = (sp.start + sp.end) / 2;
+                const y = sp.cross;
+                return (
+                  <g key={`sp-x-${i}`}>
+                    <line
+                      x1={sp.start}
+                      y1={y}
+                      x2={sp.end}
+                      y2={y}
+                      stroke={GUIDE_COLOR}
+                      strokeWidth={1.25}
+                    />
+                    <line
+                      x1={sp.start}
+                      y1={y - 5}
+                      x2={sp.start}
+                      y2={y + 5}
+                      stroke={GUIDE_COLOR}
+                      strokeWidth={1.25}
+                    />
+                    <line
+                      x1={sp.end}
+                      y1={y - 5}
+                      x2={sp.end}
+                      y2={y + 5}
+                      stroke={GUIDE_COLOR}
+                      strokeWidth={1.25}
+                    />
+                    <rect
+                      x={midX - pillW / 2}
+                      y={y - pillH / 2}
+                      width={pillW}
+                      height={pillH}
+                      rx={4}
+                      fill={GUIDE_COLOR}
+                    />
+                    <text
+                      x={midX}
+                      y={y + 3.5}
+                      textAnchor="middle"
+                      fill="#FFFFFF"
+                      fontSize={10}
+                      fontWeight={600}
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              }
+              const midY = (sp.start + sp.end) / 2;
+              const x = sp.cross;
+              return (
+                <g key={`sp-y-${i}`}>
+                  <line
+                    x1={x}
+                    y1={sp.start}
+                    x2={x}
+                    y2={sp.end}
+                    stroke={GUIDE_COLOR}
+                    strokeWidth={1.25}
+                  />
+                  <line
+                    x1={x - 5}
+                    y1={sp.start}
+                    x2={x + 5}
+                    y2={sp.start}
+                    stroke={GUIDE_COLOR}
+                    strokeWidth={1.25}
+                  />
+                  <line
+                    x1={x - 5}
+                    y1={sp.end}
+                    x2={x + 5}
+                    y2={sp.end}
+                    stroke={GUIDE_COLOR}
+                    strokeWidth={1.25}
+                  />
+                  <rect
+                    x={x - pillW / 2}
+                    y={midY - pillH / 2}
+                    width={pillW}
+                    height={pillH}
+                    rx={4}
+                    fill={GUIDE_COLOR}
+                  />
+                  <text
+                    x={x}
+                    y={midY + 3.5}
+                    textAnchor="middle"
+                    fill="#FFFFFF"
+                    fontSize={10}
+                    fontWeight={600}
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
     </div>
   );
 }

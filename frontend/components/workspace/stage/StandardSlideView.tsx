@@ -77,6 +77,8 @@ export type RenderableSlideItem = {
   custom_elements?: CanvasElement[] | null;
 };
 
+export type StandardEditableField = "title" | "summary" | "column_right";
+
 interface StandardSlideViewProps {
   pid: string;
   item: RenderableSlideItem | OutlineItem;
@@ -88,6 +90,92 @@ interface StandardSlideViewProps {
   brand: BrandKit | null;
   interactive?: boolean;
   onFocusField?: (fieldId: string) => void;
+  onUpdateField?: (field: StandardEditableField, value: string) => void;
+  initialEditField?: StandardEditableField | null;
+  onClearInitialEditField?: () => void;
+}
+
+const INLINE_EDIT_RING = "#3D63DD";
+
+function InlineStandardTextarea({
+  ariaLabel,
+  value,
+  placeholder,
+  singleLineSubmit = false,
+  style,
+  onChange,
+  onDone,
+}: {
+  ariaLabel: string;
+  value: string;
+  placeholder?: string;
+  singleLineSubmit?: boolean;
+  style: React.CSSProperties;
+  onChange: (nextValue: string) => void;
+  onDone: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.focus({ preventScroll: true });
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={() => onDone()}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+          return;
+        }
+        if (singleLineSubmit && e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.stopPropagation();
+          onDone();
+        }
+      }}
+      style={{
+        ...style,
+        margin: 0,
+        padding: "2px 6px",
+        border: "none",
+        borderRadius: 6,
+        outline: `2px solid ${INLINE_EDIT_RING}`,
+        outlineOffset: 2,
+        boxShadow: "0 0 0 4px rgba(61, 99, 221, 0.16)",
+        background: "rgba(61, 99, 221, 0.04)",
+        resize: "none",
+        boxSizing: "border-box",
+        fontFamily: "inherit",
+        overflow: "auto",
+        caretColor: INLINE_EDIT_RING,
+        userSelect: "text",
+        WebkitUserSelect: "text",
+        zIndex: 25,
+      }}
+    />
+  );
 }
 
 export function StandardSlideView({
@@ -101,18 +189,77 @@ export function StandardSlideView({
   brand,
   interactive = true,
   onFocusField,
+  onUpdateField,
+  initialEditField = null,
+  onClearInitialEditField,
 }: StandardSlideViewProps) {
+  const [editingField, setEditingField] =
+    useState<StandardEditableField | null>(initialEditField);
+  const singleClickTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setEditingField(null);
+  }, [selectedIndex, layout, interactive]);
+
+  useEffect(() => {
+    if (interactive && onUpdateField && initialEditField) {
+      setEditingField(initialEditField);
+      onClearInitialEditField?.();
+    }
+  }, [interactive, onUpdateField, initialEditField, onClearInitialEditField]);
+
+  useEffect(() => {
+    return () => {
+      if (singleClickTimerRef.current !== null) {
+        window.clearTimeout(singleClickTimerRef.current);
+      }
+    };
+  }, []);
+
   const isHero = layout === "cover" || layout === "closing";
   const slideBg = isHero ? sw.cover_bg : sw.bg;
   const titleCol = isHero ? sw.cover_title : sw.title;
   const bodyCol = isHero ? sw.cover_body : sw.body;
   const canFocus = Boolean(interactive && onFocusField);
-  const slotClass = canFocus ? "clickable-slot" : undefined;
-  const focusProps = (fieldId: string) =>
-    canFocus ? { onClick: () => onFocusField!(fieldId) } : {};
+  const canInlineEdit = Boolean(interactive && onUpdateField);
+  const slotClass = canFocus || canInlineEdit ? "clickable-slot" : undefined;
+
+  const slotProps = (fieldId: string, field: StandardEditableField) => {
+    if (!canFocus && !canInlineEdit) return {};
+    return {
+      title: canInlineEdit ? "双击直接在画布编辑文字" : undefined,
+      onClick: (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!canFocus) return;
+        if (!canInlineEdit) {
+          onFocusField!(fieldId);
+          return;
+        }
+        if (singleClickTimerRef.current !== null) {
+          window.clearTimeout(singleClickTimerRef.current);
+        }
+        singleClickTimerRef.current = window.setTimeout(() => {
+          singleClickTimerRef.current = null;
+          onFocusField!(fieldId);
+        }, 220);
+      },
+      onDoubleClick: (e: React.MouseEvent) => {
+        if (!canInlineEdit) return;
+        e.stopPropagation();
+        if (singleClickTimerRef.current !== null) {
+          window.clearTimeout(singleClickTimerRef.current);
+          singleClickTimerRef.current = null;
+        }
+        setEditingField(field);
+      },
+    };
+  };
 
   return (
     <div
+      onClick={() => {
+        if (editingField) setEditingField(null);
+      }}
       className={`w-[960px] h-[540px] origin-top-left absolute top-0 left-0 text-left ${
         interactive
           ? "transition-colors duration-200"
@@ -136,41 +283,92 @@ export function StandardSlideView({
               backgroundColor: sw.accent,
             }}
           />
-          <div
-            {...focusProps("input-title")}
-            className={slotClass}
-            style={{
-              position: "absolute",
-              left: 48,
-              top: 172,
-              width: 864,
-              fontSize: 44,
-              lineHeight: "54px",
-              fontWeight: 700,
-              letterSpacing: "-0.028em",
-              color: titleCol,
-              textAlign: "left",
-            }}
-          >
-            {item.title || "未命名标题"}
-          </div>
-          <div
-            {...focusProps("input-summary")}
-            className={slotClass}
-            style={{
-              position: "absolute",
-              left: 48,
-              top: 298,
-              width: 820,
-              fontSize: 20,
-              lineHeight: "31px",
-              whiteSpace: "pre-wrap",
-              color: bodyCol,
-              textAlign: "left",
-            }}
-          >
-            {normalizeEscapedNewlines(item.summary || "")}
-          </div>
+          {canInlineEdit && editingField === "title" ? (
+            <InlineStandardTextarea
+              ariaLabel="编辑封面主标题"
+              value={item.title || ""}
+              placeholder="输入封面主标题…"
+              singleLineSubmit
+              onChange={(val) => onUpdateField!("title", val)}
+              onDone={() => setEditingField(null)}
+              style={{
+                position: "absolute",
+                left: 42,
+                top: 170,
+                width: 876,
+                height: 118,
+                fontSize: 44,
+                lineHeight: "54px",
+                fontWeight: 700,
+                letterSpacing: "-0.028em",
+                color: titleCol,
+                textAlign: "left",
+              }}
+            />
+          ) : (
+            <div
+              {...slotProps("input-title", "title")}
+              className={slotClass}
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 172,
+                width: 864,
+                fontSize: 44,
+                lineHeight: "54px",
+                fontWeight: 700,
+                letterSpacing: "-0.028em",
+                color: titleCol,
+                textAlign: "left",
+              }}
+            >
+              {item.title || "未命名标题"}
+            </div>
+          )}
+          {canInlineEdit && editingField === "summary" ? (
+            <InlineStandardTextarea
+              ariaLabel="编辑封面副标题"
+              value={normalizeEscapedNewlines(item.summary || "")}
+              placeholder="输入封面副标题或导语…"
+              onChange={(val) => onUpdateField!("summary", val)}
+              onDone={() => setEditingField(null)}
+              style={{
+                position: "absolute",
+                left: 42,
+                top: 296,
+                width: 832,
+                height: 176,
+                fontSize: 20,
+                lineHeight: "31px",
+                whiteSpace: "pre-wrap",
+                color: bodyCol,
+                textAlign: "left",
+              }}
+            />
+          ) : (
+            <div
+              {...slotProps("input-summary", "summary")}
+              className={slotClass}
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 298,
+                width: 820,
+                minHeight: 38,
+                fontSize: 20,
+                lineHeight: "31px",
+                whiteSpace: "pre-wrap",
+                color: item.summary ? bodyCol : sw.muted,
+                textAlign: "left",
+              }}
+            >
+              {item.summary
+                ? normalizeEscapedNewlines(item.summary)
+                : interactive
+                ? "（双击添加副标题）"
+                : ""}
+            </div>
+          )}
         </>
       ) : layout === "closing" ? (
         <>
@@ -185,41 +383,92 @@ export function StandardSlideView({
               backgroundColor: sw.accent,
             }}
           />
-          <div
-            {...focusProps("input-title")}
-            className={slotClass}
-            style={{
-              position: "absolute",
-              left: 48,
-              top: 168,
-              width: 864,
-              fontSize: 34,
-              lineHeight: "44px",
-              fontWeight: 700,
-              letterSpacing: "-0.022em",
-              color: titleCol,
-              textAlign: "center",
-            }}
-          >
-            {item.title || "谢谢聆听"}
-          </div>
-          <div
-            {...focusProps("input-summary")}
-            className={slotClass}
-            style={{
-              position: "absolute",
-              left: 48,
-              top: 250,
-              width: 864,
-              fontSize: 20,
-              lineHeight: "32px",
-              whiteSpace: "pre-wrap",
-              color: bodyCol,
-              textAlign: "center",
-            }}
-          >
-            {normalizeEscapedNewlines(item.summary || "")}
-          </div>
+          {canInlineEdit && editingField === "title" ? (
+            <InlineStandardTextarea
+              ariaLabel="编辑尾页标题"
+              value={item.title || ""}
+              placeholder="输入尾页标题…"
+              singleLineSubmit
+              onChange={(val) => onUpdateField!("title", val)}
+              onDone={() => setEditingField(null)}
+              style={{
+                position: "absolute",
+                left: 42,
+                top: 166,
+                width: 876,
+                height: 76,
+                fontSize: 34,
+                lineHeight: "44px",
+                fontWeight: 700,
+                letterSpacing: "-0.022em",
+                color: titleCol,
+                textAlign: "center",
+              }}
+            />
+          ) : (
+            <div
+              {...slotProps("input-title", "title")}
+              className={slotClass}
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 168,
+                width: 864,
+                fontSize: 34,
+                lineHeight: "44px",
+                fontWeight: 700,
+                letterSpacing: "-0.022em",
+                color: titleCol,
+                textAlign: "center",
+              }}
+            >
+              {item.title || "谢谢聆听"}
+            </div>
+          )}
+          {canInlineEdit && editingField === "summary" ? (
+            <InlineStandardTextarea
+              ariaLabel="编辑尾页结语"
+              value={normalizeEscapedNewlines(item.summary || "")}
+              placeholder="输入结语或行动呼吁…"
+              onChange={(val) => onUpdateField!("summary", val)}
+              onDone={() => setEditingField(null)}
+              style={{
+                position: "absolute",
+                left: 42,
+                top: 248,
+                width: 876,
+                height: 176,
+                fontSize: 20,
+                lineHeight: "32px",
+                whiteSpace: "pre-wrap",
+                color: bodyCol,
+                textAlign: "center",
+              }}
+            />
+          ) : (
+            <div
+              {...slotProps("input-summary", "summary")}
+              className={slotClass}
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 250,
+                width: 864,
+                minHeight: 38,
+                fontSize: 20,
+                lineHeight: "32px",
+                whiteSpace: "pre-wrap",
+                color: item.summary ? bodyCol : sw.muted,
+                textAlign: "center",
+              }}
+            >
+              {item.summary
+                ? normalizeEscapedNewlines(item.summary)
+                : interactive
+                ? "（双击添加结语）"
+                : ""}
+            </div>
+          )}
           <div
             style={{
               position: "absolute",
@@ -233,23 +482,46 @@ export function StandardSlideView({
         </>
       ) : (
         <>
-          <div
-            {...focusProps("input-title")}
-            className={slotClass}
-            style={{
-              position: "absolute",
-              left: 48,
-              top: 28,
-              width: 864,
-              fontSize: 28,
-              lineHeight: "36px",
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              color: titleCol,
-            }}
-          >
-            {item.title || "未命名标题"}
-          </div>
+          {canInlineEdit && editingField === "title" ? (
+            <InlineStandardTextarea
+              ariaLabel="编辑页面标题"
+              value={item.title || ""}
+              placeholder="输入页面标题…"
+              singleLineSubmit
+              onChange={(val) => onUpdateField!("title", val)}
+              onDone={() => setEditingField(null)}
+              style={{
+                position: "absolute",
+                left: 42,
+                top: 26,
+                width: 876,
+                height: 70,
+                fontSize: 28,
+                lineHeight: "36px",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: titleCol,
+              }}
+            />
+          ) : (
+            <div
+              {...slotProps("input-title", "title")}
+              className={slotClass}
+              style={{
+                position: "absolute",
+                left: 48,
+                top: 28,
+                width: 864,
+                fontSize: 28,
+                lineHeight: "36px",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: titleCol,
+              }}
+            >
+              {item.title || "未命名标题"}
+            </div>
+          )}
           <div
             style={{
               position: "absolute",
@@ -273,52 +545,74 @@ export function StandardSlideView({
           />
 
           {layout === "bullets" ? (
-            <ul
-              {...focusProps("input-summary")}
-              className={slotClass}
-              style={{
-                position: "absolute",
-                left: 48,
-                top: 124,
-                width: 864,
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-              }}
-            >
-              {normalizeEscapedNewlines(item.summary || "")
-                .split("\n")
-                .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
-                .filter(Boolean)
-                .map((line, i) => (
-                  <li
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 14,
-                      fontSize: 20,
-                      lineHeight: "29px",
-                      color: bodyCol,
-                    }}
-                  >
-                    <span
+            canInlineEdit && editingField === "summary" ? (
+              <InlineStandardTextarea
+                ariaLabel="编辑要点列表"
+                value={normalizeEscapedNewlines(item.summary || "")}
+                placeholder="每行输入一条核心要点…"
+                onChange={(val) => onUpdateField!("summary", val)}
+                onDone={() => setEditingField(null)}
+                style={{
+                  position: "absolute",
+                  left: 42,
+                  top: 122,
+                  width: 876,
+                  height: 364,
+                  fontSize: 20,
+                  lineHeight: "34px",
+                  whiteSpace: "pre-wrap",
+                  color: bodyCol,
+                }}
+              />
+            ) : (
+              <ul
+                {...slotProps("input-summary", "summary")}
+                className={slotClass}
+                style={{
+                  position: "absolute",
+                  left: 48,
+                  top: 124,
+                  width: 864,
+                  minHeight: 80,
+                  listStyle: "none",
+                  padding: 0,
+                  margin: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                }}
+              >
+                {normalizeEscapedNewlines(item.summary || "")
+                  .split("\n")
+                  .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
+                  .filter(Boolean)
+                  .map((line, i) => (
+                    <li
+                      key={i}
                       style={{
-                        marginTop: 11,
-                        width: 6.5,
-                        height: 6.5,
-                        borderRadius: 99,
-                        backgroundColor: sw.accent,
-                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 14,
+                        fontSize: 20,
+                        lineHeight: "29px",
+                        color: bodyCol,
                       }}
-                    />
-                    <span>{line}</span>
-                  </li>
-                ))}
-            </ul>
+                    >
+                      <span
+                        style={{
+                          marginTop: 11,
+                          width: 6.5,
+                          height: 6.5,
+                          borderRadius: 99,
+                          backgroundColor: sw.accent,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+              </ul>
+            )
           ) : layout === "two_column" ? (
             <>
               <div
@@ -351,61 +645,127 @@ export function StandardSlideView({
                   backgroundColor: sw.divider,
                 }}
               />
-              <div
-                {...focusProps("input-summary")}
-                className={slotClass}
-                style={{
-                  position: "absolute",
-                  left: 48,
-                  top: 128,
-                  width: 412,
-                  fontSize: 20,
-                  lineHeight: "29px",
-                  whiteSpace: "pre-wrap",
-                  color: bodyCol,
-                }}
-              >
-                {normalizeEscapedNewlines(item.summary || "")}
-              </div>
-              <div
-                {...focusProps("input-col-right")}
-                className={slotClass}
-                style={{
-                  position: "absolute",
-                  left: 500,
-                  top: 128,
-                  width: 412,
-                  fontSize: 20,
-                  lineHeight: "29px",
-                  whiteSpace: "pre-wrap",
-                  color: item.column_right ? bodyCol : sw.muted,
-                }}
-              >
-                {item.column_right
-                  ? normalizeEscapedNewlines(item.column_right)
-                  : interactive
-                  ? "（请在右侧填写右栏内容）"
-                  : ""}
-              </div>
+              {canInlineEdit && editingField === "summary" ? (
+                <InlineStandardTextarea
+                  ariaLabel="编辑左栏内容"
+                  value={normalizeEscapedNewlines(item.summary || "")}
+                  placeholder="输入左栏内容…"
+                  onChange={(val) => onUpdateField!("summary", val)}
+                  onDone={() => setEditingField(null)}
+                  style={{
+                    position: "absolute",
+                    left: 42,
+                    top: 126,
+                    width: 424,
+                    height: 356,
+                    fontSize: 20,
+                    lineHeight: "29px",
+                    whiteSpace: "pre-wrap",
+                    color: bodyCol,
+                  }}
+                />
+              ) : (
+                <div
+                  {...slotProps("input-summary", "summary")}
+                  className={slotClass}
+                  style={{
+                    position: "absolute",
+                    left: 48,
+                    top: 128,
+                    width: 412,
+                    minHeight: 80,
+                    fontSize: 20,
+                    lineHeight: "29px",
+                    whiteSpace: "pre-wrap",
+                    color: bodyCol,
+                  }}
+                >
+                  {normalizeEscapedNewlines(item.summary || "")}
+                </div>
+              )}
+              {canInlineEdit && editingField === "column_right" ? (
+                <InlineStandardTextarea
+                  ariaLabel="编辑右栏内容"
+                  value={normalizeEscapedNewlines(item.column_right || "")}
+                  placeholder="输入右栏内容…"
+                  onChange={(val) => onUpdateField!("column_right", val)}
+                  onDone={() => setEditingField(null)}
+                  style={{
+                    position: "absolute",
+                    left: 494,
+                    top: 126,
+                    width: 424,
+                    height: 356,
+                    fontSize: 20,
+                    lineHeight: "29px",
+                    whiteSpace: "pre-wrap",
+                    color: bodyCol,
+                  }}
+                />
+              ) : (
+                <div
+                  {...slotProps("input-col-right", "column_right")}
+                  className={slotClass}
+                  style={{
+                    position: "absolute",
+                    left: 500,
+                    top: 128,
+                    width: 412,
+                    minHeight: 80,
+                    fontSize: 20,
+                    lineHeight: "29px",
+                    whiteSpace: "pre-wrap",
+                    color: item.column_right ? bodyCol : sw.muted,
+                  }}
+                >
+                  {item.column_right
+                    ? normalizeEscapedNewlines(item.column_right)
+                    : interactive
+                    ? "（双击填写右栏内容）"
+                    : ""}
+                </div>
+              )}
             </>
           ) : layout === "text_image" ? (
             <>
-              <div
-                {...focusProps("input-summary")}
-                className={slotClass}
-                style={{
-                  position: "absolute",
-                  left: 48,
-                  top: 126,
-                  width: 388,
-                  fontSize: 20,
-                  lineHeight: "29px",
-                  whiteSpace: "pre-wrap",
-                  color: bodyCol,
-                }}
-              >
-                {normalizeEscapedNewlines(item.summary || "")}
-              </div>
+              {canInlineEdit && editingField === "summary" ? (
+                <InlineStandardTextarea
+                  ariaLabel="编辑图文页正文"
+                  value={normalizeEscapedNewlines(item.summary || "")}
+                  placeholder="输入左侧说明内容…"
+                  onChange={(val) => onUpdateField!("summary", val)}
+                  onDone={() => setEditingField(null)}
+                  style={{
+                    position: "absolute",
+                    left: 42,
+                    top: 124,
+                    width: 400,
+                    height: 364,
+                    fontSize: 20,
+                    lineHeight: "29px",
+                    whiteSpace: "pre-wrap",
+                    color: bodyCol,
+                  }}
+                />
+              ) : (
+                <div
+                  {...slotProps("input-summary", "summary")}
+                  className={slotClass}
+                  style={{
+                    position: "absolute",
+                    left: 48,
+                    top: 126,
+                    width: 388,
+                    minHeight: 80,
+                    fontSize: 20,
+                    lineHeight: "29px",
+                    whiteSpace: "pre-wrap",
+                    color: bodyCol,
+                  }}
+                >
+                  {normalizeEscapedNewlines(item.summary || "")}
+                </div>
+              )}
               <div
                 style={{
                   position: "absolute",
@@ -453,15 +813,35 @@ export function StandardSlideView({
                 )}
               </div>
             </>
+          ) : canInlineEdit && editingField === "summary" ? (
+            <InlineStandardTextarea
+              ariaLabel="编辑正文内容"
+              value={normalizeEscapedNewlines(item.summary || "")}
+              placeholder="输入本页核心内容…"
+              onChange={(val) => onUpdateField!("summary", val)}
+              onDone={() => setEditingField(null)}
+              style={{
+                position: "absolute",
+                left: 42,
+                top: 124,
+                width: 876,
+                height: 364,
+                fontSize: 20,
+                lineHeight: "30px",
+                whiteSpace: "pre-wrap",
+                color: bodyCol,
+              }}
+            />
           ) : (
             <div
-              {...focusProps("input-summary")}
+              {...slotProps("input-summary", "summary")}
               className={slotClass}
               style={{
                 position: "absolute",
                 left: 48,
                 top: 126,
                 width: 864,
+                minHeight: 80,
                 fontSize: 20,
                 lineHeight: "30px",
                 whiteSpace: "pre-wrap",
