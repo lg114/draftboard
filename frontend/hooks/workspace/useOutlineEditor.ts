@@ -16,7 +16,6 @@ import {
   OutlineLayout,
   Project,
   SavedLayoutPreset,
-  SlideRefineCandidate,
 } from "../../lib/api";
 import {
   EditableOutlineField,
@@ -787,63 +786,6 @@ export function useOutlineEditor({
     [mutateOutline]
   );
 
-  const refineSlideItem = useCallback(
-    async (
-      index: number,
-      mode: "concise" | "bullets" | "two_column" | "custom",
-      instruction?: string
-    ): Promise<SlideRefineCandidate | null> => {
-      const targetPid = getTargetPid();
-      if (!outline || !outline.items[index] || !version || targetPid === "new")
-        return null;
-      const item = outline.items[index];
-      setRawError(null);
-      try {
-        return await api<SlideRefineCandidate>(
-          `/api/projects/${targetPid}/outlines/${version}/items/${encodeURIComponent(
-            item.outline_item_id
-          )}/refine`,
-          jsonOptions("POST", {
-            title: item.title,
-            summary: item.summary,
-            column_right: item.column_right ?? null,
-            layout: item.layout ?? null,
-            source_ids: item.source_ids,
-            mode,
-            instruction: instruction ?? null,
-          })
-        );
-      } catch (e) {
-        setRawError((e as Error).message);
-        return null;
-      }
-    },
-    [outline, version, getTargetPid, setRawError]
-  );
-
-  const applyRefineCandidate = useCallback(
-    (index: number, candidate: SlideRefineCandidate) => {
-      mutateOutline((prev) => {
-        if (!prev.items[index]) return null;
-        const items = [...prev.items];
-        const item = items[index];
-        items[index] = {
-          ...item,
-          title: candidate.title || item.title,
-          summary: candidate.summary || item.summary,
-          column_right:
-            candidate.column_right !== undefined
-              ? candidate.column_right
-              : item.column_right,
-          layout: (candidate.layout as OutlineLayout) || item.layout,
-        };
-        return { ...prev, items };
-      });
-      flashToast("已应用 AI 修改建议");
-    },
-    [mutateOutline, flashToast]
-  );
-
   const reorderItem = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (fromIndex === toIndex) return;
@@ -1081,8 +1023,6 @@ export function useOutlineEditor({
     applyImageToSlide,
     insertExcerptToSlide,
     splitTwoColumn,
-    refineSlideItem,
-    applyRefineCandidate,
     moveItem,
     reorderItem,
     addItem,

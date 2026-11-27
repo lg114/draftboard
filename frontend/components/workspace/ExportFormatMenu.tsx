@@ -109,7 +109,7 @@ export function ExportFormatMenu({
               </a>
               <a
                 role="menuitem"
-                href={`/api/projects/${pid}/download/pngs.zip`}
+                href={`/api/projects/${pid}/download/images`}
                 download
                 onClick={() => setOpen(false)}
                 className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-ui-control-hover transition-colors"
@@ -130,7 +130,7 @@ export function ExportFormatMenu({
           {canDownloadNotes && (
             <a
               role="menuitem"
-              href={`/api/projects/${pid}/download/notes.md`}
+              href={`/api/projects/${pid}/download/notes`}
               download
               onClick={() => setOpen(false)}
               className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-ui-control-hover transition-colors"

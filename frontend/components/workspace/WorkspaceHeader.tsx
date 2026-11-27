@@ -579,7 +579,7 @@ export function WorkspaceHeader({
                         </a>
                         <a
                           role="menuitem"
-                          href={`/api/projects/${pid}/download/pngs.zip`}
+                          href={`/api/projects/${pid}/download/images`}
                           download
                           onClick={() => setIsExportOpen(false)}
                           className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover transition-colors"
@@ -592,7 +592,7 @@ export function WorkspaceHeader({
 
                     <a
                       role="menuitem"
-                      href={`/api/projects/${pid}/download/notes.md`}
+                      href={`/api/projects/${pid}/download/notes`}
                       download
                       onClick={() => setIsExportOpen(false)}
                       className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-ui-text-secondary hover:text-ui-text hover:bg-ui-control-hover transition-colors"

@@ -1041,6 +1041,7 @@ function InlineCustomTextarea({
           return;
         }
         if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
           e.preventDefault();
           e.stopPropagation();
           onDone();

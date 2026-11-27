@@ -821,44 +821,7 @@ def test_docx_pdf_upload_material_delete_refine_and_project_crud(client):
     assert "arch_spec-L1" in frag_ids
     assert "report-P1" in frag_ids
 
-    # 3. Single-slide AI refinement returns non-destructive Diff candidate (PRD F-12)
-    outline = client.get(f"/api/projects/{pid}/outlines/{version}").json()
-    item_id = outline["items"][0]["outline_item_id"]
-
-    r_ref_bullets = client.post(
-        f"/api/projects/{pid}/outlines/{version}/items/{item_id}/refine",
-        json={
-            "title": "核心性能收益",
-            "summary": "系统架构延迟降低 40%。内存占用减少 25%。吞吐量翻倍。",
-            "layout": "content",
-            "source_ids": ["arch_spec-L1"],
-            "mode": "bullets",
-        },
-    )
-    assert r_ref_bullets.status_code == 200
-    diff_b = r_ref_bullets.json()
-    assert diff_b["layout"] == "bullets"
-    assert "\n" in diff_b["summary"]
-
-    r_ref_twocol = client.post(
-        f"/api/projects/{pid}/outlines/{version}/items/{item_id}/refine",
-        json={
-            "title": "改造前后对比",
-            "summary": "旧架构：黑盒生成经常溢出。\n新架构：fontTools 确定性测量零溢出。",
-            "layout": "content",
-            "source_ids": ["arch_spec-L1"],
-            "mode": "two_column",
-        },
-    )
-    assert r_ref_twocol.status_code == 200
-    diff_tc = r_ref_twocol.json()
-    assert diff_tc["layout"] == "two_column"
-    assert diff_tc["column_right"]
-
-    # Stored outline on disk was NOT mutated by refine preview
-    assert client.get(f"/api/projects/{pid}/outlines/{version}").json() == outline
-
-    # 4. Delete material and verify cleanup (PRD F-16)
+    # 3. Delete material and verify cleanup (PRD F-16)
     r_del_mat = client.delete(f"/api/projects/{pid}/materials/report")
     assert r_del_mat.status_code == 200
     mats_after = client.get(f"/api/projects/{pid}/materials").json()

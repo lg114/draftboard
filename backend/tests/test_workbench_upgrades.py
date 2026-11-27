@@ -206,7 +206,7 @@ def test_url_material_import_and_ssrf_guard(client, monkeypatch):
     assert body["source_fragments"] >= 1
 
 
-def test_demo_project_preflight_and_full_export(client):
+def test_demo_project_full_export(client):
     demo = client.post("/api/projects/demo")
     assert demo.status_code == 200
     pid = demo.json()["project_id"]
@@ -216,14 +216,6 @@ def test_demo_project_preflight_and_full_export(client):
     assert proj["materials_count"] == 2
     assert proj["brand"]["footer_text"]
     ver = proj["outlines"][0]["outline_version"]
-
-    # Pre-Flight audit should pass cleanly with score 100
-    pf = client.get(f"/api/projects/{pid}/preflight?version={ver}&theme_id=keynote_light").json()
-    assert pf["ready"] is True
-    assert pf["summary"]["layout_ok"] is True
-    assert pf["summary"]["media_ok"] is True
-    assert pf["summary"]["supported_slides"] == 5
-    assert pf["summary"]["notes_slides"] == 5
 
     # Confirm & export native PPTX via real pipeline
     assert client.post(f"/api/projects/{pid}/outlines/{ver}/confirm").status_code == 200
@@ -337,47 +329,6 @@ def test_brand_kit_override_and_saved_layouts_crud(client):
     deleted = client.delete(f"/api/layouts/custom/{lid}")
     assert deleted.status_code == 200
     assert not any(item["id"] == lid for item in client.get("/api/layouts/custom").json()["layouts"])
-
-
-def test_preflight_catches_missing_image_in_custom_canvas(client):
-    demo = client.post("/api/projects/demo")
-    assert demo.status_code == 200
-    pid = demo.json()["project_id"]
-    proj = client.get(f"/api/projects/{pid}").json()
-    ver = proj["outlines"][0]["outline_version"]
-    outline = client.get(f"/api/projects/{pid}/outlines/{ver}").json()
-
-    # Inject a broken image element into slide 2's custom canvas
-    items = outline["items"]
-    items[1]["custom_elements"].append(
-        {
-            "id": "broken_img",
-            "kind": "image",
-            "x": 60,
-            "y": 320,
-            "w": 220,
-            "h": 140,
-            "image_asset_id": "nonexistent_deleted.png",
-        }
-    )
-    updated = client.put(
-        f"/api/projects/{pid}/outlines/{ver}",
-        json={"items": items},
-    )
-    assert updated.status_code == 200
-    new_ver = updated.json()["outline_version"]
-
-    pf = client.get(
-        f"/api/projects/{pid}/preflight?version={new_ver}&theme_id=keynote_light"
-    ).json()
-    assert pf["ready"] is False
-    assert pf["summary"]["media_ok"] is False
-    assert any(
-        f["category"] == "media"
-        and f["severity"] == "error"
-        and "nonexistent_deleted.png" in f["message"]
-        for f in pf["findings"]
-    )
 
 
 def test_health_and_delete_material_cleans_brand_logo_and_custom_images(client):

@@ -1,8 +1,7 @@
-"""Outline generation, review, confirmation, slide refine, and sync fingerprint routes."""
+"""Outline generation, review, confirmation, and sync fingerprint routes."""
 
 from __future__ import annotations
 
-import re
 import uuid
 from typing import Optional
 
@@ -29,7 +28,6 @@ from draftboard.routes.common import (
     require_project,
     unwrap_tool,
 )
-from draftboard.storage import load_json
 
 router = APIRouter()
 
@@ -53,16 +51,6 @@ class OutlineItemEdit(BaseModel):
 
 class OutlineEditRequest(BaseModel):
     items: list[OutlineItemEdit]
-
-
-class SlideRefineRequest(BaseModel):
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    column_right: Optional[str] = None
-    layout: Optional[str] = None
-    source_ids: Optional[list[str]] = None
-    mode: str = "concise"
-    instruction: Optional[str] = None
 
 
 @router.post("/api/projects/{project_id}/outline/generate", status_code=202)
@@ -219,97 +207,6 @@ def edit_outline(project_id: str, version: str, req: OutlineEditRequest):
         edited.items = new_items
     storage.save_outline(edited)
     return edited.model_dump()
-
-
-@router.post("/api/projects/{project_id}/outlines/{version}/items/{item_id}/refine")
-def refine_outline_item(
-    project_id: str,
-    version: str,
-    item_id: str,
-    req: SlideRefineRequest,
-):
-    """Generate a non-destructive AI refinement candidate (Diff preview) for one slide."""
-    require_project(project_id)
-    storage = get_storage(project_id)
-    outline = storage.load_outline(version)
-    target = next(
-        (it for it in outline.items if it.outline_item_id == item_id), None
-    )
-
-    title = req.title if req.title is not None else (target.title if target else "")
-    summary = (
-        req.summary
-        if req.summary is not None
-        else (target.summary if target else "")
-    )
-    column_right = (
-        req.column_right
-        if req.column_right is not None
-        else (target.column_right if target else None)
-    )
-    layout = (
-        req.layout
-        if req.layout is not None
-        else (target.layout.value if (target and target.layout) else "content")
-    )
-    sids = (
-        req.source_ids
-        if req.source_ids is not None
-        else (target.source_ids if target else [])
-    )
-
-    mat_out = unwrap_tool(tools_module.read_materials)(project_id=project_id)
-    frag_map = {f.source_id: f for f in mat_out.source_fragments}
-    mat_map = {
-        m.asset_id: m.content
-        for m in mat_out.materials
-        if m.asset_type != "image" and m.content
-    }
-    excerpts: list[str] = []
-    for sid in sids:
-        frag = frag_map.get(sid)
-        if not frag or frag.source_id.endswith("-img"):
-            continue
-        text = ""
-        raw_mat = mat_map.get(frag.asset_id, "")
-        if raw_mat:
-            m_loc = re.search(r"L(\d+)-L(\d+)$", frag.location or "")
-            if m_loc:
-                start_ln = max(0, int(m_loc.group(1)) - 1)
-                end_ln = int(m_loc.group(2))
-                text = "\n".join(raw_mat.splitlines()[start_ln:end_ln]).strip()
-            if not text:
-                text = raw_mat[:600].strip()
-        if not text and frag.content_preview:
-            text = frag.content_preview.strip()
-        if text and "图片素材占位" not in text:
-            excerpts.append(text[:600])
-
-    display_name = ""
-    meta_path = get_root() / project_id / "meta.json"
-    if meta_path.exists():
-        try:
-            loaded_meta = load_json(meta_path)
-            if isinstance(loaded_meta, dict):
-                display_name = str(loaded_meta.get("name") or "").strip()
-        except Exception:
-            pass
-
-    candidate = tasks.refine_slide_item(
-        project_id=project_id,
-        title=title,
-        summary=summary,
-        column_right=column_right,
-        layout=layout,
-        source_excerpts=excerpts,
-        mode=req.mode,
-        instruction=req.instruction,
-        project_name=display_name,
-    )
-    return {
-        "outline_item_id": item_id,
-        **candidate,
-    }
 
 
 @router.get("/api/projects/{project_id}/generation-sync")

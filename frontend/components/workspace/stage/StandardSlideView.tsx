@@ -143,14 +143,15 @@ function InlineStandardTextarea({
           return;
         }
         if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
           e.preventDefault();
           e.stopPropagation();
           onDone();
           return;
         }
         if (singleLineSubmit && e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
           if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
           e.stopPropagation();
           onDone();
         }
@@ -582,11 +583,25 @@ export function StandardSlideView({
                   gap: 16,
                 }}
               >
-                {normalizeEscapedNewlines(item.summary || "")
-                  .split("\n")
-                  .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
-                  .filter(Boolean)
-                  .map((line, i) => (
+                {(() => {
+                  const lines = normalizeEscapedNewlines(item.summary || "")
+                    .split("\n")
+                    .map((s) => s.replace(/^[-*•·]\s+/, "").trim())
+                    .filter(Boolean);
+                  if (lines.length === 0) {
+                    return interactive ? (
+                      <li
+                        style={{
+                          fontSize: 20,
+                          lineHeight: "29px",
+                          color: sw.muted,
+                        }}
+                      >
+                        （双击添加要点）
+                      </li>
+                    ) : null;
+                  }
+                  return lines.map((line, i) => (
                     <li
                       key={i}
                       style={{
@@ -610,7 +625,8 @@ export function StandardSlideView({
                       />
                       <span>{line}</span>
                     </li>
-                  ))}
+                  ));
+                })()}
               </ul>
             )
           ) : layout === "two_column" ? (
@@ -677,10 +693,14 @@ export function StandardSlideView({
                     fontSize: 20,
                     lineHeight: "29px",
                     whiteSpace: "pre-wrap",
-                    color: bodyCol,
+                    color: item.summary ? bodyCol : sw.muted,
                   }}
                 >
-                  {normalizeEscapedNewlines(item.summary || "")}
+                  {item.summary
+                    ? normalizeEscapedNewlines(item.summary)
+                    : interactive
+                    ? "（双击填写左栏内容）"
+                    : ""}
                 </div>
               )}
               {canInlineEdit && editingField === "column_right" ? (
@@ -760,10 +780,14 @@ export function StandardSlideView({
                     fontSize: 20,
                     lineHeight: "29px",
                     whiteSpace: "pre-wrap",
-                    color: bodyCol,
+                    color: item.summary ? bodyCol : sw.muted,
                   }}
                 >
-                  {normalizeEscapedNewlines(item.summary || "")}
+                  {item.summary
+                    ? normalizeEscapedNewlines(item.summary)
+                    : interactive
+                    ? "（双击添加左侧说明）"
+                    : ""}
                 </div>
               )}
               <div
@@ -845,10 +869,14 @@ export function StandardSlideView({
                 fontSize: 20,
                 lineHeight: "30px",
                 whiteSpace: "pre-wrap",
-                color: bodyCol,
+                color: item.summary ? bodyCol : sw.muted,
               }}
             >
-              {normalizeEscapedNewlines(item.summary || "")}
+              {item.summary
+                ? normalizeEscapedNewlines(item.summary)
+                : interactive
+                ? "（双击添加正文内容）"
+                : ""}
             </div>
           )}
         </>

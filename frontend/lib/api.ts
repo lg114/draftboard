@@ -276,31 +276,6 @@ export interface SavedLayoutPreset {
   created_at: string;
 }
 
-export interface PreflightFinding {
-  slide_index: number;
-  slide_number: number;
-  category: "layout" | "provenance" | "media" | "notes" | "rhythm";
-  severity: "error" | "warning" | "info";
-  message: string;
-}
-
-export interface PreflightReport {
-  outline_version: string;
-  total_slides: number;
-  ready: boolean;
-  score: number;
-  summary: {
-    layout_ok: boolean;
-    media_ok: boolean;
-    supported_slides: number;
-    notes_slides: number;
-    error_count: number;
-    warning_count: number;
-    info_count: number;
-  };
-  findings: PreflightFinding[];
-}
-
 export interface Project {
   project_id: string;
   name?: string;
@@ -341,16 +316,6 @@ export interface Preview {
   artifact_id: string;
   artifact_revision: number;
   pages: string[];
-}
-
-export interface SlideRefineCandidate {
-  outline_item_id: string;
-  title: string;
-  summary: string;
-  column_right?: string | null;
-  layout?: OutlineLayout | string | null;
-  rationale?: string;
-  source?: "llm" | "fallback";
 }
 
 export interface ChatToolStep {
