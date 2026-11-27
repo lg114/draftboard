@@ -43,11 +43,15 @@ Review the five-slide outline, then open **导出** and click **立即编译 PPT
 
 1. **Import.** Accepts `.md`, `.txt`, `.docx`, `.pdf`, `.csv`, `.xlsx`, `.pptx`, `.png`, `.jpg`, pasted text, or a public URL. Files are stored locally under `~/.draftboard/projects` (override with `DRAFTBOARD_STORAGE_ROOT`).
 2. **Outline (optional).** With a model configured, the workbench drafts an outline from the imported materials. Each slide keeps its source IDs. Pages without evidence can be marked as needing sources.
-3. **Review.** Edit titles, summaries, layout, speaker notes, and source links before compiling. Confirming an outline freezes that version; later edits create a new draft instead of rewriting the confirmed one.
-4. **Compile.** **生成 PPTX** confirms the current draft and builds the slides. The exporter measures every text block against a real font file — overflow or a missing glyph stops the export and reports the problem instead of clipping text. The same run can also produce a PDF, per-page PNGs, and a markdown speaker script with source excerpts.
+3. **Review & edit.** Edit titles, summaries, layouts, speaker notes, and source links before compiling. Confirming an outline freezes that version; later edits create a new draft instead of rewriting the confirmed one.
+   - **Inline canvas editing:** click text directly on standard slides, or click-again / double-click text boxes, table cells, and timeline/process diagram steps on free-canvas slides.
+   - **Multi-select & cross-slide clipboard:** `Shift+click` or marquee-select free-canvas elements with smart snap/spacing guides, and copy/paste elements across slides with `Ctrl/⌘+C` and `Ctrl/⌘+V`.
+   - **Direct image drop & paste:** drop local PNG/JPG files onto the stage or press `Ctrl/⌘+V` with a screenshot to upload and insert directly onto the current slide.
+   - **Selection-aware AI chat:** selecting free-canvas elements pins context chips in the chat composer so the studio agent edits the exact elements you point to.
+4. **Compile & preview.** **导出 → 立即编译 PPTX** confirms the current draft and builds the slides. The exporter measures every text block against a real font file — overflow or a missing glyph stops the export and reports the problem instead of clipping text. The same run can also produce a PDF, per-page PNGs, and a markdown speaker script with source excerpts. The dedicated preview page supports fullscreen playback (`F`) and a collapsible speaker-notes bar (`N`).
 5. **Edit and re-export.** After compiling, the canvas and inspector still edit the same outline. A previous PPTX is reused only when the frozen inputs match (outline content, theme, brand, auto-fit, the bytes of referenced images, and the export-rule version). The workbench checks this via `GET /api/projects/{id}/generation-sync`.
 
-> Studio chat requires a configured model. Per-slide refine falls back to local rules when no key is set. Neither feature was used for the built-in example.
+> Outline drafting and studio chat require a configured model. Neither is used for the built-in example.
 
 ## Install & run
 
